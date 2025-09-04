@@ -11,7 +11,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable,HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens;
 
     /**
      * The attributes that are mass assignable.
@@ -54,7 +54,7 @@ class User extends Authenticatable
         ];
     }
 
-     public function rider()
+    public function rider()
     {
         return $this->hasOne(Rider::class);
     }
@@ -78,5 +78,15 @@ class User extends Authenticatable
     public function scopeAdmins($query)
     {
         return $query->where('role', 'admin');
+    }
+
+    public function getDashboardRoute(): string
+    {
+        return match ($this->role) {
+            'admin' => 'dashboard',
+            'advertiser' => 'advert-dash.index',
+            'rider' => 'rider-dash.index',
+            default => 'dashboard',
+        };
     }
 }

@@ -12,7 +12,7 @@ class AdvertiserService
 {
     public function getAdvertisers(array $filters = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $query = Advertiser::with(['user' => function($q) {
+        $query = Advertiser::with(['user' => function ($q) {
             $q->select('id', 'name', 'email', 'phone');
         }]);
 
@@ -21,12 +21,12 @@ class AdvertiserService
             $search = $filters['search'];
             $query->where(function (Builder $q) use ($search) {
                 $q->where('company_name', 'like', "%{$search}%")
-                  ->orWhere('contact_person', 'like', "%{$search}%")
-                  ->orWhere('business_registration', 'like', "%{$search}%")
-                  ->orWhereHas('user', function (Builder $subQ) use ($search) {
-                      $subQ->where('name', 'like', "%{$search}%")
-                           ->orWhere('email', 'like', "%{$search}%");
-                  });
+                    ->orWhere('contact_person', 'like', "%{$search}%")
+                    ->orWhere('business_registration', 'like', "%{$search}%")
+                    ->orWhereHas('user', function (Builder $subQ) use ($search) {
+                        $subQ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -41,8 +41,8 @@ class AdvertiserService
         }
 
         return $query->latest()
-                    ->paginate(15)
-                    ->withQueryString();
+            ->paginate(15)
+            ->withQueryString();
     }
 
     public function getStats(): array
@@ -67,10 +67,10 @@ class AdvertiserService
             if (empty($data['user_id'])) {
                 // Generate full name from first and last name
                 $fullName = trim($data['first_name'] . ' ' . $data['last_name']);
-                
+
                 // Use phone number as password (hashed)
                 $password = Hash::make($data['phone']);
-                
+
                 $user = User::create([
                     'first_name' => $data['first_name'],
                     'last_name' => $data['last_name'],
@@ -114,7 +114,7 @@ class AdvertiserService
                 $advertiser->user->update(['is_active' => true]);
             } elseif ($status === 'rejected') {
                 $advertiser->user->update(['is_active' => false]);
-                
+
                 // You could store rejection reason in a separate notifications/logs table
                 // or add a rejection_reason field to the advertisers table
             }
@@ -136,7 +136,7 @@ class AdvertiserService
                 if (isset($data['contact_person'])) {
                     $userUpdates['name'] = $data['contact_person'];
                 }
-                
+
                 $advertiser->user->update($userUpdates);
             }
 
@@ -145,6 +145,61 @@ class AdvertiserService
 
             $advertiser->update($data);
             return $advertiser->fresh();
+        });
+    }
+
+    /**
+     * Get advertiser profile by user ID
+     */
+    public function getAdvertiserByUserId(int $userId): ?Advertiser
+    {
+        return Advertiser::where('user_id', $userId)
+            ->with(['user:id,first_name,last_name,name,email,phone'])
+            ->first();
+    }
+
+    /**
+     * Create advertiser profile for existing user
+     */
+    public function createAdvertiserProfile(array $data): Advertiser
+    {
+        return DB::transaction(function () use ($data) {
+            return Advertiser::create([
+                'user_id' => $data['user_id'],
+                'company_name' => $data['company_name'],
+                'business_registration' => $data['business_registration'] ?? null,
+                'address' => $data['address'],
+                'contact_person' => $data['contact_person'],
+                'status' => $data['status'] ?? 'pending'
+            ]);
+        });
+    }
+
+    /**
+     * Update advertiser profile
+     */
+    public function updateAdvertiserProfile(Advertiser $advertiser, array $data): Advertiser
+    {
+        return DB::transaction(function () use ($advertiser, $data) {
+            $advertiser->update([
+                'company_name' => $data['company_name'],
+                'business_registration' => $data['business_registration'] ?? null,
+                'address' => $data['address'],
+                'contact_person' => $data['contact_person'],
+                'status' => $data['status'] ?? $advertiser->status
+            ]);
+
+            return $advertiser->fresh();
+        });
+    }
+
+    /**
+     * Delete advertiser profile
+     */
+    public function deleteAdvertiserProfile(Advertiser $advertiser): bool
+    {
+        return DB::transaction(function () use ($advertiser) {
+            return $advertiser->delete();
         });
     }
 }
