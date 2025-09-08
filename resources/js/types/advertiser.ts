@@ -6,7 +6,6 @@ export interface Advertiser {
     company_name: string;
     business_registration?: string;
     address: string;
-    contact_person: string;
     status: 'pending' | 'approved' | 'rejected';
     created_at: string;
     updated_at: string;
@@ -18,7 +17,6 @@ export interface AdvertiserFormData {
     company_name: string;
     business_registration?: string;
     address: string;
-    contact_person: string;
     email?: string;
     phone?: string;
 }

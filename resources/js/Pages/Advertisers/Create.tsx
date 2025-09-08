@@ -35,7 +35,6 @@ interface AdvertiserFormData {
     company_name: string;
     business_registration?: string;
     address: string;
-    contact_person: string;
 }
 
 export default function AdvertiserCreate({ users }: AdvertiserCreateProps) {
@@ -48,7 +47,7 @@ export default function AdvertiserCreate({ users }: AdvertiserCreateProps) {
         company_name: '',
         business_registration: '',
         address: '',
-        contact_person: '',
+       
     });
 
     const [useExistingUser, setUseExistingUser] = useState(false);
@@ -92,7 +91,6 @@ export default function AdvertiserCreate({ users }: AdvertiserCreateProps) {
                 setData({
                     ...data,
                     user_id: selectedUser.id,
-                    contact_person: selectedUser.name,
                     email: selectedUser.email,
                     phone: selectedUser.phone || '',
                 });
@@ -289,18 +287,7 @@ export default function AdvertiserCreate({ users }: AdvertiserCreateProps) {
                                 )}
 
                                 <Grid>
-                                    <Grid.Col span={{ base: 12, md: 6 }}>
-                                        <TextInput
-                                            label="Contact Person Name"
-                                            placeholder="Enter contact person name"
-                                            description="Primary contact person for this account"
-                                            value={data.contact_person}
-                                            onChange={(e) => setData('contact_person', e.currentTarget.value)}
-                                            error={errors.contact_person}
-                                            disabled={useExistingUser && !!data.user_id}
-                                            required
-                                        />
-                                    </Grid.Col>
+                                    
 
                                     {useExistingUser && (
                                         <>

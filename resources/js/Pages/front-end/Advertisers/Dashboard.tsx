@@ -47,7 +47,6 @@ interface AdvertiserProfileProps {
         company_name?: string;
         business_registration?: string;
         address?: string;
-        contact_person?: string;
         status?: string;
     };
 }
@@ -57,7 +56,6 @@ export default function AdvertiserDashboard({ user, advertiser }: AdvertiserProf
         company_name: advertiser?.company_name || '',
         business_registration: advertiser?.business_registration || '',
         address: advertiser?.address || '',
-        contact_person: advertiser?.contact_person || user.name,
     });
 
     const hasProfile = !!advertiser?.id;
@@ -81,9 +79,8 @@ export default function AdvertiserDashboard({ user, advertiser }: AdvertiserProf
 
     const isFormValid = () => {
         return data.company_name &&
-            data.address &&
-            data.contact_person;
-    };
+            data.address
+            };
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -258,18 +255,7 @@ export default function AdvertiserDashboard({ user, advertiser }: AdvertiserProf
                                             />
                                         </Grid.Col>
 
-                                        <Grid.Col span={{ base: 12, md: 6 }}>
-                                            <TextInput
-                                                label="Contact Person Name"
-                                                placeholder="Enter contact person name"
-                                                description="Primary contact person for this account"
-                                                value={data.contact_person}
-                                                onChange={(e) => setData('contact_person', e.currentTarget.value)}
-                                                error={errors.contact_person}
-                                                leftSection={<User size={16} />}
-                                                required
-                                            />
-                                        </Grid.Col>
+                                       
                                     </Grid>
 
                                     <Divider />
@@ -338,15 +324,7 @@ export default function AdvertiserDashboard({ user, advertiser }: AdvertiserProf
                                             </Paper>
                                         </Grid.Col>
 
-                                        <Grid.Col span={{ base: 12, md: 6 }}>
-                                            <Paper p="md" withBorder className="bg-slate-50">
-                                                <div className="flex items-center space-x-3 mb-2">
-                                                    <User size={16} className="text-slate-600" />
-                                                    <Text size="sm" c="dimmed">Contact Person</Text>
-                                                </div>
-                                                <Text fw={500}>{advertiser?.contact_person}</Text>
-                                            </Paper>
-                                        </Grid.Col>
+                                       
 
                                         {advertiser?.business_registration && (
                                             <Grid.Col span={{ base: 12, md: 6 }}>

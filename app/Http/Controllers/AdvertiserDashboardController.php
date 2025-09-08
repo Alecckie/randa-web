@@ -160,14 +160,11 @@ class AdvertiserDashboardController extends Controller
             'company_name' => ['required', 'string', 'max:255', 'min:2'],
             'business_registration' => ['nullable', 'string', 'max:100'],
             'address' => ['required', 'string', 'max:500', 'min:10'],
-            'contact_person' => ['required', 'string', 'max:255', 'min:2'],
         ], [
             'company_name.required' => 'Company name is required',
             'company_name.min' => 'Company name must be at least 2 characters',
             'address.required' => 'Company address is required',
             'address.min' => 'Address must be at least 10 characters',
-            'contact_person.required' => 'Contact person name is required',
-            'contact_person.min' => 'Contact person name must be at least 2 characters',
         ]);
     }
 
@@ -195,7 +192,6 @@ class AdvertiserDashboardController extends Controller
             'company_name' => $advertiser->company_name,
             'business_registration' => $advertiser->business_registration,
             'address' => $advertiser->address,
-            'contact_person' => $advertiser->contact_person,
             'status' => $advertiser->status,
             'created_at' => $advertiser->created_at->format('Y-m-d H:i:s'),
             'updated_at' => $advertiser->updated_at->format('Y-m-d H:i:s')

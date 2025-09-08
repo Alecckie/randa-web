@@ -477,12 +477,12 @@ export default function RiderDashboard({ user, rider }: RiderProfileProps) {
                                 method="post"
                                 as="button"
                                 className="
-    inline-flex items-center gap-2
-    px-4 py-2 rounded-md
-    text-red-600 hover:text-red-700
-    bg-red-50 hover:bg-red-100
-    transition-all duration-200
-  "
+                                inline-flex items-center gap-2
+                                px-4 py-2 rounded-md
+                                text-red-600 hover:text-red-700
+                                bg-red-50 hover:bg-red-100
+                                transition-all duration-200
+                                "
                             >
                                 <LogOut size={16} />
                                 Logout

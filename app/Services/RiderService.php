@@ -177,10 +177,10 @@ class RiderService
                 $rider->user()->update(['is_active' => false]);
             }
 
-            // Log status change (you can implement this)
+           
             // $this->logStatusChange($rider, $status, $rejectionReason);
 
-            // Send notification to rider (you can implement this)
+           
             // $this->sendStatusUpdateNotification($rider, $status, $rejectionReason);
 
             DB::commit();
@@ -254,7 +254,7 @@ class RiderService
         DB::beginTransaction();
 
         try {
-            // Update user information if provided
+            
             $userFields = ['firstname', 'lastname', 'email', 'phone'];
             $userData = [];
 

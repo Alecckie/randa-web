@@ -203,9 +203,7 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Company Details
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Contact Person
-                                    </th>
+                                    
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Contact Info
                                     </th>
@@ -233,11 +231,7 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900 dark:text-white">
-                                                {advertiser.contact_person}
-                                            </div>
-                                        </td>
+                                       
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
                                                 <div className="text-sm text-gray-900 dark:text-white">

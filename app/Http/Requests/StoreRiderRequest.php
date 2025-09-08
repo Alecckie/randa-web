@@ -35,7 +35,7 @@ class StoreRiderRequest extends FormRequest
             ],
             'email' => [
                 'required',
-                'email:rfc,dns',
+                'email',
                 'max:255',
                 'unique:users,email',
             ],

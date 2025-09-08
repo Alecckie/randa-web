@@ -14,7 +14,6 @@ class Advertiser extends Model
         'company_name',
         'business_registration',
         'address',
-        'contact_person',
         'status'
     ];
 

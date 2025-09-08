@@ -21,7 +21,6 @@ class AdvertiserService
             $search = $filters['search'];
             $query->where(function (Builder $q) use ($search) {
                 $q->where('company_name', 'like', "%{$search}%")
-                    ->orWhere('contact_person', 'like', "%{$search}%")
                     ->orWhere('business_registration', 'like', "%{$search}%")
                     ->orWhereHas('user', function (Builder $subQ) use ($search) {
                         $subQ->where('name', 'like', "%{$search}%")
@@ -63,12 +62,9 @@ class AdvertiserService
     public function createAdvertiser(array $data): Advertiser
     {
         return DB::transaction(function () use ($data) {
-            // Create or update user if user_id is not provided
             if (empty($data['user_id'])) {
-                // Generate full name from first and last name
                 $fullName = trim($data['first_name'] . ' ' . $data['last_name']);
 
-                // Use phone number as password (hashed)
                 $password = Hash::make($data['phone']);
 
                 $user = User::create([
@@ -79,11 +75,10 @@ class AdvertiserService
                     'phone' => $data['phone'],
                     'password' => $password,
                     'role' => 'advertiser',
-                    'is_active' => false, // Will be activated when approved
+                    'is_active' => false, 
                 ]);
                 $data['user_id'] = $user->id;
             } else {
-                // Update existing user role if needed
                 $user = User::find($data['user_id']);
                 if ($user && $user->role !== 'advertiser') {
                     $user->update(['role' => 'advertiser']);
@@ -96,7 +91,7 @@ class AdvertiserService
                 'company_name',
                 'business_registration',
                 'address',
-                'contact_person',
+               ,
                 'status'
             ]));
 
@@ -133,9 +128,7 @@ class AdvertiserService
                 if (isset($data['phone'])) {
                     $userUpdates['phone'] = $data['phone'];
                 }
-                if (isset($data['contact_person'])) {
-                    $userUpdates['name'] = $data['contact_person'];
-                }
+               
 
                 $advertiser->user->update($userUpdates);
             }
@@ -169,7 +162,6 @@ class AdvertiserService
                 'company_name' => $data['company_name'],
                 'business_registration' => $data['business_registration'] ?? null,
                 'address' => $data['address'],
-                'contact_person' => $data['contact_person'],
                 'status' => $data['status'] ?? 'pending'
             ]);
         });
@@ -185,7 +177,6 @@ class AdvertiserService
                 'company_name' => $data['company_name'],
                 'business_registration' => $data['business_registration'] ?? null,
                 'address' => $data['address'],
-                'contact_person' => $data['contact_person'],
                 'status' => $data['status'] ?? $advertiser->status
             ]);
 

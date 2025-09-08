@@ -34,7 +34,6 @@ class StoreAdvertiserRequest extends FormRequest
             'company_name' => 'required|string|max:255',
             'business_registration' => 'nullable|string|max:255',
             'address' => 'required|string|max:1000',
-            'contact_person' => 'required|string|max:255',
             'status' => 'sometimes|in:pending,approved,rejected',
         ];
     }
@@ -55,8 +54,6 @@ class StoreAdvertiserRequest extends FormRequest
             'company_name.max' => 'Company name cannot exceed 255 characters.',
             'address.required' => 'Company address is required.',
             'address.max' => 'Address cannot exceed 1000 characters.',
-            'contact_person.required' => 'Contact person name is required.',
-            'contact_person.max' => 'Contact person name cannot exceed 255 characters.',
             'user_id.exists' => 'Selected user does not exist.',
             'user_id.unique' => 'This user already has an advertiser profile.',
             'business_registration.max' => 'Business registration cannot exceed 255 characters.',
@@ -74,7 +71,6 @@ class StoreAdvertiserRequest extends FormRequest
             'company_name' => 'company name',
             'business_registration' => 'business registration number',
             'address' => 'company address',
-            'contact_person' => 'contact person',
         ];
     }
 
