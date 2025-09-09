@@ -3,12 +3,16 @@
 namespace App\Services;
 
 use App\Models\Rider;
+use App\Models\RiderLocation;
+use App\Models\RiderLocationChangeLog;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
+use Exception;
 
 class RiderService
 {
@@ -18,7 +22,7 @@ class RiderService
     public function getRidersPaginated(array $filters, int $perPage = 15): LengthAwarePaginator
     {
         $query = Rider::query()
-            ->with(['user:id,first_name,last_name,name,email,phone', 'currentAssignment.campaign:id,name'])
+            ->with(['user:id,first_name,last_name,name,email,phone', 'currentAssignment.campaign:id,name', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward'])
             ->latest();
 
         // Apply filters
@@ -78,16 +82,14 @@ class RiderService
     }
 
     /**
-     * Create a new rider with user account
+     * Create a new rider with location data
      */
     public function createRider(array $data): Rider
     {
-        DB::beginTransaction();
-
-        try {
-            // First, create the user account
-            $user = $this->createUserForRider($data);
-
+        return DB::transaction(function () use ($data) {
+            // Create or get user
+            $user = $this->createOrGetUser($data);
+            
             // Handle file uploads
             $fileFields = [
                 'national_id_front_photo',
@@ -103,59 +105,113 @@ class RiderService
                     $data[$field] = $this->uploadFile($data[$field], "riders/{$field}");
                 }
             }
-
-            // Prepare rider data (remove user fields and add user_id)
-            $riderData = collect($data)->except([
-                'firstname',
-                'lastname',
-                'email',
-                'phone'
-            ])->merge([
-                'user_id' => $user->id
-            ])->toArray();
-
-            // Create the rider
-            $rider = Rider::create($riderData);
-
-            // Load the user relationship
-            $rider->load('user');
-
-            DB::commit();
-
-            // Send notifications (you can implement this)
-            // $this->sendRiderApplicationNotification($rider);
-
-            return $rider;
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            // Clean up uploaded files if transaction fails
-            foreach ($fileFields as $field) {
-                if (isset($data[$field]) && is_string($data[$field])) {
-                    Storage::delete($data[$field]);
-                }
-            }
-
-            throw $e;
-        }
+            
+            // Create rider
+            $rider = $this->createRiderRecord($user, $data);
+            
+            // Create rider location
+            $location = $this->createRiderLocation($rider, $data['location']);
+            
+            // Log the initial location assignment
+            $this->logLocationChange($rider, null, $location, 'initial');
+            
+            return $rider->load(['user', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward']);
+        });
     }
 
     /**
-     * Create user account for rider
+     * Create or get existing user
      */
-    private function createUserForRider(array $data): User
+    private function createOrGetUser(array $data): User
     {
-        $fullName = trim($data['firstname'] . ' ' . $data['lastname']);
+        // If user_id is provided, get existing user
+        if (!empty($data['user_id'])) {
+            return User::findOrFail($data['user_id']);
+        }
 
+        // Create new user
         return User::create([
+            'name' => trim($data['firstname'] . ' ' . $data['lastname']),
             'first_name' => $data['firstname'],
             'last_name' => $data['lastname'],
-            'name' => $fullName,
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => Hash::make($data['phone']), // Use phone number as password
             'role' => 'rider',
             'is_active' => true,
+        ]);
+    }
+
+    /**
+     * Create rider record
+     */
+    private function createRiderRecord(User $user, array $data): Rider
+    {
+        // Prepare rider data (remove user fields and location data)
+        $riderData = collect($data)->except([
+            'firstname',
+            'lastname', 
+            'email',
+            'phone',
+            'location'
+        ])->merge([
+            'user_id' => $user->id,
+            'status' => 'pending', // Default status
+            'wallet_balance' => 0.00,
+            'location_changes_count' => 0,
+        ])->toArray();
+
+        return Rider::create($riderData);
+    }
+
+    /**
+     * Create rider location record
+     */
+    private function createRiderLocation(Rider $rider, array $locationData): RiderLocation
+    {
+        $location = RiderLocation::create([
+            'rider_id' => $rider->id,
+            'county_id' => $locationData['county_id'],
+            'sub_county_id' => $locationData['sub_county_id'],
+            'ward_id' => $locationData['ward_id'],
+            'stage_name' => $locationData['stage_name'],
+            'latitude' => $locationData['latitude'] ?: null,
+            'longitude' => $locationData['longitude'] ?: null,
+            'is_current' => true,
+            'effective_from' => now()->toDateString(), // Set to current date
+            'effective_to' => null,
+            'status' => 'active',
+            'notes' => $locationData['notes'] ?? null,
+        ]);
+
+        // Update rider's location tracking
+        $rider->update([
+            'location_last_updated' => now(),
+            'location_changes_count' => 1,
+        ]);
+
+        return $location;
+    }
+
+    /**
+     * Log location change
+     */
+    private function logLocationChange(Rider $rider, ?RiderLocation $oldLocation, RiderLocation $newLocation, string $changeType, ?string $reason = null): RiderLocationChangeLog
+    {
+        return RiderLocationChangeLog::create([
+            'rider_id' => $rider->id,
+            'old_location_id' => $oldLocation?->id,
+            'new_location_id' => $newLocation->id,
+            'change_type' => $changeType,
+            'reason' => $reason,
+            'metadata' => [
+                'changed_by_type' => 'system',
+                'changed_by_id' => null,
+                'rider_name' => $rider->user->name,
+                'old_location_display' => $oldLocation?->full_address,
+                'new_location_display' => $newLocation->full_address,
+            ],
+            'changed_at' => now(),
         ]);
     }
 
@@ -177,12 +233,6 @@ class RiderService
                 $rider->user()->update(['is_active' => false]);
             }
 
-           
-            // $this->logStatusChange($rider, $status, $rejectionReason);
-
-           
-            // $this->sendStatusUpdateNotification($rider, $status, $rejectionReason);
-
             DB::commit();
 
             return $rider;
@@ -201,12 +251,85 @@ class RiderService
     }
 
     /**
+     * Change rider location
+     */
+    public function changeRiderLocation(Rider $rider, array $locationData, string $reason = null): RiderLocation
+    {
+        return DB::transaction(function () use ($rider, $locationData, $reason) {
+            // Get current location
+            $oldLocation = $rider->currentLocation;
+            
+            // Deactivate current location
+            if ($oldLocation) {
+                $oldLocation->update([
+                    'is_current' => false,
+                    'effective_to' => now()->toDateString(),
+                    'status' => 'inactive',
+                ]);
+            }
+            
+            // Create new location
+            $newLocation = RiderLocation::create([
+                'rider_id' => $rider->id,
+                'county_id' => $locationData['county_id'],
+                'sub_county_id' => $locationData['sub_county_id'],
+                'ward_id' => $locationData['ward_id'],
+                'stage_name' => $locationData['stage_name'],
+                'latitude' => $locationData['latitude'] ?: null,
+                'longitude' => $locationData['longitude'] ?: null,
+                'is_current' => true,
+                'effective_from' => now()->toDateString(),
+                'effective_to' => null,
+                'status' => 'active',
+                'notes' => $locationData['notes'] ?? null,
+            ]);
+            
+            // Update rider's location tracking
+            $rider->increment('location_changes_count');
+            $rider->update(['location_last_updated' => now()]);
+            
+            // Log the location change
+            $this->logLocationChange($rider, $oldLocation, $newLocation, 'transfer', $reason);
+            
+            return $newLocation->load(['county', 'subcounty', 'ward']);
+        });
+    }
+
+    /**
+     * Get rider location history
+     */
+    public function getRiderLocationHistory(Rider $rider): \Illuminate\Database\Eloquent\Collection
+    {
+        return $rider->locationHistory()
+            ->with(['county', 'subcounty', 'ward'])
+            ->get();
+    }
+
+    /**
+     * Get riders by location
+     */
+    public function getRidersByLocation(int $wardId = null, int $subcountyId = null, int $countyId = null): \Illuminate\Database\Eloquent\Collection
+    {
+        $query = Rider::approved()->withCurrentLocation();
+        
+        if ($wardId) {
+            $query->byLocation($wardId);
+        } elseif ($subcountyId) {
+            $query->bySubCounty($subcountyId);
+        } elseif ($countyId) {
+            $query->byCounty($countyId);
+        }
+        
+        return $query->get();
+    }
+
+    /**
      * Get rider by user ID
      */
     public function getRiderByUserId(int $userId): ?Rider
     {
         return Rider::where('user_id', $userId)
-            ->with(['user', 'currentAssignment.campaign'])
+            ->with(['user', 'currentAssignment.campaign', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward'])
             ->first();
     }
 
@@ -242,7 +365,7 @@ class RiderService
     {
         return Rider::approved()
             ->whereDoesntHave('currentAssignment')
-            ->with(['user:id,first_name,last_name,name,email,phone'])
+            ->with(['user:id,first_name,last_name,name,email,phone', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward'])
             ->get();
     }
 
@@ -254,7 +377,6 @@ class RiderService
         DB::beginTransaction();
 
         try {
-            
             $userFields = ['firstname', 'lastname', 'email', 'phone'];
             $userData = [];
 
@@ -313,7 +435,10 @@ class RiderService
             'currentAssignment.campaign:id,name',
             'currentAssignment' => function ($query) {
                 $query->select('id', 'rider_id', 'campaign_id', 'assigned_at', 'status');
-            }
+            },
+            'currentLocation.county',
+            'currentLocation.subcounty', 
+            'currentLocation.ward'
         ])->find($riderId);
     }
 
@@ -327,11 +452,12 @@ class RiderService
             'currentAssignment.campaign:id,name',
             'currentAssignment' => function ($query) {
                 $query->select('id', 'rider_id', 'campaign_id', 'assigned_at', 'status');
-            }
+            },
+            'currentLocation.county',
+            'currentLocation.subcounty', 
+            'currentLocation.ward'
         ]);
     }
-
-
 
     /**
      * Check if email is already taken (excluding current rider if updating)

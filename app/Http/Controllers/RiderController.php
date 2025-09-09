@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreRiderRequest;
 use App\Models\Rider;
 use App\Models\User;
+use App\Services\LocationService;
 use App\Services\RiderService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,18 +15,26 @@ class RiderController extends Controller
 
     protected RiderService $riderService;
 
-    public function __construct(RiderService $riderService)
+    protected LocationService $locationService;
+
+    public function __construct(RiderService $riderService, LocationService $locationService)
     {
         $this->riderService = $riderService;
+        $this->locationService = $locationService;
     }
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
-         $filters = $request->only([
-            'status', 'search', 'user_id', 'date_from', 'date_to', 
-            'daily_rate_min', 'daily_rate_max'
+        $filters = $request->only([
+            'status',
+            'search',
+            'user_id',
+            'date_from',
+            'date_to',
+            'daily_rate_min',
+            'daily_rate_max'
         ]);
 
         $riders = $this->riderService->getRidersPaginated($filters, $request->get('per_page', 15));
@@ -45,12 +54,15 @@ class RiderController extends Controller
      */
     public function create()
     {
+
+        $counties = $this->locationService->getAllCounties();
+
         $users = User::whereDoesntHave('rider')
             ->select('id', 'name', 'email')
             ->get();
 
         return Inertia::render('Riders/Create', [
-            'users' => $users,
+            'counties' => $counties,
         ]);
     }
 
@@ -60,7 +72,7 @@ class RiderController extends Controller
     public function store(StoreRiderRequest $request)
     {
         try {
-             $this->riderService->createRider($request->validated());
+            $this->riderService->createRider($request->validated());
 
             return redirect()
                 ->route('riders.index')
@@ -78,18 +90,17 @@ class RiderController extends Controller
      */
     public function show(Rider $rider)
     {
-         try {
-        // Load the rider details with all necessary relationships
-        $riderDetails = $this->riderService->loadRiderDetailsForShow($rider);
+        try {
+            $riderDetails = $this->riderService->loadRiderDetailsForShow($rider);
 
-        return Inertia::render('Riders/Show', [
-            'rider' => $riderDetails,
-        ]);
-    } catch (\Exception $e) {
-        return redirect()
-            ->route('riders.index')
-            ->with('error', 'Failed to load rider details: ' . $e->getMessage());
-    }
+            return Inertia::render('Riders/Show', [
+                'rider' => $riderDetails,
+            ]);
+        } catch (\Exception $e) {
+            return redirect()
+                ->route('riders.index')
+                ->with('error', 'Failed to load rider details: ' . $e->getMessage());
+        }
     }
 
     /**

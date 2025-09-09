@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link } from '@inertiajs/react';
 import {
@@ -16,14 +16,53 @@ import {
     Alert,
     Progress,
     Stepper,
-    Paper
+    Paper,
 } from '@mantine/core';
 import type { RiderCreateProps, RiderFormData } from '@/types/rider';
-import { ArrowLeftIcon, InfoIcon, UploadIcon, UserIcon } from 'lucide-react';
+import { ArrowLeftIcon, InfoIcon, UploadIcon, UserIcon, MapPinIcon } from 'lucide-react';
+import axios from 'axios';
 
-export default function RiderCreate({ users }: RiderCreateProps) {
+interface LocationData {
+    county_id: number | '';
+    sub_county_id: number | '';
+    ward_id: number | '';
+    stage_name: string;
+    latitude: number | '';
+    longitude: number | '';
+    effective_from: Date | null;
+    notes: string;
+}
+
+interface ExtendedRiderFormData extends RiderFormData {
+    location: LocationData;
+}
+
+interface County {
+    id: number;
+    name: string;
+}
+
+interface SubCounty {
+    id: number;
+    name: string;
+    county_id: number;
+}
+
+interface Ward {
+    id: number;
+    name: string;
+    sub_county_id: number;
+}
+
+interface ExtendedRiderCreateProps extends RiderCreateProps {
+    counties: County[];
+    subcounties: SubCounty[];
+    wards: Ward[];
+}
+
+export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
     const [currentStep, setCurrentStep] = useState(0);
-    const { data, setData, post, processing, errors, progress } = useForm<RiderFormData>({
+    const { data, setData, post, processing, errors, progress } = useForm<ExtendedRiderFormData>({
         user_id: undefined,
         firstname: '',
         lastname: '',
@@ -41,14 +80,78 @@ export default function RiderCreate({ users }: RiderCreateProps) {
         next_of_kin_phone: '',
         signed_agreement: '',
         daily_rate: 70,
+        location: {
+            county_id: '',
+            sub_county_id: '',
+            ward_id: '',
+            stage_name: '',
+            latitude: '',
+            longitude: '',
+            effective_from: new Date(),
+            notes: ''
+        }
     });
 
     const steps = [
         { label: 'Personal Info', description: 'Basic rider information' },
+        { label: 'Location Details', description: 'Rider operational location' },
         { label: 'Documents', description: 'Required documents upload' },
         { label: 'Contact & Payment', description: 'Contact details and M-Pesa' },
         { label: 'Agreement', description: 'Terms and conditions' },
     ];
+
+    const [subcounties, setSubcounties] = useState<SubCounty[]>([]);
+    const [wards, setWards] = useState<Ward[]>([]);
+    const [loadingSubcounties, setLoadingSubcounties] = useState(false);
+    const [loadingWards, setLoadingWards] = useState(false);
+
+    useEffect(() => {
+        if (data.location.county_id) {
+            setLoadingSubcounties(true);
+            axios
+                .get(`/locations/counties/${data.location.county_id}/subcounties`)
+                .then((res) => {
+                    setSubcounties(res.data);
+                    setWards([]); // reset wards
+                    setData('location', {
+                        ...data.location,
+                        sub_county_id: '',
+                        ward_id: '',
+                    });
+                })
+                .finally(() => setLoadingSubcounties(false));
+        } else {
+            setSubcounties([]);
+            setWards([]);
+        }
+    }, [data.location.county_id]);
+
+    // fetch wards when subcounty changes
+    useEffect(() => {
+        if (data.location.sub_county_id) {
+            setLoadingWards(true);
+            axios
+                .get(`/locations/subcounties/${data.location.sub_county_id}/wards`)
+                .then((res) => {
+                    setWards(res.data);
+                    setData('location', {
+                        ...data.location,
+                        ward_id: '',
+                    });
+                })
+                .finally(() => setLoadingWards(false));
+        } else {
+            setWards([]);
+        }
+    }, [data.location.sub_county_id]);
+
+    const handleLocationChange = (field: keyof LocationData, value: any) => {
+        setData('location', {
+            ...data.location,
+            [field]: value,
+        });
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -75,20 +178,26 @@ export default function RiderCreate({ users }: RiderCreateProps) {
         switch (step) {
             case 0:
                 return data.firstname &&
-                 data.lastname &&
-                 data.email &&
-                 data.phone &&
-                 data.national_id;
+                    data.lastname &&
+                    data.email &&
+                    data.phone &&
+                    data.national_id;
             case 1:
+                return data.location.county_id &&
+                    data.location.sub_county_id &&
+                    data.location.ward_id &&
+                    data.location.stage_name &&
+                    data.location.effective_from;
+            case 2:
                 return data.national_id_front_photo &&
                     data.national_id_back_photo &&
                     data.passport_photo &&
                     data.good_conduct_certificate &&
                     data.motorbike_license &&
                     data.motorbike_registration;
-            case 2:
-                return data.mpesa_number && data.next_of_kin_name && data.next_of_kin_phone;
             case 3:
+                return data.mpesa_number && data.next_of_kin_name && data.next_of_kin_phone;
+            case 4:
                 return data.signed_agreement.length >= 10;
             default:
                 return false;
@@ -97,95 +206,224 @@ export default function RiderCreate({ users }: RiderCreateProps) {
 
     const renderStepContent = () => {
         switch (currentStep) {
-          case 0:
-    return (
-        <Card>
-            <Stack>
-                <div>
-                    <Text size="lg" fw={600} mb="sm">Personal Information</Text>
-                    <Text size="sm" c="dimmed">
-                        Please provide the basic information for the rider application.
-                    </Text>
-                </div>
+            case 0:
+                return (
+                    <Card>
+                        <Stack>
+                            <div>
+                                <Text size="lg" fw={600} mb="sm">Personal Information</Text>
+                                <Text size="sm" c="dimmed">
+                                    Please provide the basic information for the rider application.
+                                </Text>
+                            </div>
 
-                <Grid>
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <TextInput
-                            label="First Name"
-                            placeholder="Enter first name"
-                            value={data.firstname}
-                            onChange={(e) => setData('firstname', e.currentTarget.value)}
-                            error={errors.firstname}
-                            required
-                        />
-                    </Grid.Col>
+                            <Grid>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="First Name"
+                                        placeholder="Enter first name"
+                                        value={data.firstname}
+                                        onChange={(e) => setData('firstname', e.currentTarget.value)}
+                                        error={errors.firstname}
+                                        required
+                                    />
+                                </Grid.Col>
 
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <TextInput
-                            label="Last Name"
-                            placeholder="Enter last name"
-                            value={data.lastname}
-                            onChange={(e) => setData('lastname', e.currentTarget.value)}
-                            error={errors.lastname}
-                            required
-                        />
-                    </Grid.Col>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Last Name"
+                                        placeholder="Enter last name"
+                                        value={data.lastname}
+                                        onChange={(e) => setData('lastname', e.currentTarget.value)}
+                                        error={errors.lastname}
+                                        required
+                                    />
+                                </Grid.Col>
 
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <TextInput
-                            label="Email Address"
-                            placeholder="example@email.com"
-                            type="email"
-                            value={data.email}
-                            onChange={(e) => setData('email', e.currentTarget.value)}
-                            error={errors.email}
-                            required
-                        />
-                    </Grid.Col>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Email Address"
+                                        placeholder="example@email.com"
+                                        type="email"
+                                        value={data.email}
+                                        onChange={(e) => setData('email', e.currentTarget.value)}
+                                        error={errors.email}
+                                        required
+                                    />
+                                </Grid.Col>
 
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <TextInput
-                            label="Phone Number"
-                            placeholder="254712345678"
-                            description="Enter phone number in format 254XXXXXXXX"
-                            value={data.phone}
-                            onChange={(e) => setData('phone', e.currentTarget.value)}
-                            error={errors.phone}
-                            required
-                        />
-                    </Grid.Col>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Phone Number"
+                                        placeholder="254712345678"
+                                        description="Enter phone number in format 254XXXXXXXX"
+                                        value={data.phone}
+                                        onChange={(e) => setData('phone', e.currentTarget.value)}
+                                        error={errors.phone}
+                                        required
+                                    />
+                                </Grid.Col>
 
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <TextInput
-                            label="National ID Number"
-                            placeholder="Enter national ID number"
-                            description="Enter the valid Kenyan National ID number (numbers only)"
-                            value={data.national_id}
-                            onChange={(e) => setData('national_id', e.currentTarget.value)}
-                            error={errors.national_id}
-                            required
-                        />
-                    </Grid.Col>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="National ID Number"
+                                        placeholder="Enter national ID number"
+                                        description="Enter the valid Kenyan National ID number (numbers only)"
+                                        value={data.national_id}
+                                        onChange={(e) => setData('national_id', e.currentTarget.value)}
+                                        error={errors.national_id}
+                                        required
+                                    />
+                                </Grid.Col>
 
-                    <Grid.Col span={{ base: 12, md: 6 }}>
-                        <NumberInput
-                            label="Daily Rate (KSh)"
-                            placeholder="70.00"
-                            description="Daily earning rate for the rider (default: KSh 70.00)"
-                            value={data.daily_rate}
-                            onChange={(value) => setData('daily_rate', Number(value) || 70)}
-                            error={errors.daily_rate}
-                            min={0}
-                            max={10000}
-                            decimalScale={2}
-                        />
-                    </Grid.Col>
-                </Grid>
-            </Stack>
-        </Card>
-    );
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <NumberInput
+                                        label="Daily Rate (KSh)"
+                                        placeholder="70.00"
+                                        description="Daily earning rate for the rider (default: KSh 70.00)"
+                                        value={data.daily_rate}
+                                        onChange={(value) => setData('daily_rate', Number(value) || 70)}
+                                        error={errors.daily_rate}
+                                        min={0}
+                                        max={10000}
+                                        decimalScale={2}
+                                    />
+                                </Grid.Col>
+                            </Grid>
+                        </Stack>
+                    </Card>
+                );
 
             case 1:
+                return (
+                    <Card>
+                        <Stack>
+                            <div>
+                                <Text size="lg" fw={600} mb="sm">Location Details</Text>
+                                <Text size="sm" c="dimmed">
+                                    Specify the operational location where the rider will be based.
+                                </Text>
+                            </div>
+
+                            <Alert icon={<MapPinIcon size={16} />} color="blue" variant="light">
+                                <Text size="sm">
+                                    <strong>Location Information:</strong>
+                                    <br />• Select county, sub-county, and ward where the rider will operate
+                                    <br />• Provide specific stage area name for precise location
+                                </Text>
+                            </Alert>
+
+                            <Grid>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <Select
+                                        label="County"
+                                        placeholder="Select county"
+                                        data={counties.map((c) => ({ value: c.id.toString(), label: c.name }))}
+                                        value={data.location.county_id ? data.location.county_id.toString() : ''}
+                                        onChange={(value) => handleLocationChange('county_id', value ? parseInt(value) : '')}
+                                        error={errors['location.county_id']}
+                                        searchable
+                                        required
+                                    />
+                                </Grid.Col>
+
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <Select
+                                        label="Sub County"
+                                        placeholder={loadingSubcounties ? 'Loading...' : 'Select sub county'}
+                                        data={subcounties.map((s) => ({ value: s.id.toString(), label: s.name }))}
+                                        value={data.location.sub_county_id ? data.location.sub_county_id.toString() : ''}
+                                        onChange={(value) => handleLocationChange('sub_county_id', value ? parseInt(value) : '')}
+                                        error={errors['location.sub_county_id']}
+                                        disabled={!data.location.county_id || loadingSubcounties}
+                                        searchable
+                                        required
+                                    />
+                                </Grid.Col>
+
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <Select
+                                        label="Ward"
+                                        placeholder={loadingWards ? 'Loading...' : 'Select ward'}
+                                        data={wards.map((w) => ({ value: w.id.toString(), label: w.name }))}
+                                        value={data.location.ward_id ? data.location.ward_id.toString() : ''}
+                                        onChange={(value) => handleLocationChange('ward_id', value ? parseInt(value) : '')}
+                                        error={errors['location.ward_id']}
+                                        disabled={!data.location.sub_county_id || loadingWards}
+                                        searchable
+                                        required
+                                    />
+                                </Grid.Col>
+
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Stage/Area Name"
+                                        placeholder="e.g., Kimathi Street, City Center"
+                                        description="Specific stage or area name within the ward"
+                                        value={data.location.stage_name}
+                                        onChange={(e) => handleLocationChange('stage_name', e.currentTarget.value)}
+                                        error={errors['location.stage_name']}
+                                        required
+                                    />
+                                </Grid.Col>
+
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <NumberInput
+                                        label="Latitude (Optional)"
+                                        placeholder="e.g., -1.2864"
+                                        description="GPS latitude coordinate"
+                                        value={data.location.latitude || ''}
+                                        onChange={(value) => handleLocationChange('latitude', value || '')}
+                                        error={errors['location.latitude']}
+                                        decimalScale={8}
+                                        min={-90}
+                                        max={90}
+                                    />
+                                </Grid.Col>
+
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <NumberInput
+                                        label="Longitude (Optional)"
+                                        placeholder="e.g., 36.8172"
+                                        description="GPS longitude coordinate"
+                                        value={data.location.longitude || ''}
+                                        onChange={(value) => handleLocationChange('longitude', value || '')}
+                                        error={errors['location.longitude']}
+                                        decimalScale={8}
+                                        min={-180}
+                                        max={180}
+                                    />
+                                </Grid.Col>
+
+                                {/* <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <DateInput
+                                        label="Effective From"
+                                        placeholder="Select start date"
+                                        description="Date from which this location assignment becomes effective"
+                                        value={data.location.effective_from}
+                                        onChange={(value) => handleLocationChange('effective_from', value)}
+                                        error={errors['location.effective_from']}
+                                        required
+                                    />
+                                </Grid.Col> */}
+
+                                <Grid.Col span={12}>
+                                    <Textarea
+                                        label="Notes (Optional)"
+                                        placeholder="Any additional notes about the location assignment"
+                                        description="Optional notes about the location or special instructions"
+                                        value={data.location.notes}
+                                        onChange={(e) => handleLocationChange('notes', e.currentTarget.value)}
+                                        error={errors['location.notes']}
+                                        minRows={3}
+                                    />
+                                </Grid.Col>
+                            </Grid>
+                        </Stack>
+                    </Card>
+                );
+
+            case 2:
                 return (
                     <Card>
                         <Stack>
@@ -288,7 +526,7 @@ export default function RiderCreate({ users }: RiderCreateProps) {
                     </Card>
                 );
 
-            case 2:
+            case 3:
                 return (
                     <Card>
                         <Stack>
@@ -345,7 +583,7 @@ export default function RiderCreate({ users }: RiderCreateProps) {
                     </Card>
                 );
 
-            case 3:
+            case 4:
                 return (
                     <Card>
                         <Stack>
@@ -421,7 +659,7 @@ export default function RiderCreate({ users }: RiderCreateProps) {
         >
             <Head title="New Rider Application" />
 
-            <div className="w-full max-w-[90%] mx-auto space-y-6"> 
+            <div className="w-full max-w-[90%] mx-auto space-y-6">
                 {/* Progress */}
                 <Card>
                     <Stepper

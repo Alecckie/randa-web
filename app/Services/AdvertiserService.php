@@ -91,7 +91,6 @@ class AdvertiserService
                 'company_name',
                 'business_registration',
                 'address',
-               ,
                 'status'
             ]));
 

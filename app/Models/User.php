@@ -89,4 +89,9 @@ class User extends Authenticatable
             default => 'dashboard',
         };
     }
+
+    public function rejections()
+    {
+        return $this->morphMany(RejectionReason::class,'rejectable');
+    }
 }
