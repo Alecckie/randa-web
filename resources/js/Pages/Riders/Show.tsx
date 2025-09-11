@@ -159,13 +159,12 @@ export default function RiderShow({ rider }: RiderShowProps) {
     };
 
     const handleDownloadPDF = () => {
-        // PDF download functionality will be implemented in backend
         console.log('Download PDF functionality to be implemented');
     };
 
     const handleApprove = () => {
         setLoading(true);
-        router.patch(route('riders.approve', rider.id), {}, {
+        router.patch(route('rider.approve', rider.id), {}, {
             onSuccess: () => {
                 notifications.show({
                     title: 'Success',
@@ -195,7 +194,7 @@ export default function RiderShow({ rider }: RiderShowProps) {
         }
 
         setLoading(true);
-        router.patch(route('riders.reject', rider.id), {
+        router.patch(route('rider.reject', rider.id), {
             reason: rejectionReason
         }, {
             onSuccess: () => {
