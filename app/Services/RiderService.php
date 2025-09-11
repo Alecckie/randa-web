@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Models\Rider;
 use App\Models\RiderLocation;
 use App\Models\RiderLocationChangeLog;
+use App\Models\RejectionReason;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Exception;
 
@@ -178,7 +180,7 @@ class RiderService
             'latitude' => $locationData['latitude'] ?: null,
             'longitude' => $locationData['longitude'] ?: null,
             'is_current' => true,
-            'effective_from' => now()->toDateString(), // Set to current date
+            'effective_from' => now()->toDateString(), 
             'effective_to' => null,
             'status' => 'active',
             'notes' => $locationData['notes'] ?? null,
@@ -216,21 +218,75 @@ class RiderService
     }
 
     /**
-     * Update rider status
+     * Approve rider application
+     */
+    public function approveRider(Rider $rider): Rider
+    {
+        return DB::transaction(function () use ($rider) {
+            // Update rider status
+            $rider->update(['status' => 'approved']);
+
+            // Activate the user account
+            $rider->user()->update(['is_active' => true]);
+
+            $rider->refresh();
+
+            return $rider->load(['user', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward']);
+        });
+    }
+
+    /**
+     * Reject rider application with reason
+     */
+    public function rejectRider(Rider $rider, string $reason, ?int $rejectedBy = null): Rider
+    {
+        return DB::transaction(function () use ($rider, $reason, $rejectedBy) {
+            // Update rider status
+            $rider->update(['status' => 'rejected']);
+
+            // Create rejection reason record
+            $rejectionReason = new RejectionReason([
+                'rejected_by' => $rejectedBy ?? Auth::id(),
+                'reason' => $reason,
+            ]);
+
+            $rider->rejectionReasons()->save($rejectionReason);
+
+            // Optionally deactivate the user account for rejected applications
+            $rider->user()->update(['is_active' => false]);
+
+            $rider->refresh();
+
+            return $rider->load([
+                'user', 
+                'currentLocation.county', 
+                'currentLocation.subcounty', 
+                'currentLocation.ward',
+                'rejectionReasons.rejectedBy'
+            ]);
+        });
+    }
+
+    /**
+     * Update rider status (legacy method - kept for backward compatibility)
      */
     public function updateRiderStatus(Rider $rider, string $status, ?string $rejectionReason = null): Rider
     {
         DB::beginTransaction();
 
         try {
-            $rider->update(['status' => $status]);
-
-            // If approved, activate the user account
             if ($status === 'approved') {
-                $rider->user()->update(['is_active' => true]);
-            } elseif ($status === 'rejected') {
-                // Optionally deactivate the user account for rejected applications
-                $rider->user()->update(['is_active' => false]);
+                return $this->approveRider($rider);
+            } elseif ($status === 'rejected' && $rejectionReason) {
+                return $this->rejectRider($rider, $rejectionReason);
+            } else {
+                $rider->update(['status' => $status]);
+                
+                if ($status === 'approved') {
+                    $rider->user()->update(['is_active' => true]);
+                } elseif ($status === 'rejected') {
+                    $rider->user()->update(['is_active' => false]);
+                }
             }
 
             DB::commit();
@@ -438,7 +494,8 @@ class RiderService
             },
             'currentLocation.county',
             'currentLocation.subcounty', 
-            'currentLocation.ward'
+            'currentLocation.ward',
+            'rejectionReasons.rejectedBy'
         ])->find($riderId);
     }
 
@@ -455,7 +512,8 @@ class RiderService
             },
             'currentLocation.county',
             'currentLocation.subcounty', 
-            'currentLocation.ward'
+            'currentLocation.ward',
+            'rejectionReasons.rejectedBy'
         ]);
     }
 

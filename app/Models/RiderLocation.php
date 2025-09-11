@@ -36,7 +36,7 @@ class RiderLocation extends Model
 
     public function subcounty(): BelongsTo
     {
-        return $this->belongsTo(SubCounty::class);
+        return $this->belongsTo(SubCounty::class,'sub_county_id');
     }
 
     public function ward(): BelongsTo

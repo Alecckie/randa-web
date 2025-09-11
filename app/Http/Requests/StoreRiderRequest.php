@@ -21,7 +21,6 @@ class StoreRiderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Personal Information
             'firstname' => [
                 'required',
                 'string',
@@ -141,7 +140,6 @@ class StoreRiderRequest extends FormRequest
                 'max:5120', // 5MB
             ],
 
-            // Contact & Payment Information
             'mpesa_number' => [
                 'required',
                 'string',
@@ -160,14 +158,12 @@ class StoreRiderRequest extends FormRequest
                 'regex:/^254[0-9]{9}$/',
             ],
 
-            // Agreement
             'signed_agreement' => [
                 'required',
                 'string',
                 'min:10',
             ],
 
-            // Rate Information
             'daily_rate' => [
                 'sometimes',
                 'numeric',

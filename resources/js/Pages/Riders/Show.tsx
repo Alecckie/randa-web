@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     Button,
     Badge,
@@ -19,9 +19,12 @@ import {
     Divider,
     Paper,
     Timeline,
-    Tooltip
+    Tooltip,
+    Textarea,
+    rem
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import {
     ArrowLeft,
     Download,
@@ -41,7 +44,13 @@ import {
     FileText,
     Image as ImageIcon,
     MoreHorizontal,
-    Eye
+    Eye,
+    ThumbsUp,
+    ThumbsDown,
+    Navigation,
+    Home,
+    Building2,
+    Globe
 } from 'lucide-react';
 
 // Props interface
@@ -56,6 +65,8 @@ interface RiderShowProps {
         daily_rate: string;
         wallet_balance: string;
         signed_agreement: string;
+        location_last_updated: string;
+        location_changes_count: number;
         created_at: string;
         updated_at: string;
         national_id_front_photo?: string;
@@ -80,13 +91,45 @@ interface RiderShowProps {
             };
             assigned_at: string;
         };
+        current_location?: {
+            id: number;
+            stage_name: string;
+            latitude?: string;
+            longitude?: string;
+            effective_from: string;
+            notes?: string;
+            county: {
+                id: number;
+                name: string;
+            };
+            subcounty: {
+                id: number;
+                name: string;
+            };
+            ward: {
+                id: number;
+                name: string;
+            };
+        };
+        rejectionReasons?: Array<{
+            id: number;
+            reason: string;
+            rejected_by: {
+                name: string;
+            };
+            created_at: string;
+        }>;
     };
 }
 
 export default function RiderShow({ rider }: RiderShowProps) {
     const [activeTab, setActiveTab] = useState('overview');
     const [imageModalOpened, { open: openImageModal, close: closeImageModal }] = useDisclosure(false);
+    const [rejectModalOpened, { open: openRejectModal, close: closeRejectModal }] = useDisclosure(false);
     const [selectedImage, setSelectedImage] = useState<{ src: string; title: string } | null>(null);
+    const [rejectionReason, setRejectionReason] = useState('');
+    const [loading, setLoading] = useState(false);
+
 
     const getStatusColor = (status: string) => {
         const colors = {
@@ -118,6 +161,61 @@ export default function RiderShow({ rider }: RiderShowProps) {
     const handleDownloadPDF = () => {
         // PDF download functionality will be implemented in backend
         console.log('Download PDF functionality to be implemented');
+    };
+
+    const handleApprove = () => {
+        setLoading(true);
+        router.patch(route('riders.approve', rider.id), {}, {
+            onSuccess: () => {
+                notifications.show({
+                    title: 'Success',
+                    message: 'Rider approved successfully',
+                    color: 'green',
+                });
+            },
+            onError: () => {
+                notifications.show({
+                    title: 'Error',
+                    message: 'Failed to approve rider',
+                    color: 'red',
+                });
+            },
+            onFinish: () => setLoading(false),
+        });
+    };
+
+    const handleReject = () => {
+        if (!rejectionReason.trim()) {
+            notifications.show({
+                title: 'Error',
+                message: 'Please provide a reason for rejection',
+                color: 'red',
+            });
+            return;
+        }
+
+        setLoading(true);
+        router.patch(route('riders.reject', rider.id), {
+            reason: rejectionReason
+        }, {
+            onSuccess: () => {
+                notifications.show({
+                    title: 'Success',
+                    message: 'Rider rejected successfully',
+                    color: 'green',
+                });
+                closeRejectModal();
+                setRejectionReason('');
+            },
+            onError: () => {
+                notifications.show({
+                    title: 'Error',
+                    message: 'Failed to reject rider',
+                    color: 'red',
+                });
+            },
+            onFinish: () => setLoading(false),
+        });
     };
 
     const documents = [
@@ -152,6 +250,27 @@ export default function RiderShow({ rider }: RiderShowProps) {
                         </div>
                     </div>
                     <Group>
+                        {rider.status === 'pending' && (
+                            <>
+                                <Button
+                                    color="green"
+                                    leftSection={<ThumbsUp size={16} />}
+                                    onClick={handleApprove}
+                                    loading={loading}
+                                >
+                                    Approve
+                                </Button>
+                                <Button
+                                    color="red"
+                                    variant="outline"
+                                    leftSection={<ThumbsDown size={16} />}
+                                    onClick={openRejectModal}
+                                    loading={loading}
+                                >
+                                    Reject
+                                </Button>
+                            </>
+                        )}
                         <Button
                             variant="light"
                             leftSection={<Printer size={16} />}
@@ -201,11 +320,12 @@ export default function RiderShow({ rider }: RiderShowProps) {
                             >
                                 <User size={32} />
                             </Avatar>
-                            
+
                             <div className="flex-1">
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
                                     <Text size="xl" fw={700} className="text-gray-900 dark:text-white">
                                         {rider.user.name}
+
                                     </Text>
                                     <Badge
                                         color={getStatusColor(rider.status)}
@@ -216,7 +336,7 @@ export default function RiderShow({ rider }: RiderShowProps) {
                                         {rider.status.charAt(0).toUpperCase() + rider.status.slice(1)}
                                     </Badge>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                                     <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                         <User size={14} />
@@ -237,7 +357,7 @@ export default function RiderShow({ rider }: RiderShowProps) {
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 lg:w-48">
                             <Paper p="sm" className="text-center bg-blue-50 dark:bg-blue-900/20">
                                 <Text size="xs" c="dimmed" mb="xs">Daily Rate</Text>
@@ -266,10 +386,50 @@ export default function RiderShow({ rider }: RiderShowProps) {
                     </Alert>
                 )}
 
+                {/* Location Alert */}
+                {rider.current_location && (
+                    <Alert color="cyan" variant="light" icon={<MapPin size={16} />}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                                <Text fw={500}>Current Location</Text>
+                                <Text size="sm">
+                                    {rider.current_location.stage_name}, {rider.current_location.ward.name}, {rider.current_location.subcounty.name}, {rider.current_location.county.name}
+                                </Text>
+                            </div>
+                            <div className="text-right">
+                                <Text size="xs" c="dimmed">
+                                    Active since {new Date(rider.current_location.effective_from).toLocaleDateString()}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                    {rider.location_changes_count} location changes
+                                </Text>
+                            </div>
+                        </div>
+                    </Alert>
+                )}
+
+                {/* Rejection Alert */}
+                {rider.status === 'rejected' && rider.rejectionReasons && rider.rejectionReasons.length > 0 && (
+                    <Alert color="red" variant="light" icon={<XCircle size={16} />}>
+                        <div>
+                            <Text fw={500} mb="xs">Application Rejected</Text>
+                            {rider.rejectionReasons.map((rejection, index) => (
+                                <div key={rejection.id} className="mb-2">
+                                    <Text size="sm" mb="xs">{rejection.reason}</Text>
+                                    <Text size="xs" c="dimmed">
+                                        Rejected by {rejection.rejected_by.name} on {new Date(rejection.created_at).toLocaleDateString()}
+                                    </Text>
+                                </div>
+                            ))}
+                        </div>
+                    </Alert>
+                )}
+
                 {/* Tabs Content */}
                 <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'overview')}>
                     <Tabs.List>
                         <Tabs.Tab value="overview">Overview</Tabs.Tab>
+                        <Tabs.Tab value="location">Location</Tabs.Tab>
                         <Tabs.Tab value="documents">Documents</Tabs.Tab>
                         <Tabs.Tab value="agreement">Agreement</Tabs.Tab>
                         <Tabs.Tab value="activity">Activity</Tabs.Tab>
@@ -337,15 +497,115 @@ export default function RiderShow({ rider }: RiderShowProps) {
                         </Grid>
                     </Tabs.Panel>
 
+                    <Tabs.Panel value="location" pt="md">
+                        <Grid>
+                            <Grid.Col span={{ base: 12, lg: 8 }}>
+                                <Card>
+                                    <Text size="lg" fw={600} mb="md">Current Location Details</Text>
+                                    {rider.current_location ? (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <Text size="sm" c="dimmed" mb="xs">County</Text>
+                                                    <div className="flex items-center gap-2">
+                                                        <Globe size={16} className="text-blue-500" />
+                                                        <Text fw={500}>{rider.current_location.county.name}</Text>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <Text size="sm" c="dimmed" mb="xs">Sub-County</Text>
+                                                    <div className="flex items-center gap-2">
+                                                        <Building2 size={16} className="text-green-500" />
+                                                        <Text fw={500}>{rider.current_location.subcounty.name}</Text>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <Text size="sm" c="dimmed" mb="xs">Ward</Text>
+                                                    <div className="flex items-center gap-2">
+                                                        <Home size={16} className="text-orange-500" />
+                                                        <Text fw={500}>{rider.current_location.ward.name}</Text>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <Text size="sm" c="dimmed" mb="xs">Stage/Area</Text>
+                                                    <div className="flex items-center gap-2">
+                                                        <MapPin size={16} className="text-red-500" />
+                                                        <Text fw={500}>{rider.current_location.stage_name}</Text>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {(rider.current_location.latitude && rider.current_location.longitude) && (
+                                                <div className="mt-4">
+                                                    <Text size="sm" c="dimmed" mb="xs">GPS Coordinates</Text>
+                                                    <div className="flex items-center gap-2">
+                                                        <Navigation size={16} className="text-purple-500" />
+                                                        <Text fw={500}>
+                                                            {parseFloat(rider.current_location.latitude).toFixed(6)}, {parseFloat(rider.current_location.longitude).toFixed(6)}
+                                                        </Text>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {rider.current_location.notes && (
+                                                <div className="mt-4">
+                                                    <Text size="sm" c="dimmed" mb="xs">Location Notes</Text>
+                                                    <Paper p="sm" className="bg-gray-50 dark:bg-gray-700">
+                                                        <Text size="sm">{rider.current_location.notes}</Text>
+                                                    </Paper>
+                                                </div>
+                                            )}
+
+                                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                                    <div>
+                                                        <Text c="dimmed">Location Active Since</Text>
+                                                        <Text fw={500}>{new Date(rider.current_location.effective_from).toLocaleDateString()}</Text>
+                                                    </div>
+                                                    <div>
+                                                        <Text c="dimmed">Total Location Changes</Text>
+                                                        <Text fw={500}>{rider.location_changes_count}</Text>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Alert color="orange" variant="light" icon={<AlertTriangle size={16} />}>
+                                            No location information available for this rider.
+                                        </Alert>
+                                    )}
+                                </Card>
+                            </Grid.Col>
+
+                            <Grid.Col span={{ base: 12, lg: 4 }}>
+                                <Card>
+                                    <Text size="lg" fw={600} mb="md">Location Summary</Text>
+                                    <Stack gap="md">
+                                        <Paper p="md" className="text-center bg-blue-50 dark:bg-blue-900/20">
+                                            <Text size="xs" c="dimmed" mb="xs">Total Changes</Text>
+                                            <Text size="xl" fw={700} c="blue">{rider.location_changes_count}</Text>
+                                        </Paper>
+                                        <Paper p="md" className="text-center bg-green-50 dark:bg-green-900/20">
+                                            <Text size="xs" c="dimmed" mb="xs">Last Updated</Text>
+                                            <Text size="sm" fw={500} c="green">
+                                                {rider.location_last_updated ? new Date(rider.location_last_updated).toLocaleDateString() : 'Never'}
+                                            </Text>
+                                        </Paper>
+                                    </Stack>
+                                </Card>
+                            </Grid.Col>
+                        </Grid>
+                    </Tabs.Panel>
+
                     <Tabs.Panel value="documents" pt="md">
                         <Card>
                             <Text size="lg" fw={600} mb="md">Uploaded Documents</Text>
                             <Grid>
                                 {documents.map((doc) => (
                                     <Grid.Col span={{ base: 12, sm: 6, lg: 4 }} key={doc.key}>
-                                        <Paper 
-                                            p="md" 
-                                            withBorder 
+                                        <Paper
+                                            p="md"
+                                            withBorder
                                             className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                                             onClick={() => doc.file && handleImageView(`/storage/${doc.file}`, doc.label)}
                                         >
@@ -473,6 +733,50 @@ export default function RiderShow({ rider }: RiderShowProps) {
                         />
                     </div>
                 )}
+            </Modal>
+
+            {/* Rejection Modal */}
+            <Modal
+                opened={rejectModalOpened}
+                onClose={closeRejectModal}
+                title="Reject Rider Application"
+                size="md"
+                centered
+            >
+                <div className="space-y-4">
+                    <Text size="sm" c="dimmed">
+                        Please provide a detailed reason for rejecting this rider application. This will be recorded and may be shared with the rider.
+                    </Text>
+
+                    <Textarea
+                        label="Rejection Reason"
+                        placeholder="Enter the reason for rejection..."
+                        value={rejectionReason}
+                        onChange={(event) => setRejectionReason(event.currentTarget.value)}
+                        minRows={4}
+                        maxRows={8}
+                        required
+                        error={!rejectionReason.trim() && "Rejection reason is required"}
+                    />
+
+                    <Group justify="flex-end" mt="md">
+                        <Button
+                            variant="light"
+                            onClick={closeRejectModal}
+                            disabled={loading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            color="red"
+                            onClick={handleReject}
+                            loading={loading}
+                            disabled={!rejectionReason.trim()}
+                        >
+                            Reject Application
+                        </Button>
+                    </Group>
+                </div>
             </Modal>
         </AuthenticatedLayout>
     );

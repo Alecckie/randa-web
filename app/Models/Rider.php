@@ -65,6 +65,8 @@ class Rider extends Model
         return $this->hasOne(CampaignAssignment::class)->where('status', 'active')->latest();
     }
 
+    
+
     public function scopeApproved($query)
     {
         return $query->where('status', 'approved');
@@ -75,7 +77,7 @@ class Rider extends Model
         return $query->where('status', 'pending');
     }
 
-     public function locations(): HasMany
+    public function locations(): HasMany
     {
         return $this->hasMany(RiderLocation::class);
     }
@@ -95,6 +97,11 @@ class Rider extends Model
     {
         return $this->hasMany(RiderLocationChangeLog::class)
             ->orderBy('changed_at', 'desc');
+    }
+
+    public function rejectionReasons()
+    {
+        return $this->morphMany(RejectionReason::class, 'rejectable');
     }
 
     // Scopes

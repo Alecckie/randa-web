@@ -90,11 +90,13 @@ class RiderController extends Controller
      */
     public function show(Rider $rider)
     {
+
         try {
-            $riderDetails = $this->riderService->loadRiderDetailsForShow($rider);
+        $riderDetails = $this->riderService->loadRiderDetailsForShow($rider);
+        // dd($riderDetails->toArray());
 
             return Inertia::render('Riders/Show', [
-                'rider' => $riderDetails,
+                'rider' => $riderDetails->toArray(),
             ]);
         } catch (\Exception $e) {
             return redirect()
