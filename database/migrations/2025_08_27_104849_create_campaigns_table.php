@@ -21,7 +21,11 @@ return new class extends Migration
             $table->json('coverage_areas'); 
             $table->integer('helmet_count');
             $table->decimal('budget', 12, 2);
+            $table->boolean('need_randa_design')->default(false);
+            $table->string('design_upload')->nullable();
             $table->enum('status', ['draft', 'active', 'paused', 'completed', 'cancelled'])->default('draft');
+            $table->boolean('require_vat_etr_receipt')->default(false);
+            $table->boolean('agree_to_terms')->default(false);
             $table->timestamps();
         });
     }
