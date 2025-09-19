@@ -45,12 +45,7 @@ export default function Login({
             <div className="max-w-md">
               {/* Logo/Brand Area */}
               <div className="mb-8">
-                <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-600 rounded-xl flex items-center justify-center mb-4 shadow-lg">
-                  <span className="text-2xl font-bold text-white">R</span>
-                </div>
-                <h1 className="text-4xl font-bold text-white mb-2">
-                  <span className="text-white">Randa</span>
-                </h1>
+                <img src="/assets/randalogowhite_landscape680x420.png" alt="Randa Logo" className="h-20  w-auto" />
                 <p className="text-slate-300 text-lg font-medium">
                   Motorbike Helmet Advertising Platform
                 </p>
