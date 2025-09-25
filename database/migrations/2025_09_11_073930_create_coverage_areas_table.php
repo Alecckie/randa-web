@@ -13,8 +13,12 @@ return new class extends Migration
     {
         Schema::create('coverage_areas', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('area_code'); //auto generated while creating coverage area
+            $table->string('name')->index();
+            $table->string('area_code')->unique()->index();
+            $table->unsignedBigInteger('county_id')->nullable()->index();
+            $table->unsignedBigInteger('sub_county_id')->nullable()->index();
+            $table->unsignedBigInteger('ward_id')->nullable()->index();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

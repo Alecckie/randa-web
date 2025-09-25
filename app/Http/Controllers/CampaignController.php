@@ -5,16 +5,18 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCampaignRequest;
 use App\Models\Campaign;
 use App\Services\CampaignService;
+use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class CampaignController extends Controller
 {
-    protected $campaignService;
+    protected $campaignService,$coverageAreasService;
 
-    public function __construct(CampaignService $campaignService)
+    public function __construct(CampaignService $campaignService,CoverageAreasService $coverageAreasService)
     {
         $this->campaignService = $campaignService;
+        $this->coverageAreasService = $coverageAreasService;
     }
 
     /**
@@ -50,11 +52,12 @@ class CampaignController extends Controller
     public function create()
     {
         $advertisers = $this->campaignService->getApprovedAdvertisers();
-        $coverageAreas = $this->campaignService->getAvailableCoverageAreas();
+        $coverageAreas = $this->coverageAreasService->forSelect();
+        
 
         return Inertia::render('Campaigns/Create', [
             'advertisers' => $advertisers,
-            'coverage_areas' => $coverageAreas,
+            'coverageareas' => $coverageAreas,
         ]);
     }
 
@@ -63,18 +66,18 @@ class CampaignController extends Controller
      */
     public function store(StoreCampaignRequest $request)
     {
-        try {
+        // try {
             $this->campaignService->createCampaign($request->validated());
 
-            return redirect()
-                ->route('campaigns.index')
-                ->with('success', 'Campaign created successfully.');
-        } catch (\Exception $e) {
-            return redirect()
-                ->back()
-                ->withInput()
-                ->with('error', 'Failed to create campaign. Please try again.');
-        }
+        //     return redirect()
+        //         ->route('campaigns.index')
+        //         ->with('success', 'Campaign created successfully.');
+        // } catch (\Exception $e) {
+        //     return redirect()
+        //         ->back()
+        //         ->withInput()
+        //         ->with('error', 'Failed to create campaign. Please try again.');
+        // }
     }
 
     /**

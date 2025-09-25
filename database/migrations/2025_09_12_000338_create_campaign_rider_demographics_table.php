@@ -14,9 +14,10 @@ return new class extends Migration
         Schema::create('campaign_rider_demographics', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('campaign_id')->index();
-            $table->date('dob')->nullable();
-            $table->enum('gender', ['male', 'female'])->nullable();
-            $table->enum('rider_type', ['courier', 'boda'])->nullable();
+            $table->enum('age_group', ['18-25', '26-35', '36-45', '46-55', '55+'])->index();
+            $table->enum('gender', ['male', 'female', 'any'])->index();
+            $table->enum('rider_type', ['courier', 'boda', 'delivery', 'taxi'])->index();
+            // $table->unique(['campaign_id', 'age_group', 'gender', 'rider_type']);
             $table->softDeletes();
             $table->timestamps();
         });

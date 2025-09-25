@@ -13,20 +13,26 @@ return new class extends Migration
     {
         Schema::create('campaigns', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('advertiser_id')->nullable()->index();
-            $table->string('name');
+            $table->unsignedBigInteger('advertiser_id')->index();
+            $table->string('name')->index();
             $table->text('description')->nullable();
-            $table->date('start_date');
-            $table->date('end_date');
-            $table->json('coverage_areas'); 
-            $table->integer('helmet_count');
-            $table->decimal('budget', 12, 2);
-            $table->boolean('need_randa_design')->default(false);
-            $table->string('design_upload')->nullable();
-            $table->enum('status', ['draft', 'active', 'paused', 'completed', 'cancelled'])->default('draft');
-            $table->boolean('require_vat_etr_receipt')->default(false);
+            $table->date('start_date')->index();
+            $table->date('end_date')->index();
+            $table->integer('helmet_count')->index();
+            $table->boolean('need_design')->default(false)->index();
+            $table->string('design_file')->nullable();
+            $table->text('design_requirements')->nullable();
+            $table->string('business_type')->nullable()->index();
+            $table->boolean('require_vat_receipt')->default(false)->index();
             $table->boolean('agree_to_terms')->default(false);
+            $table->enum('status', ['draft', 'pending_payment', 'paid', 'active', 'paused', 'completed', 'cancelled'])
+                ->default('draft')->index();
+            $table->text('special_instructions')->nullable();
             $table->timestamps();
+
+            $table->index(['advertiser_id', 'status']);
+            $table->index(['status', 'start_date', 'end_date']);
+            $table->index(['start_date', 'end_date']);
         });
     }
 

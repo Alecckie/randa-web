@@ -23,5 +23,6 @@ class DatabaseSeeder extends Seeder
         ]);
 
         //  LocationSeeder::class;
+        $this->call(CoverageAreasSeeder::class);
     }
 }

@@ -14,7 +14,8 @@ return new class extends Migration
         Schema::create('campaign_coverage_areas', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('campaign_id')->index();
-            $table->unsignedBigInteger('coverage_id')->index();
+            $table->unsignedBigInteger('coverage_area_id')->index();
+            $table->softDeletes();
             $table->timestamps();
         });
     }

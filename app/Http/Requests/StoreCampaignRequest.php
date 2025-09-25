@@ -21,6 +21,11 @@ class StoreCampaignRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'advertiser_id' => [
+                'required',
+                'integer',
+                'exists:advertisers,id'
+            ],
             'name' => [
                 'required',
                 'string',
@@ -43,19 +48,15 @@ class StoreCampaignRequest extends FormRequest
                 'date',
                 'after:start_date'
             ],
-            'coverage_areas' => [
+            'coverage_area_ids' => [
                 'required',
                 'array',
                 'min:1'
             ],
-            'coverage_areas.*' => [
+            'coverage_area_ids.*' => [
                 'required',
-                'string',
-                Rule::in([
-                    'nairobi_cbd', 'westlands', 'karen', 'kilimani',
-                    'parklands', 'kasarani', 'embakasi', 'langata',
-                    'dagoretti', 'kibra', 'roysambu', 'mathare'
-                ])
+                'integer',
+                'exists:coverage_areas,id'
             ],
             'helmet_count' => [
                 'required',
@@ -71,7 +72,7 @@ class StoreCampaignRequest extends FormRequest
                 'nullable',
                 'file',
                 'mimes:jpg,jpeg,png,pdf,ai,psd',
-                'max:10240', 
+                'max:10240', // 10MB
                 Rule::requiredIf(!$this->boolean('need_design'))
             ],
             'design_requirements' => [
@@ -86,11 +87,6 @@ class StoreCampaignRequest extends FormRequest
                 'string',
                 'max:100'
             ],
-            'target_audience' => [
-                'nullable',
-                'string',
-                'max:1000'
-            ],
             
             'rider_demographics' => [
                 'nullable',
@@ -104,11 +100,11 @@ class StoreCampaignRequest extends FormRequest
                 'string',
                 Rule::in(['18-25', '26-35', '36-45', '46-55', '55+'])
             ],
-            'rider_demographics.gender' => [
+            'rider_demographics.genders' => [
                 'nullable',
                 'array'
             ],
-            'rider_demographics.gender.*' => [
+            'rider_demographics.genders.*' => [
                 'string',
                 Rule::in(['male', 'female', 'any'])
             ],
@@ -121,25 +117,8 @@ class StoreCampaignRequest extends FormRequest
                 Rule::in(['courier', 'boda', 'delivery', 'taxi'])
             ],
             
-           
-            
             'require_vat_receipt' => [
                 'boolean'
-            ],
-            'vat_number' => [
-                'nullable',
-                'string',
-                'max:50',
-                Rule::requiredIf($this->boolean('require_vat_receipt'))
-            ],
-            
-            'additional_services' => [
-                'nullable',
-                'array'
-            ],
-            'additional_services.*' => [
-                'string',
-                Rule::in(['gps_tracking', 'daily_reports', 'photo_verification', 'custom_analytics'])
             ],
             
             'special_instructions' => [
@@ -151,14 +130,6 @@ class StoreCampaignRequest extends FormRequest
             'agree_to_terms' => [
                 'required',
                 'accepted'
-            ],
-            
-            
-            'budget' => [
-                'nullable',
-                'numeric',
-                'min:100',
-                'max:10000000'
             ],
             
             'status' => [
@@ -175,6 +146,8 @@ class StoreCampaignRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'advertiser_id.required' => 'Please select an advertiser.',
+            'advertiser_id.exists' => 'The selected advertiser is invalid.',
             'name.required' => 'Campaign name is required.',
             'name.min' => 'Campaign name must be at least 3 characters.',
             'name.max' => 'Campaign name cannot exceed 255 characters.',
@@ -184,9 +157,9 @@ class StoreCampaignRequest extends FormRequest
             'end_date.required' => 'End date is required.',
             'end_date.after' => 'End date must be after start date.',
             
-            'coverage_areas.required' => 'Please select at least one coverage area.',
-            'coverage_areas.min' => 'Please select at least one coverage area.',
-            'coverage_areas.*.in' => 'Invalid coverage area selected.',
+            'coverage_area_ids.required' => 'Please select at least one coverage area.',
+            'coverage_area_ids.min' => 'Please select at least one coverage area.',
+            'coverage_area_ids.*.exists' => 'One or more selected coverage areas are invalid.',
             
             'helmet_count.required' => 'Number of helmets is required.',
             'helmet_count.min' => 'At least 1 helmet is required.',
@@ -197,17 +170,8 @@ class StoreCampaignRequest extends FormRequest
             'design_file.max' => 'Design file cannot exceed 10MB.',
             'design_requirements.required_if' => 'Please describe your design requirements.',
             
-           
-           
-            'billing_address.required' => 'Billing address is required.',
-            
-            'vat_number.required_if' => 'VAT number is required when requesting VAT receipt.',
-            
             'agree_to_terms.required' => 'You must agree to the terms and conditions.',
             'agree_to_terms.accepted' => 'You must accept the terms and conditions.',
-            
-            'budget.min' => 'Minimum budget is KES 100.',
-            'budget.max' => 'Maximum budget is KES 10,000,000.',
         ];
     }
 
@@ -217,19 +181,15 @@ class StoreCampaignRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'advertiser_id' => 'advertiser',
             'start_date' => 'start date',
             'end_date' => 'end date',
-            'coverage_areas' => 'coverage areas',
+            'coverage_area_ids' => 'coverage areas',
             'helmet_count' => 'number of helmets',
             'need_design' => 'design service requirement',
             'design_file' => 'design file',
             'design_requirements' => 'design requirements',
-            // 'contact_person' => 'contact person',
-            // 'contact_phone' => 'contact phone',
-            // 'contact_email' => 'contact email',
-            // 'billing_address' => 'billing address',
             'require_vat_receipt' => 'VAT receipt requirement',
-            'vat_number' => 'VAT number',
             'agree_to_terms' => 'terms and conditions',
         ];
     }
@@ -261,16 +221,15 @@ class StoreCampaignRequest extends FormRequest
                 $validator->errors()->add('design_file', 'Please upload a design file or request our design services.');
             }
 
-            // Validate VAT number format if provided
-            if ($this->vat_number && !preg_match('/^[A-Z0-9]{11}$/', $this->vat_number)) {
-                $validator->errors()->add('vat_number', 'VAT number must be 11 characters (letters and numbers only).');
-            }
-
-            // Validate phone number format
-            if ($this->contact_phone) {
-                $cleanPhone = preg_replace('/[^\d+]/', '', $this->contact_phone);
-                if (strlen($cleanPhone) < 10 || strlen($cleanPhone) > 15) {
-                    $validator->errors()->add('contact_phone', 'Phone number must be between 10-15 digits.');
+            // Validate rider demographics structure
+            if ($this->has('rider_demographics') && is_array($this->rider_demographics)) {
+                $demographics = $this->rider_demographics;
+                
+                // Validate each demographic array
+                foreach (['age_groups', 'genders', 'rider_types'] as $field) {
+                    if (isset($demographics[$field]) && !is_array($demographics[$field])) {
+                        $validator->errors()->add("rider_demographics.{$field}", "The {$field} must be an array.");
+                    }
                 }
             }
         });
@@ -288,18 +247,25 @@ class StoreCampaignRequest extends FormRequest
             'agree_to_terms' => $this->boolean('agree_to_terms'),
         ]);
 
-        // Clean and format phone number
-        if ($this->contact_phone) {
+        // Ensure coverage_area_ids are integers
+        if ($this->has('coverage_area_ids') && is_array($this->coverage_area_ids)) {
             $this->merge([
-                'contact_phone' => preg_replace('/[^\d+\-\(\)\s]/', '', $this->contact_phone)
+                'coverage_area_ids' => array_map('intval', $this->coverage_area_ids)
             ]);
         }
 
-        // Clean VAT number
-        if ($this->vat_number) {
-            $this->merge([
-                'vat_number' => strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $this->vat_number))
-            ]);
+        // Clean up rider demographics
+        if ($this->has('rider_demographics')) {
+            $demographics = $this->rider_demographics;
+            
+            // Ensure each field is an array
+            foreach (['age_groups', 'genders', 'rider_types'] as $field) {
+                if (!isset($demographics[$field]) || !is_array($demographics[$field])) {
+                    $demographics[$field] = [];
+                }
+            }
+            
+            $this->merge(['rider_demographics' => $demographics]);
         }
     }
 }
