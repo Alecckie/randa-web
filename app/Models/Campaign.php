@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Carbon\Carbon;
@@ -44,6 +45,16 @@ class Campaign extends Model
         return $this->belongsTo(Advertiser::class);
     }
 
+    public function coverageAreas(): BelongsToMany
+    {
+        return $this->belongsToMany(CoverageArea::class, 'campaign_coverage_areas', 'campaign_id', 'coverage_area_id');
+    }
+
+    public function riderDemographics(): HasMany
+    {
+        return $this->hasMany(CampaignRiderDemographic::class);
+    }
+
     public function costs(): HasMany
     {
         return $this->hasMany(CampaignCost::class);
@@ -72,7 +83,20 @@ class Campaign extends Model
         return $this->hasMany(CampaignAssignment::class);
     }
 
-   
+    // public function reports(): HasMany
+    // {
+    //     return $this->hasMany(Report::class);
+    // }
+
+    // public function currentCost(): HasOne
+    // {
+    //     return $this->hasOne(CampaignCost::class)
+    //                ->where('status', 'confirmed')
+    //                ->orderByDesc('version');
+    // }
+
+    
+
     // Scopes
     public function scopeActive($query)
     {

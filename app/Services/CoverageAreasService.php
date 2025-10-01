@@ -25,7 +25,7 @@ class CoverageAreasService
    
     public function forSelect(?string $search = null, int $limit = 20): Collection
     {
-        $query = CoverageArea::query()->select('id', 'name')->orderBy('name');
+        $query = CoverageArea::query()->select('id', 'name')->latest();
 
         if ($search) {
             $query->where('name', 'like', "%{$search}%");

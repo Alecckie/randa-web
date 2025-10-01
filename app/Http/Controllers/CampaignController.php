@@ -66,18 +66,18 @@ class CampaignController extends Controller
      */
     public function store(StoreCampaignRequest $request)
     {
-        // try {
+        try {
             $this->campaignService->createCampaign($request->validated());
 
-        //     return redirect()
-        //         ->route('campaigns.index')
-        //         ->with('success', 'Campaign created successfully.');
-        // } catch (\Exception $e) {
-        //     return redirect()
-        //         ->back()
-        //         ->withInput()
-        //         ->with('error', 'Failed to create campaign. Please try again.');
-        // }
+            return redirect()
+                ->route('campaigns.index')
+                ->with('success', 'Campaign created successfully.');
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to create campaign. Please try again.');
+        }
     }
 
     /**

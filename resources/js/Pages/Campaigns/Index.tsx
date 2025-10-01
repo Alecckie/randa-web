@@ -7,6 +7,7 @@ import { CheckCircleIcon, Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, Pen
 import type { Advertiser } from '@/types/advertiser';
 import type { CampaignsIndexProps, CampaignStatus } from '@/types/campaign';
 import { Campaign } from '@/types/dashboard';
+
 export default function Index({ campaigns, stats, filters, advertisers }: CampaignsIndexProps) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
@@ -55,13 +56,6 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
         return icons[status];
     };
 
-    // const handleStatusUpdate = (campaign: Campaign) => {
-    //     setSelectedAdvertiser(campaign);
-    //     setNewStatus('approved');
-    //     setRejectionReason('');
-    //     openStatusModal();
-    // };
-
     const submitStatusUpdate = () => {
         if (!selectedAdvertiser) return;
 
@@ -74,6 +68,39 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                 setSelectedAdvertiser(null);
             }
         });
+    };
+
+    // Helper function to safely render coverage areas
+    const renderCoverageAreas = (coverageAreas: any) => {
+        if (!coverageAreas) return '—';
+        
+        if (Array.isArray(coverageAreas)) {
+            // Check if it's an array of objects
+            if (coverageAreas.length > 0 && typeof coverageAreas[0] === 'object') {
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {coverageAreas.map((area: any, idx: number) => (
+                            <Badge key={idx} variant="outline" color="blue">
+                                {area?.name || area?.full_name || area?.location_path || 'Unknown'}
+                            </Badge>
+                        ))}
+                    </div>
+                );
+            }
+            // If it's an array of strings
+            return (
+                <div className="flex flex-wrap gap-1">
+                    {coverageAreas.map((area: string, idx: number) => (
+                        <Badge key={idx} variant="outline" color="blue">
+                            {String(area)}
+                        </Badge>
+                    ))}
+                </div>
+            );
+        }
+        
+        // If it's a single value
+        return <span>{String(coverageAreas)}</span>;
     };
 
     return (
@@ -99,7 +126,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                 </div>
             }
         >
-            <Head title="Campaignss" />
+            <Head title="Campaigns" />
 
             <div className="space-y-6">
                 {/* Stats Cards */}
@@ -107,7 +134,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                     <Card className="bg-white dark:bg-gray-800">
                         <Group>
                             <div className="flex-1">
-                                <Text size="sm" c="dimmed">Total Campaignss</Text>
+                                <Text size="sm" c="dimmed">Total Campaigns</Text>
                                 <Text size="xl" fw={700}>{stats.total_campaigns}</Text>
                             </div>
                             <div className="text-3xl">
@@ -204,9 +231,6 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-700">
                                 <tr>
-                                    {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Advertiser Details
-                                    </th> */}
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Campaign
                                     </th>
@@ -233,7 +257,6 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 {campaigns.data.map((campaign) => (
                                     <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                       
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
                                                 <div className="text-sm text-gray-900 dark:text-white">
@@ -259,24 +282,12 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {new Date(campaign.end_date).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {Array.isArray(campaign.coverage_areas) ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {campaign.coverage_areas.map((area: string, idx: number) => (
-                                                        <Badge key={idx} variant="outline" color="blue">
-                                                            {area}
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span>{campaign.coverage_areas ?? '—'}</span>
-                                            )}
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                                            {renderCoverageAreas(campaign.coverage_areas)}
                                         </td>
-
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {campaign.helmet_count}
                                         </td>
-
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>
                                                 <Menu.Target>
