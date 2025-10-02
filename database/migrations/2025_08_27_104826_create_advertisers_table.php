@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('company_name');
             $table->string('business_registration')->nullable();
             $table->text('address');
-            $table->string('contact_person');
+            // $table->string('contact_person');
             $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
             $table->timestamps();
         });

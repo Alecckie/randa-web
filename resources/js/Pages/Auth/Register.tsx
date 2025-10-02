@@ -14,6 +14,7 @@ export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         email: '',
+        phone: '',
         password: '',
         password_confirmation: '',
         role: 'advertiser', 
@@ -243,6 +244,40 @@ export default function Register() {
                                         value={data.email}
                                         onChange={(event) => setData('email', event.currentTarget.value)}
                                         error={errors.email}
+                                        autoComplete="username"
+                                        size="lg"
+                                        styles={{
+                                            input: {
+                                                padding: '16px 20px',
+                                                border: '2px solid #e2e8f0',
+                                                borderRadius: '12px',
+                                                fontSize: '16px',
+                                                fontWeight: '500',
+                                                backgroundColor: '#fafafa',
+                                                '&:focus': {
+                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    backgroundColor: '#ffffff',
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                },
+                                                '&::placeholder': {
+                                                    color: '#94a3b8',
+                                                },
+                                            },
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label htmlFor="email" className="text-slate-800 font-semibold mb-3 block">
+                                        Phone Number
+                                    </label>
+                                    <TextInput
+                                        type="text"
+                                        placeholder="Enter your phone no"
+                                        required
+                                        value={data.phone}
+                                        onChange={(event) => setData('phone', event.currentTarget.value)}
+                                        error={errors.phone}
                                         autoComplete="username"
                                         size="lg"
                                         styles={{
