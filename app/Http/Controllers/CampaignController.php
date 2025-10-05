@@ -24,25 +24,23 @@ class CampaignController extends Controller
      */
     public function index(Request $request)
     {
-         $filters = [
-            'search' => $request->input('search'),
-            'status' => $request->input('status'),
-            'advertiser_id' => $request->input('advertiser_id'),
-            'date_range' => [
-                'start' => $request->input('start_date'),
-                'end' => $request->input('end_date'),
-            ]
-        ];
+        $filters = $this->buildFilters($request);
+        $user = $request->user();
 
-        $campaigns = $this->campaignService->getCampaigns($filters);
-        $stats = $this->campaignService->getCampaignStats();
-        $advertisers = $this->campaignService->getApprovedAdvertisers();
+        $campaigns = $this->campaignService->getCampaigns($filters, $user);
+        $stats = $this->campaignService->getCampaignStats($user);
+        
+        // Only show advertiser filter to admins
+        $advertisers = $user->role === 'admin' 
+            ? $this->campaignService->getApprovedAdvertisers() 
+            : [];
 
         return Inertia::render('Campaigns/Index', [
             'campaigns' => $campaigns,
             'stats' => $stats,
             'advertisers' => $advertisers,
             'filters' => $filters,
+            'user_role' => $user->role,
         ]);
     }
 
@@ -98,12 +96,12 @@ class CampaignController extends Controller
     public function edit(Campaign $campaign)
     {
         $advertisers = $this->campaignService->getApprovedAdvertisers();
-        $coverageAreas = $this->campaignService->getAvailableCoverageAreas();
+        // $coverageAreas = $this->campaignService->getAvailableCoverageAreas();
 
         return Inertia::render('Campaigns/Edit', [
             'campaign' => $campaign->load('advertiser.user'),
             'advertisers' => $advertisers,
-            'coverageAreas' => $coverageAreas,
+            // 'coverageAreas' => $coverageAreas,
         ]);
     }
 
@@ -131,5 +129,26 @@ class CampaignController extends Controller
                 ->back()
                 ->with('error', 'Failed to delete campaign. Please try again.');
         }
+    }
+
+     /**
+     * Build filters array from request
+     */
+    protected function buildFilters(Request $request): array
+    {
+        return [
+            'search' => $request->input('search'),
+            'status' => $request->input('status'),
+            'advertiser_id' => $request->input('advertiser_id'),
+            'date_range' => [
+                'start' => $request->input('start_date'),
+                'end' => $request->input('end_date'),
+            ],
+            'payment_status' => $request->input('payment_status'),
+            'coverage_area_ids' => $request->input('coverage_area_ids'),
+            'sort_by' => $request->input('sort_by', 'created_at'),
+            'sort_order' => $request->input('sort_order', 'desc'),
+            'per_page' => $request->input('per_page', 15),
+        ];
     }
 }

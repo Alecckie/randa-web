@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -10,14 +9,8 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasApiTokens;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'first_name',
         'last_name',
@@ -29,21 +22,11 @@ class User extends Authenticatable
         'is_active'
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -53,6 +36,7 @@ class User extends Authenticatable
         ];
     }
 
+    // Relationships
     public function rider()
     {
         return $this->hasOne(Rider::class);
@@ -61,6 +45,11 @@ class User extends Authenticatable
     public function advertiser()
     {
         return $this->hasOne(Advertiser::class);
+    }
+
+    public function rejections()
+    {
+        return $this->morphMany(RejectionReason::class, 'rejectable');
     }
 
     // Scopes
@@ -79,6 +68,12 @@ class User extends Authenticatable
         return $query->where('role', 'admin');
     }
 
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    // Helper Methods
     public function getDashboardRoute(): string
     {
         return match ($this->role) {
@@ -89,8 +84,34 @@ class User extends Authenticatable
         };
     }
 
-    public function rejections()
+    public function getFullNameAttribute(): string
     {
-        return $this->morphMany(RejectionReason::class,'rejectable');
+        return trim("{$this->first_name} {$this->last_name}") ?: $this->name;
+    }
+
+    // Role checking methods
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isAdvertiser(): bool
+    {
+        return $this->role === 'advertiser';
+    }
+
+    public function isRider(): bool
+    {
+        return $this->role === 'rider';
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
+    }
+
+    public function hasAnyRole(array $roles): bool
+    {
+        return in_array($this->role, $roles);
     }
 }

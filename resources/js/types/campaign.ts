@@ -1,6 +1,6 @@
 import { Advertiser } from "./advertiser";
 
-export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled';
+export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled' | 'pending_payment';
 
 export interface Campaign {
   id: number;

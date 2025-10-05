@@ -8,65 +8,188 @@ use App\Models\CampaignRiderDemographic;
 use App\Models\Advertiser;
 use App\Models\Payment;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\UploadedFile;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 class CampaignService
 {
-    /**
-     * Get campaigns with filters and pagination
-     */
-    public function getCampaigns(array $filters = []): LengthAwarePaginator
+    public function getCampaigns(array $filters = [], ?User $user = null): LengthAwarePaginator
     {
-        $query = Campaign::with(['advertiser.user', 'currentCost', 'coverageAreas'])
-            ->when($filters['search'] ?? null, function (Builder $query, string $search) {
-                $query->where(function (Builder $subQuery) use ($search) {
-                    $subQuery->where('name', 'like', "%{$search}%")
-                        ->orWhere('description', 'like', "%{$search}%")
-                        ->orWhereHas('advertiser', function (Builder $advertiserQuery) use ($search) {
-                            $advertiserQuery->where('company_name', 'like', "%{$search}%");
+        $user = $user ?? Auth::user();
+        
+        $query = $this->buildBaseQuery()
+            ->when($user, fn($q) => $this->applyRoleBasedFiltering($q, $user))
+            ->when($filters['search'] ?? null, fn($q, $search) => $this->applySearchFilter($q, $search))
+            ->when($filters['status'] ?? null, fn($q, $status) => $q->where('status', $status))
+            ->when($filters['advertiser_id'] ?? null, fn($q, $id) => $q->where('advertiser_id', $id))
+            ->when($filters['date_range'] ?? null, fn($q, $range) => $this->applyDateRangeFilter($q, $range))
+            ->when($filters['payment_status'] ?? null, fn($q, $status) => $this->applyPaymentStatusFilter($q, $status))
+            ->when($filters['coverage_area_ids'] ?? null, fn($q, $ids) => $this->applyCoverageAreaFilter($q, $ids))
+            ->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_order'] ?? 'desc');
+
+        return $query->paginate($filters['per_page'] ?? 15);
+    }
+
+    /**
+     * Get campaign statistics with role-based filtering
+     */
+    public function getCampaignStats(?User $user = null): array
+    {
+        $user = $user ?? Auth::user();
+        
+        $baseQuery = Campaign::query();
+        
+        if ($user && $user->role === 'advertiser') {
+            $baseQuery->where('advertiser_id', $user->advertiser->id ?? null);
+        }
+
+        return [
+            'total_campaigns' => (clone $baseQuery)->count(),
+            'active_campaigns' => (clone $baseQuery)->where('status', 'active')->count(),
+            'draft_campaigns' => (clone $baseQuery)->where('status', 'draft')->count(),
+            'pending_payment' => (clone $baseQuery)->where('status', 'pending_payment')->count(),
+            'paid_campaigns' => (clone $baseQuery)->where('status', 'paid')->count(),
+            'completed_campaigns' => (clone $baseQuery)->where('status', 'completed')->count(),
+            'paused_campaigns' => (clone $baseQuery)->where('status', 'paused')->count(),
+            'cancelled_campaigns' => (clone $baseQuery)->where('status', 'cancelled')->count(),
+            // 'total_revenue' => $this->calculateRevenue($user),
+            'coverage_areas_count' => \App\Models\CoverageArea::count(),
+        ];
+    }
+
+    /**
+     * Build the base query with eager loading
+     */
+    protected function buildBaseQuery(): Builder
+    {
+        return Campaign::with([
+            'advertiser.user',
+            'currentCost',
+            'coverageAreas'
+        ]);
+    }
+
+    /**
+     * Apply role-based filtering to query
+     */
+    protected function applyRoleBasedFiltering(Builder $query, User $user): Builder
+    {
+        return match ($user->role) {
+            'advertiser' => $query->where('advertiser_id', $user->advertiser->id ?? null),
+            'admin' => $query, // Admins see all campaigns
+            default => $query->whereRaw('1 = 0'), // Other roles see nothing
+        };
+    }
+
+    /**
+     * Apply search filter across multiple fields
+     */
+    protected function applySearchFilter(Builder $query, string $search): Builder
+    {
+        return $query->where(function (Builder $subQuery) use ($search) {
+            $subQuery->where('name', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%")
+                ->orWhereHas('advertiser', function (Builder $advertiserQuery) use ($search) {
+                    $advertiserQuery->where('company_name', 'like', "%{$search}%")
+                        ->orWhereHas('user', function (Builder $userQuery) use ($search) {
+                            $userQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
                         });
                 });
-            })
-            ->when($filters['status'] ?? null, function (Builder $query, string $status) {
-                $query->where('status', $status);
-            })
-            ->when($filters['advertiser_id'] ?? null, function (Builder $query, int $advertiserId) {
-                $query->where('advertiser_id', $advertiserId);
-            })
-            ->when($filters['date_range'] ?? null, function (Builder $query, array $dateRange) {
-                if (!empty($dateRange['start'])) {
-                    $query->whereDate('start_date', '>=', $dateRange['start']);
-                }
-                if (!empty($dateRange['end'])) {
-                    $query->whereDate('end_date', '<=', $dateRange['end']);
-                }
-            })
-            ->when($filters['payment_status'] ?? null, function (Builder $query, string $paymentStatus) {
-                switch ($paymentStatus) {
-                    case 'paid':
-                        $query->where('status', 'paid');
-                        break;
-                    case 'pending':
-                        $query->where('status', 'pending_payment');
-                        break;
-                    case 'unpaid':
-                        $query->where('status', 'draft');
-                        break;
-                }
-            })
-            ->when($filters['coverage_area_ids'] ?? null, function (Builder $query, array $coverageAreaIds) {
-                $query->whereHas('coverageAreas', function (Builder $subQuery) use ($coverageAreaIds) {
-                    $subQuery->whereIn('coverage_areas.id', $coverageAreaIds);
-                });
-            })
-            ->orderBy('created_at', 'desc');
+        });
+    }
 
-        return $query->paginate(15);
+    /**
+     * Apply date range filter
+     */
+    protected function applyDateRangeFilter(Builder $query, array $dateRange): Builder
+    {
+        if (!empty($dateRange['start'])) {
+            $query->whereDate('start_date', '>=', $dateRange['start']);
+        }
+        
+        if (!empty($dateRange['end'])) {
+            $query->whereDate('end_date', '<=', $dateRange['end']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Apply payment status filter
+     */
+    protected function applyPaymentStatusFilter(Builder $query, string $paymentStatus): Builder
+    {
+        return match ($paymentStatus) {
+            'paid' => $query->where('status', 'paid'),
+            'pending' => $query->where('status', 'pending_payment'),
+            'unpaid' => $query->where('status', 'draft'),
+            default => $query,
+        };
+    }
+
+    /**
+     * Apply coverage area filter
+     */
+    protected function applyCoverageAreaFilter(Builder $query, array $coverageAreaIds): Builder
+    {
+        return $query->whereHas('coverageAreas', function (Builder $subQuery) use ($coverageAreaIds) {
+            $subQuery->whereIn('coverage_areas.id', $coverageAreaIds);
+        });
+    }
+
+    /**
+     * Calculate total revenue based on user role
+     */
+    protected function calculateRevenue(?User $user): float
+    {
+        $query = Transaction::where('type', 'payment')
+            ->where('status', 'completed');
+
+        if ($user && $user->role === 'advertiser') {
+            $query->whereHas('campaign', function (Builder $q) use ($user) {
+                $q->where('advertiser_id', $user->advertiser->id ?? null);
+            });
+        }
+
+        return $query->sum('amount');
+    }
+
+   
+
+    /**
+     * Check if user can view campaign
+     */
+    public function canViewCampaign(Campaign $campaign, User $user): bool
+    {
+        return match ($user->role) {
+            'admin' => true,
+            'advertiser' => $campaign->advertiser_id === ($user->advertiser->id ?? null),
+            default => false,
+        };
+    }
+
+    /**
+     * Check if user can edit campaign
+     */
+    public function canEditCampaign(Campaign $campaign, User $user): bool
+    {
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role === 'advertiser' && 
+            $campaign->advertiser_id === ($user->advertiser->id ?? null)) {
+            return in_array($campaign->status, ['draft', 'pending_payment']);
+        }
+
+        return false;
     }
 
     /**
@@ -432,34 +555,34 @@ class CampaignService
         });
     }
 
-    /**
-     * Get campaigns summary for dashboard
-     */
-    public function getCampaignsSummary(): array
-    {
-        $stats = $this->getCampaignStats();
-        $recentCampaigns = Campaign::with(['advertiser', 'currentCost'])
-            ->orderBy('created_at', 'desc')
-            ->limit(5)
-            ->get();
+    // /**
+    //  * Get campaigns summary for dashboard
+    //  */
+    // public function getCampaignsSummary(): array
+    // {
+    //     $stats = $this->getCampaignStats();
+    //     $recentCampaigns = Campaign::with(['advertiser', 'currentCost'])
+    //         ->orderBy('created_at', 'desc')
+    //         ->limit(5)
+    //         ->get();
 
-        $upcomingCampaigns = Campaign::where('status', 'paid')
-            ->where('start_date', '>', now())
-            ->orderBy('start_date')
-            ->limit(5)
-            ->get();
+    //     $upcomingCampaigns = Campaign::where('status', 'paid')
+    //         ->where('start_date', '>', now())
+    //         ->orderBy('start_date')
+    //         ->limit(5)
+    //         ->get();
 
-        return [
-            'stats' => $stats,
-            'recent_campaigns' => $recentCampaigns,
-            'upcoming_campaigns' => $upcomingCampaigns,
-            'revenue_this_month' => Transaction::where('type', 'payment')
-                ->where('status', 'completed')
-                ->whereYear('created_at', now()->year)
-                ->whereMonth('created_at', now()->month)
-                ->sum('amount'),
-        ];
-    }
+    //     return [
+    //         'stats' => $stats,
+    //         'recent_campaigns' => $recentCampaigns,
+    //         'upcoming_campaigns' => $upcomingCampaigns,
+    //         'revenue_this_month' => Transaction::where('type', 'payment')
+    //             ->where('status', 'completed')
+    //             ->whereYear('created_at', now()->year)
+    //             ->whereMonth('created_at', now()->month)
+    //             ->sum('amount'),
+    //     ];
+    // }
 
     /**
      * Update campaign status
@@ -637,21 +760,21 @@ class CampaignService
     /**
      * Get campaign statistics
      */
-    public function getCampaignStats(): array
-    {
-        return [
-            'total_campaigns' => Campaign::count(),
-            'active_campaigns' => Campaign::where('status', 'active')->count(),
-            'draft_campaigns' => Campaign::where('status', 'draft')->count(),
-            'pending_payment' => Campaign::where('status', 'pending_payment')->count(),
-            'paid_campaigns' => Campaign::where('status', 'paid')->count(),
-            'completed_campaigns' => Campaign::where('status', 'completed')->count(),
-            'total_revenue' => Transaction::where('type', 'payment')
-                ->where('status', 'completed')
-                ->sum('amount'),
-            'coverage_areas_count' => \App\Models\CoverageArea::count(),
-        ];
-    }
+    // public function getCampaignStats(): array
+    // {
+    //     return [
+    //         'total_campaigns' => Campaign::count(),
+    //         'active_campaigns' => Campaign::where('status', 'active')->count(),
+    //         'draft_campaigns' => Campaign::where('status', 'draft')->count(),
+    //         'pending_payment' => Campaign::where('status', 'pending_payment')->count(),
+    //         'paid_campaigns' => Campaign::where('status', 'paid')->count(),
+    //         'completed_campaigns' => Campaign::where('status', 'completed')->count(),
+    //         'total_revenue' => Transaction::where('type', 'payment')
+    //             ->where('status', 'completed')
+    //             ->sum('amount'),
+    //         'coverage_areas_count' => \App\Models\CoverageArea::count(),
+    //     ];
+    // }
 
     /**
      * Get approved advertisers for campaign creation

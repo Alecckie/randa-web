@@ -11,34 +11,23 @@ import {
     Grid,
     Alert,
     Badge,
-    Avatar,
-    Container,
-    Title,
-    Paper,
     Divider,
+    Paper,
+    Title,
+    Drawer,
 } from '@mantine/core';
 import {
     Building2,
-    User,
-    Mail,
-    Phone,
-    MapPin,
     FileText,
     Check,
     AlertCircle,
-    Home,
-    Settings,
-    LogOut,
+    MapPin,
     Plus,
     BarChart3,
     Users,
-    Eye,
-    Scan,
-    CreditCard,
-    TrendingUp,
-    TrendingDown,
-    ArrowRight,
 } from 'lucide-react';
+import Sidebar from '@/Components/frontend/layouts/Sidebar';
+import Header from '@/Components/frontend/layouts/Header';
 
 interface Campaign {
     id: number;
@@ -106,6 +95,9 @@ export default function AdvertiserDashboard({
         { id: 4, desc: 'Campaign Payment - Product Launch', amount: '-KSh 25,000', date: '3 days ago', type: 'payment' as const },
     ]
 }: AdvertiserProfileProps) {
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeNav, setActiveNav] = useState('dashboard');
+    
     const { data, setData, post, processing, errors } = useForm({
         company_name: advertiser?.company_name || '',
         business_registration: advertiser?.business_registration || '',
@@ -120,10 +112,7 @@ export default function AdvertiserDashboard({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-
-    const endpoint = '/advertiser-complete-profile';
-;
-
+        const endpoint = '/advertiser-complete-profile';
         post(endpoint, {
             onSuccess: () => {
                 // Handle success
@@ -164,302 +153,261 @@ export default function AdvertiserDashboard({
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
             <Head title="Advertiser Dashboard" />
 
-            {/* Header */}
-            <div className="bg-white border-b border-slate-200">
-                <Container size="xl">
-                    <div className="flex items-center justify-between py-4">
-                        <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                                <span className="text-lg font-bold text-white">R</span>
-                            </div>
-                            <div>
-                                <Title order={2} size="h3" className="text-slate-900">Randa Advertiser</Title>
-                                <Text size="sm" c="dimmed">
-                                    {!hasProfile ? 'Complete your advertiser profile' : 
-                                     isPending ? 'Application under review' :
-                                     isApproved ? 'Manage your campaigns' : 'Update your profile'}
-                                </Text>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center space-x-4">
-                            <Button variant="light" leftSection={<Home size={16} />}>
-                                Dashboard
-                            </Button>
-                            <Button variant="light" leftSection={<Settings size={16} />}>
-                                Settings
-                            </Button>
-                            <Link
-                                method="post"
-                                as="button"
-                                href="/logout"
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 transition-all duration-200"
-                            >
-                                <LogOut size={16} />
-                                Logout
-                            </Link>
-                        </div>
-                    </div>
-                </Container>
+            {/* Desktop Sidebar */}
+            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
+                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
             </div>
 
-            <Container size="xl" py="xl">
-                <div className="max-w-6xl mx-auto space-y-6">
-                    {/* User Info Card */}
-                    <Card>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4">
-                                <Avatar size="lg" color="purple">
-                                    <Building2 size={24} />
-                                </Avatar>
-                                <div>
-                                    <Text size="lg" fw={600}>{user.name}</Text>
-                                    <Text size="sm" c="dimmed">{user.email}</Text>
-                                    <Text size="sm" c="dimmed">{user.phone || 'No phone number'}</Text>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <Badge
-                                    color={isApproved ? 'green' : isPending ? 'yellow' : isRejected ? 'red' : 'gray'}
-                                    variant="light"
-                                    leftSection={
-                                        isApproved ? <Check size={12} /> :
-                                            isPending ? <AlertCircle size={12} /> :
-                                                <AlertCircle size={12} />
-                                    }
-                                >
-                                    {hasProfile && advertiser.status
-                                        ? advertiser?.status?.charAt(0).toUpperCase() + advertiser?.status?.slice(1)
-                                        : 'Not Completed'
-                                    }
-                                </Badge>
-                                {advertiser?.company_name && (
-                                    <Text size="sm" c="dimmed" mt="xs">
-                                        Company: {advertiser.company_name}
-                                    </Text>
-                                )}
-                            </div>
+            {/* Mobile Drawer */}
+            <Drawer
+                opened={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+                size="280px"
+                padding={0}
+                withCloseButton={false}
+            >
+                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
+            </Drawer>
+
+            {/* Main Content */}
+            <div className="flex-1 lg:ml-64">
+                {/* Header */}
+                <Header 
+                    onMenuClick={() => setSidebarOpen(true)} 
+                    advertiser={advertiser}
+                    showCreateMenu={true}
+                />
+
+                {/* Page Content */}
+                <div className="p-4 sm:p-6 lg:p-8">
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        {/* Page Title */}
+                        <div>
+                            <Title order={2} size="h2" className="text-gray-900 dark:text-white">
+                                Dashboard
+                            </Title>
+                            <Text size="sm" c="dimmed" mt="xs">
+                                Welcome back, {user.name}!
+                            </Text>
                         </div>
-                    </Card>
 
-                    {/* Status Messages */}
-                    {!hasProfile && (
-                        <Alert color="purple" variant="light" icon={<AlertCircle size={16} />}>
-                            <Text size="sm">
-                                <strong>Complete Your Profile:</strong> Please fill out your company information to start creating advertising campaigns.
-                            </Text>
-                        </Alert>
-                    )}
+                        {/* Status Messages */}
+                        {!hasProfile && (
+                            <Alert color="purple" variant="light" icon={<AlertCircle size={16} />}>
+                                <Text size="sm">
+                                    <strong>Complete Your Profile:</strong> Please fill out your company information to start creating advertising campaigns.
+                                </Text>
+                            </Alert>
+                        )}
 
-                    {isPending && (
-                        <Alert color="yellow" variant="light" icon={<AlertCircle size={16} />}>
-                            <Text size="sm">
-                                <strong>Application Under Review:</strong> Your advertiser profile is being reviewed by our team. You'll be notified once it's approved.
-                            </Text>
-                        </Alert>
-                    )}
+                        {isPending && (
+                            <Alert color="yellow" variant="light" icon={<AlertCircle size={16} />}>
+                                <Text size="sm">
+                                    <strong>Application Under Review:</strong> Your advertiser profile is being reviewed by our team. You'll be notified once it's approved.
+                                </Text>
+                            </Alert>
+                        )}
 
-                    {isApproved && (
-                        <Alert color="green" variant="light" icon={<Check size={16} />}>
-                            <Text size="sm">
-                                <strong>Profile Approved:</strong> Your advertiser profile has been approved and you can start creating campaigns.
-                            </Text>
-                        </Alert>
-                    )}
+                        {isApproved && (
+                            <Alert color="green" variant="light" icon={<Check size={16} />}>
+                                <Text size="sm">
+                                    <strong>Profile Approved:</strong> Your advertiser profile has been approved and you can start creating campaigns.
+                                </Text>
+                            </Alert>
+                        )}
 
-                    {isRejected && (
-                        <Alert color="red" variant="light" icon={<AlertCircle size={16} />}>
-                            <Text size="sm">
-                                <strong>Application Rejected:</strong> Please review and update your information, then resubmit your application.
-                            </Text>
-                        </Alert>
-                    )}
+                        {isRejected && (
+                            <Alert color="red" variant="light" icon={<AlertCircle size={16} />}>
+                                <Text size="sm">
+                                    <strong>Application Rejected:</strong> Please review and update your information, then resubmit your application.
+                                </Text>
+                            </Alert>
+                        )}
 
-                    {/* Company Profile Form - Only show if not completed or rejected */}
-                    {(!hasProfile || isRejected) && (
-                        <Card>
-                            <Stack>
-                                <div>
-                                    <Text size="lg" fw={600} mb="sm" className="flex items-center">
-                                        <Building2 size={20} className="mr-2" />
-                                        Company Information
-                                    </Text>
-                                    <Text size="sm" c="dimmed">
-                                        Provide your company details for the advertiser account.
-                                    </Text>
-                                </div>
+                        {/* Company Profile Form */}
+                        {(!hasProfile || isRejected) && (
+                            <Card>
+                                <Stack>
+                                    <div>
+                                        <Text size="lg" fw={600} mb="sm" className="flex items-center">
+                                            <Building2 size={20} className="mr-2" />
+                                            Company Information
+                                        </Text>
+                                        <Text size="sm" c="dimmed">
+                                            Provide your company details for the advertiser account.
+                                        </Text>
+                                    </div>
 
-                                <Divider />
+                                    <Divider />
 
-                                <Grid>
-                                    <Grid.Col span={{ base: 12, md: 6 }}>
-                                        <TextInput
-                                            label="Company Name"
-                                            placeholder="Enter company name"
-                                            value={data.company_name}
-                                            onChange={(e) => setData('company_name', e.currentTarget.value)}
-                                            error={errors.company_name}
-                                            leftSection={<Building2 size={16} />}
-                                            required
-                                        />
-                                    </Grid.Col>
+                                    <Grid>
+                                        <Grid.Col span={{ base: 12, md: 6 }}>
+                                            <TextInput
+                                                label="Company Name"
+                                                placeholder="Enter company name"
+                                                value={data.company_name}
+                                                onChange={(e) => setData('company_name', e.currentTarget.value)}
+                                                error={errors.company_name}
+                                                leftSection={<Building2 size={16} />}
+                                                required
+                                            />
+                                        </Grid.Col>
 
-                                    <Grid.Col span={{ base: 12, md: 6 }}>
-                                        <TextInput
-                                            label="Business Registration Number"
-                                            placeholder="Enter registration number (optional)"
-                                            description="Company registration or license number"
-                                            value={data.business_registration}
-                                            onChange={(e) => setData('business_registration', e.currentTarget.value)}
-                                            error={errors.business_registration}
-                                            leftSection={<FileText size={16} />}
-                                        />
-                                    </Grid.Col>
+                                        <Grid.Col span={{ base: 12, md: 6 }}>
+                                            <TextInput
+                                                label="Business Registration Number"
+                                                placeholder="Enter registration number (optional)"
+                                                description="Company registration or license number"
+                                                value={data.business_registration}
+                                                onChange={(e) => setData('business_registration', e.currentTarget.value)}
+                                                error={errors.business_registration}
+                                                leftSection={<FileText size={16} />}
+                                            />
+                                        </Grid.Col>
 
-                                    <Grid.Col span={12}>
-                                        <Textarea
-                                            label="Company Address"
-                                            placeholder="Enter complete company address"
-                                            description="Physical address of your company"
-                                            value={data.address}
-                                            onChange={(e) => setData('address', e.currentTarget.value)}
-                                            error={errors.address}
-                                            minRows={3}
-                                            required
-                                        />
-                                    </Grid.Col>
-                                </Grid>
+                                        <Grid.Col span={12}>
+                                            <Textarea
+                                                label="Company Address"
+                                                placeholder="Enter complete company address"
+                                                description="Physical address of your company"
+                                                value={data.address}
+                                                onChange={(e) => setData('address', e.currentTarget.value)}
+                                                error={errors.address}
+                                                minRows={3}
+                                                required
+                                            />
+                                        </Grid.Col>
+                                    </Grid>
 
-                                <Divider />
+                                    <Divider />
 
-                                <Alert icon={<AlertCircle size={16} />} color="purple" variant="light">
-                                    <Text size="sm">
-                                        <strong>Application Process:</strong>
-                                        <br />• Your application will be submitted with "pending" status
-                                        <br />• Admin review is required before approval
-                                        <br />• You'll be notified once your application is reviewed
-                                        <br />• Campaign creation access will be granted upon approval
-                                    </Text>
-                                </Alert>
-
-                                <Group justify="flex-end">
-                                    <Button
-                                        onClick={handleSubmit}
-                                        loading={processing}
-                                        disabled={!isFormValid() || processing}
-                                        color="purple"
-                                        leftSection={<Building2 size={16} />}
-                                    >
-                                        {hasProfile ? 'Update Profile' : 'Submit Application'}
-                                    </Button>
-                                </Group>
-
-                                {Object.keys(errors).length > 0 && (
-                                    <Alert color="red" variant="light">
-                                        <Text size="sm" fw={500} mb="xs">Please fix the following errors:</Text>
-                                        <ul className="list-disc list-inside text-sm space-y-1">
-                                            {Object.entries(errors).map(([field, error]) => (
-                                                <li key={field}>{error}</li>
-                                            ))}
-                                        </ul>
+                                    <Alert icon={<AlertCircle size={16} />} color="purple" variant="light">
+                                        <Text size="sm">
+                                            <strong>Application Process:</strong>
+                                            <br />• Your application will be submitted with "pending" status
+                                            <br />• Admin review is required before approval
+                                            <br />• You'll be notified once your application is reviewed
+                                            <br />• Campaign creation access will be granted upon approval
+                                        </Text>
                                     </Alert>
-                                )}
-                            </Stack>
-                        </Card>
-                    )}
 
-                    {/* Approved Advertiser Dashboard Content */}
-                    {isApproved && (
-                        <div className="space-y-6">
-                            {/* Stats Grid - From main dashboard */}
-                            <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                                {stats.map((stat, index) => (
-                                    <div
-                                        key={index}
-                                        className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300"
-                                    >
-                                        <div className="p-4 sm:p-6">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                                                        {stat.name}
-                                                    </p>
-                                                    <div className="mt-2 flex items-baseline">
-                                                        <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                                            {stat.value}
+                                    <Group justify="flex-end">
+                                        <Button
+                                            onClick={handleSubmit}
+                                            loading={processing}
+                                            disabled={!isFormValid() || processing}
+                                            color="purple"
+                                            leftSection={<Building2 size={16} />}
+                                        >
+                                            {hasProfile ? 'Update Profile' : 'Submit Application'}
+                                        </Button>
+                                    </Group>
+
+                                    {Object.keys(errors).length > 0 && (
+                                        <Alert color="red" variant="light">
+                                            <Text size="sm" fw={500} mb="xs">Please fix the following errors:</Text>
+                                            <ul className="list-disc list-inside text-sm space-y-1">
+                                                {Object.entries(errors).map(([field, error]) => (
+                                                    <li key={field}>{error}</li>
+                                                ))}
+                                            </ul>
+                                        </Alert>
+                                    )}
+                                </Stack>
+                            </Card>
+                        )}
+
+                        {/* Approved Advertiser Dashboard Content */}
+                        {isApproved && (
+                            <div className="space-y-6">
+                                {/* Stats Grid */}
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                    {stats.map((stat, index) => (
+                                        <div
+                                            key={index}
+                                            className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300"
+                                        >
+                                            <div className="p-4 sm:p-6">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
+                                                            {stat.name}
                                                         </p>
-                                                        <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
-                                                            <span className="mr-1">{getTrendIcon(stat.trend)}</span>
-                                                            {stat.change}
-                                                        </p>
+                                                        <div className="mt-2 flex items-baseline">
+                                                            <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                                                                {stat.value}
+                                                            </p>
+                                                            <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
+                                                                <span className="mr-1">{getTrendIcon(stat.trend)}</span>
+                                                                {stat.change}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
-                                                    {stat.icon}
+                                                    <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
+                                                        {stat.icon}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Main Content - Two Column Layout */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Active Campaigns - From main dashboard */}
-                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Active Campaigns</h3>
-                                            <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
-                                                View All
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="p-4 sm:p-6">
-                                        <div className="space-y-4">
-                                            {campaigns.map((campaign) => (
-                                                <div key={campaign.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <h4 className="font-medium text-gray-900 dark:text-white truncate">{campaign.name}</h4>
-                                                        <Badge color={getStatusColor(campaign.status)} variant="light" size="sm">
-                                                            {campaign.status}
-                                                        </Badge>
-                                                    </div>
-                                                    <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
-                                                        <div>
-                                                            <p className="text-gray-500 dark:text-gray-400">Impressions</p>
-                                                            <p className="font-medium text-gray-900 dark:text-white">{campaign.impressions}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-gray-500 dark:text-gray-400">QR Scans</p>
-                                                            <p className="font-medium text-gray-900 dark:text-white">{campaign.scans}</p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-gray-500 dark:text-gray-400">Budget</p>
-                                                            <p className="font-medium text-gray-900 dark:text-white">{campaign.budget}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
 
-                                {/* Performance Chart - From main dashboard */}
-                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Campaign Performance</h3>
+                                {/* Main Content - Two Column Layout */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {/* Active Campaigns */}
+                                    <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
+                                        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Active Campaigns</h3>
+                                                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
+                                                    View All
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 sm:p-6">
+                                            <div className="space-y-4">
+                                                {campaigns.map((campaign) => (
+                                                    <div key={campaign.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className="font-medium text-gray-900 dark:text-white truncate">{campaign.name}</h4>
+                                                            <Badge color={getStatusColor(campaign.status)} variant="light" size="sm">
+                                                                {campaign.status}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
+                                                            <div>
+                                                                <p className="text-gray-500 dark:text-gray-400">Impressions</p>
+                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.impressions}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-gray-500 dark:text-gray-400">QR Scans</p>
+                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.scans}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-gray-500 dark:text-gray-400">Budget</p>
+                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.budget}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="p-4 sm:p-6">
-                                        <div className="space-y-4">
+
+                                    {/* Performance Chart */}
+                                    <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
+                                        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Campaign Performance</h3>
+                                        </div>
+                                        <div className="p-4 sm:p-6">
                                             <div className="text-center py-8">
                                                 <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                                     <span className="text-white text-3xl">📈</span>
                                                 </div>
-                                                <p className="text-gray-500 dark:text-gray-400 mb-4">Campaign performance chart would be displayed here</p>
+                                                <p className="text-gray-500 dark:text-gray-400 mb-4">Campaign performance chart</p>
                                                 <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
                                                     View Detailed Analytics
                                                 </button>
@@ -467,172 +415,181 @@ export default function AdvertiserDashboard({
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Recent Transactions - From main dashboard */}
-                            <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
-                                        <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
-                                            View All
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="p-4 sm:p-6">
-                                    <div className="space-y-3 sm:space-y-4">
-                                        {transactions.map((transaction) => (
-                                            <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                                        transaction.type === 'refund' ? 'bg-green-100 dark:bg-green-800' : 'bg-red-100 dark:bg-red-800'
-                                                    }`}>
-                                                        <span className={transaction.type === 'refund' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                                                            {transaction.type === 'refund' ? '💰' : '📤'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{transaction.desc}</p>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400">{transaction.date}</p>
-                                                    </div>
-                                                </div>
-                                                <p className={`text-sm font-semibold flex-shrink-0 ml-2 ${
-                                                    transaction.amount.startsWith('+') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                                                }`}>
-                                                    {transaction.amount}
-                                                </p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* GPS Tracking Heat Map - From main dashboard */}
-                            <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">GPS Tracking Heat Map</h3>
-                                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                            <select className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                                                <option>Last 24 hours</option>
-                                                <option>Last 7 days</option>
-                                                <option>Last 30 days</option>
-                                            </select>
-                                            <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 px-3 py-1">
-                                                Full Screen
+                                {/* Recent Transactions */}
+                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
+                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
+                                            <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
+                                                View All
                                             </button>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="p-4 sm:p-6">
-                                    <div className="bg-gray-100 dark:bg-gray-700 rounded-lg h-64 sm:h-96 flex items-center justify-center">
-                                        <div className="text-center">
-                                            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                <span className="text-white text-2xl">🗺️</span>
-                                            </div>
-                                            <p className="text-gray-600 dark:text-gray-400 mb-2">Interactive Heat Map</p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-500">GPS tracking data visualization would be displayed here</p>
+                                    <div className="p-4 sm:p-6">
+                                        <div className="space-y-3 sm:space-y-4">
+                                            {transactions.map((transaction) => (
+                                                <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                                            transaction.type === 'refund' ? 'bg-green-100 dark:bg-green-800' : 'bg-red-100 dark:bg-red-800'
+                                                        }`}>
+                                                            <span className={transaction.type === 'refund' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                                                {transaction.type === 'refund' ? '💰' : '📤'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{transaction.desc}</p>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400">{transaction.date}</p>
+                                                        </div>
+                                                    </div>
+                                                    <p className={`text-sm font-semibold flex-shrink-0 ml-2 ${
+                                                        transaction.amount.startsWith('+') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                                    }`}>
+                                                        {transaction.amount}
+                                                    </p>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Company Profile Info */}
-                            <Card>
-                                <Stack>
-                                    <div>
-                                        <Text size="lg" fw={600} mb="sm" className="flex items-center">
-                                            <Building2 size={20} className="mr-2" />
-                                            Company Profile
-                                        </Text>
+                                {/* GPS Tracking Heat Map */}
+                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
+                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
+                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">GPS Tracking Heat Map</h3>
+                                            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                                               <select className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                                    <option>Last 24 hours</option>
+                                                    <option>Last 7 days</option>
+                                                    <option>Last 30 days</option>
+                                                </select>
+                                                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 px-3 py-1">
+                                                    Full Screen
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-
-                                    <Grid>
-                                        <Grid.Col span={{ base: 12, md: 6 }}>
-                                            <Paper p="md" withBorder className="bg-slate-50">
-                                                <div className="flex items-center space-x-3 mb-2">
-                                                    <Building2 size={16} className="text-slate-600" />
-                                                    <Text size="sm" c="dimmed">Company Name</Text>
+                                    <div className="p-4 sm:p-6">
+                                        <div className="bg-gray-100 dark:bg-gray-700 rounded-lg h-64 sm:h-96 flex items-center justify-center">
+                                            <div className="text-center">
+                                                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                    <span className="text-white text-2xl">🗺️</span>
                                                 </div>
-                                                <Text fw={500}>{advertiser?.company_name}</Text>
-                                            </Paper>
-                                        </Grid.Col>
+                                                <p className="text-gray-600 dark:text-gray-400 mb-2">Interactive Heat Map</p>
+                                                <p className="text-sm text-gray-500">GPS tracking data visualization</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                        {advertiser?.business_registration && (
+                                {/* Company Profile Info */}
+                                <Card>
+                                    <Stack>
+                                        <div>
+                                            <Text size="lg" fw={600} mb="sm" className="flex items-center">
+                                                <Building2 size={20} className="mr-2" />
+                                                Company Profile
+                                            </Text>
+                                        </div>
+
+                                        <Grid>
                                             <Grid.Col span={{ base: 12, md: 6 }}>
                                                 <Paper p="md" withBorder className="bg-slate-50">
                                                     <div className="flex items-center space-x-3 mb-2">
-                                                        <FileText size={16} className="text-slate-600" />
-                                                        <Text size="sm" c="dimmed">Registration Number</Text>
+                                                        <Building2 size={16} className="text-slate-600" />
+                                                        <Text size="sm" c="dimmed">Company Name</Text>
                                                     </div>
-                                                    <Text fw={500}>{advertiser.business_registration}</Text>
+                                                    <Text fw={500}>{advertiser?.company_name}</Text>
                                                 </Paper>
                                             </Grid.Col>
-                                        )}
 
-                                        <Grid.Col span={12}>
-                                            <Paper p="md" withBorder className="bg-slate-50">
-                                                <div className="flex items-center space-x-3 mb-2">
-                                                    <MapPin size={16} className="text-slate-600" />
-                                                    <Text size="sm" c="dimmed">Company Address</Text>
+                                            {advertiser?.business_registration && (
+                                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                                    <Paper p="md" withBorder className="bg-slate-50">
+                                                        <div className="flex items-center space-x-3 mb-2">
+                                                            <FileText size={16} className="text-slate-600" />
+                                                            <Text size="sm" c="dimmed">Registration Number</Text>
+                                                        </div>
+                                                        <Text fw={500}>{advertiser.business_registration}</Text>
+                                                    </Paper>
+                                                </Grid.Col>
+                                            )}
+
+                                            <Grid.Col span={12}>
+                                                <Paper p="md" withBorder className="bg-slate-50">
+                                                    <div className="flex items-center space-x-3 mb-2">
+                                                        <MapPin size={16} className="text-slate-600" />
+                                                        <Text size="sm" c="dimmed">Company Address</Text>
+                                                    </div>
+                                                    <Text fw={500}>{advertiser?.address}</Text>
+                                                </Paper>
+                                            </Grid.Col>
+                                        </Grid>
+                                    </Stack>
+                                </Card>
+
+                                {/* Quick Actions */}
+                                <Card>
+                                    <Stack>
+                                        <div>
+                                            <Text size="lg" fw={600} mb="sm">Quick Actions</Text>
+                                            <Text size="sm" c="dimmed">
+                                                Get started with your advertising campaigns
+                                            </Text>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <Button
+                                                variant="light"
+                                                color="purple"
+                                                size="lg"
+                                                leftSection={<Plus size={20} />}
+                                                className="h-20"
+                                                fullWidth
+                                            >
+                                                <div className="text-left">
+                                                    <Text size="sm" fw={600}>Create Campaign</Text>
+                                                    <Text size="xs" c="dimmed">Start a new campaign</Text>
                                                 </div>
-                                                <Text fw={500}>{advertiser?.address}</Text>
-                                            </Paper>
-                                        </Grid.Col>
-                                    </Grid>
-                                </Stack>
-                            </Card>
+                                            </Button>
 
-                            {/* Quick Actions */}
-                            <Card>
-                                <Stack>
-                                    <div>
-                                        <Text size="lg" fw={600} mb="sm">Quick Actions</Text>
-                                        <Text size="sm" c="dimmed">
-                                            Get started with your advertising campaigns
-                                        </Text>
-                                    </div>
+                                            <Button
+                                                variant="light"
+                                                color="blue"
+                                                size="lg"
+                                                leftSection={<BarChart3 size={20} />}
+                                                className="h-20"
+                                                fullWidth
+                                            >
+                                                <div className="text-left">
+                                                    <Text size="sm" fw={600}>View Analytics</Text>
+                                                    <Text size="xs" c="dimmed">Track performance</Text>
+                                                </div>
+                                            </Button>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        <Button
-                                            variant="light"
-                                            color="purple"
-                                            size="lg"
-                                            leftSection={<Plus size={20} />}
-                                            className="h-20 flex-col"
-                                        >
-                                            <Text size="sm" fw={600}>Create Campaign</Text>
-                                            <Text size="xs" c="dimmed">Start a new advertising campaign</Text>
-                                        </Button>
-
-                                        <Button
-                                            variant="light"
-                                            color="blue"
-                                            size="lg"
-                                            leftSection={<BarChart3 size={20} />}
-                                            className="h-20 flex-col"
-                                        >
-                                            <Text size="sm" fw={600}>View Analytics</Text>
-                                            <Text size="xs" c="dimmed">Track campaign performance</Text>
-                                        </Button>
-
-                                        <Button
-                                            variant="light"
-                                            color="green"
-                                            size="lg"
-                                            leftSection={<Users size={20} />}
-                                            className="h-20 flex-col"
-                                        >
-                                            <Text size="sm" fw={600}>Find Riders</Text>
-                                            <Text size="xs" c="dimmed">Browse available riders</Text>
-                                        </Button>
-                                    </div>
-                                </Stack>
-                            </Card>
-                        </div>
-                    )}
+                                            <Button
+                                                variant="light"
+                                                color="green"
+                                                size="lg"
+                                                leftSection={<Users size={20} />}
+                                                className="h-20"
+                                                fullWidth
+                                            >
+                                                <div className="text-left">
+                                                    <Text size="sm" fw={600}>Find Riders</Text>
+                                                    <Text size="xs" c="dimmed">Browse riders</Text>
+                                                </div>
+                                            </Button>
+                                        </div>
+                                    </Stack>
+                                </Card>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </Container>
+            </div>
         </div>
     );
 }

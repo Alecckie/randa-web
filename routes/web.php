@@ -36,4 +36,4 @@ require __DIR__.'/helmet.php';
 require __DIR__.'/location.php';
 require __DIR__.'/frontend/rider.php';
 require __DIR__.'/frontend/advertiser.php';
-
+require __DIR__.'/frontend/campaign.php';

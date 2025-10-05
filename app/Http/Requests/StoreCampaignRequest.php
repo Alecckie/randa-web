@@ -24,7 +24,7 @@ class StoreCampaignRequest extends FormRequest
             'advertiser_id' => [
                 'required',
                 'integer',
-                'exists:advertisers,id'
+                'exists:advertisers,user_id'
             ],
             'name' => [
                 'required',
