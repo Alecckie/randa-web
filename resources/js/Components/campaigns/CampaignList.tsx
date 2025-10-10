@@ -343,7 +343,7 @@ export default function CampaignList({
                                                 <Menu.Item
                                                     leftSection={<EyeIcon size={14} />}
                                                     component={Link}
-                                                    href={route('campaigns.show', campaign.id)}
+                                                    // href={route('campaigns.show', campaign.id)}
                                                 >
                                                     View Details
                                                 </Menu.Item>
@@ -351,7 +351,7 @@ export default function CampaignList({
                                                     <Menu.Item
                                                         leftSection={<PencilIcon size={14} />}
                                                         component={Link}
-                                                        href={route('campaigns.edit', campaign.id)}
+                                                        // href={route('campaigns.edit', campaign.id)}
                                                     >
                                                         Edit
                                                     </Menu.Item>

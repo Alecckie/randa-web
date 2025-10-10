@@ -177,13 +177,13 @@ export default function AdvertiserDashboard({
                 {/* Header */}
                 <Header 
                     onMenuClick={() => setSidebarOpen(true)} 
-                    advertiser={advertiser}
+                    user={advertiser}
                     showCreateMenu={true}
                 />
 
                 {/* Page Content */}
                 <div className="p-4 sm:p-6 lg:p-8">
-                    <div className="max-w-7xl mx-auto space-y-6">
+                    <div className="max-w-9xl mx-auto space-y-6">
                         {/* Page Title */}
                         <div>
                             <Title order={2} size="h2" className="text-gray-900 dark:text-white">

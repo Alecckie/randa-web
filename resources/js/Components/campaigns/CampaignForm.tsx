@@ -45,11 +45,9 @@ import {
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
+import { Advertiser } from '@/types/advertiser';
 
-interface Advertiser {
-    id: number;
-    company_name: string;
-}
+
 
 interface CoverageArea {
     id: number;
@@ -98,15 +96,15 @@ interface CostBreakdown {
 
 
 interface CampaignFormProps {
-    user: User
+    advertiser: Advertiser
     advertisers: Advertiser[];
     coverageareas: CoverageArea[];
 }
 
-export default function CampaignForm({ user, advertisers, coverageareas }: CampaignFormProps) {
+export default function CampaignForm({ advertiser, advertisers, coverageareas }: CampaignFormProps) {
     const { isAdmin } = useAuth();
     const [formData, setFormData] = useState<CampaignFormData>({
-        advertiser_id: isAdmin() ? null : user?.id,
+        advertiser_id: isAdmin() ? null : advertiser?.id,
         name: '',
         description: '',
         business_type: '',

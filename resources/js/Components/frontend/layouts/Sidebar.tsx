@@ -37,22 +37,22 @@ const navigationItems = [
             { icon: <BarChart3 size={20} />, label: 'Analytics', key: 'analytics', href: '/advertiser/analytics' },
         ]
     },
-    {
-        group: 'Resources',
-        items: [
-            { icon: <Users size={20} />, label: 'Find Riders', key: 'riders', href: '/advertiser/riders' },
-            { icon: <ImageIcon size={20} />, label: 'Creatives', key: 'creatives', href: '/advertiser/creatives' },
-            { icon: <Wallet size={20} />, label: 'Billing', key: 'billing', href: '/advertiser/billing' },
-        ]
-    },
-    {
-        group: 'Account',
-        items: [
-            { icon: <Bell size={20} />, label: 'Notifications', key: 'notifications', href: '/advertiser/notifications' },
-            { icon: <Settings size={20} />, label: 'Settings', key: 'settings', href: '/advertiser/settings' },
-            { icon: <HelpCircle size={20} />, label: 'Help & Support', key: 'support', href: '/advertiser/support' },
-        ]
-    },
+    // {
+    //     group: 'Resources',
+    //     items: [
+    //         { icon: <Users size={20} />, label: 'Find Riders', key: 'riders', href: '/advertiser/riders' },
+    //         { icon: <ImageIcon size={20} />, label: 'Creatives', key: 'creatives', href: '/advertiser/creatives' },
+    //         { icon: <Wallet size={20} />, label: 'Billing', key: 'billing', href: '/advertiser/billing' },
+    //     ]
+    // },
+    // {
+    //     group: 'Account',
+    //     items: [
+    //         { icon: <Bell size={20} />, label: 'Notifications', key: 'notifications', href: '/advertiser/notifications' },
+    //         { icon: <Settings size={20} />, label: 'Settings', key: 'settings', href: '/advertiser/settings' },
+    //         { icon: <HelpCircle size={20} />, label: 'Help & Support', key: 'support', href: '/advertiser/support' },
+    //     ]
+    // },
 ];
 
 export default function Sidebar({ user, activeNav, onNavClick }: SidebarProps) {

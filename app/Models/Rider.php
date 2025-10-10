@@ -45,7 +45,7 @@ class Rider extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function campaignAssignments()
+    public function assignments()
     {
         return $this->hasMany(CampaignAssignment::class);
     }
@@ -65,7 +65,7 @@ class Rider extends Model
         return $this->hasOne(CampaignAssignment::class)->where('status', 'active')->latest();
     }
 
-    
+
 
     public function scopeApproved($query)
     {
@@ -157,5 +157,29 @@ class Rider extends Model
     public function canChangeLocation(): bool
     {
         return $this->status === 'approved';
+    }
+
+    public function isProfileComplete(): bool
+    {
+        return !empty($this->national_id) &&
+            !empty($this->national_id_front_photo) &&
+            !empty($this->national_id_back_photo) &&
+            !empty($this->passport_photo) &&
+            !empty($this->good_conduct_certificate) &&
+            !empty($this->motorbike_license) &&
+            !empty($this->motorbike_registration) &&
+            !empty($this->mpesa_number) &&
+            !empty($this->next_of_kin_name) &&
+            !empty($this->next_of_kin_phone) &&
+            !empty($this->signed_agreement) &&
+            $this->hasCurrentLocation();
+    }
+
+    /**
+     * Check if the rider is approved and can work
+     */
+    public function canWork(): bool
+    {
+        return $this->isProfileComplete() && $this->status === 'approved';
     }
 }

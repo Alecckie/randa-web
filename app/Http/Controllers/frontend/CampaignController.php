@@ -4,6 +4,7 @@ namespace App\Http\Controllers\frontend;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCampaignRequest;
+use App\Models\Advertiser;
 use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
@@ -52,9 +53,10 @@ class CampaignController extends Controller
         $advertisers = $this->campaignService->getApprovedAdvertisers();
         $coverageAreas = $this->coverageAreasService->forSelect();
         $user = $this->getAuthenticatedUser();
+        $advertiser = Advertiser::where('user_id',$user->id)->first();
 
         return Inertia::render('front-end/Campaigns/Create', [
-            
+            'advertiser' => $advertiser,
             'advertisers' => $advertisers,
             'coverageareas' => $coverageAreas,
         ]);

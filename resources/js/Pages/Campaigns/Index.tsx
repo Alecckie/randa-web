@@ -41,6 +41,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             paused: 'red',
             completed: 'green',
             cancelled: 'red',
+            pending_payment:'yellow'
         };
         return colors[status];
     };
@@ -52,6 +53,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             paused: <PauseIcon size={14} />,
             completed: <Fullscreen size={14} />,
             cancelled: <BookLockIcon size={14} />,
+            pending_payment:<BookLockIcon size={14} />,
         };
         return icons[status];
     };
@@ -234,6 +236,9 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Campaign
                                     </th>
+                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Advertiser
+                                    </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Status
                                     </th>
@@ -248,6 +253,9 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Helmet Count
+                                    </th>
+                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Total Cost
                                     </th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Actions
@@ -265,6 +273,16 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                 <div className="text-sm text-gray-500 dark:text-gray-400">
                                                     {campaign?.description ?? ''}
                                                 </div>
+                                            </div>
+                                        </td>
+                                         <td className="px-6 py-4 whitespace-nowrap">
+                                            <div>
+                                                <div className="text-sm text-gray-900 dark:text-white">
+                                                    {campaign?.advertiser?.user?.name ?? " "}
+                                                </div>
+                                                {/* <div className="text-sm text-gray-500 dark:text-gray-400">
+                                                    {campaign?.description ?? ''}
+                                                </div> */}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -287,6 +305,9 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {campaign.helmet_count}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                           KES {campaign?.current_cost?.total_cost}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>

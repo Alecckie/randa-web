@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckUserRole;
+use App\Http\Middleware\EnsureRiderProfileComplete;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,10 +18,18 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
+
+        $middleware->redirectUsersTo(function () {
+        return route(auth()->user()->getDashboardRoute());
+    });
         
         $middleware->alias([
-            'role' => CheckUserRole::class
+            'role' => CheckUserRole::class,
+            'rider.profile.complete' => EnsureRiderProfileComplete::class
         ]);
+        // $middleware->alias([
+        //     'rider.profile.complete' => EnsureRiderProfileComplete::class
+        // ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

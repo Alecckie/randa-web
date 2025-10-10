@@ -2,64 +2,154 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\AssignRiderRequest;
+use App\Models\Campaign;
 use App\Models\CampaignAssignment;
+use App\Services\CampaignAssignmentService;
+use App\Services\CampaignService;
 use Illuminate\Http\Request;
 
 class CampaignAssignmentController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+
+    protected $assignmentService,$campaignService;
+
+    public function __construct(CampaignAssignmentService $assignmentService,CampaignService $campaignService)
     {
-        //
+        $this->assignmentService = $assignmentService;
+        $this->campaignService = $campaignService;
+    }
+
+
+    /**
+     * Assign a rider to the campaign
+     */
+    public function assignRider(AssignRiderRequest $request, Campaign $campaign)
+    {
+        // try {
+            $validated = $request->validated();
+            
+            $this->assignmentService->assignRider(
+                $campaign,
+                $validated['rider_id'],
+                $validated['helmet_id']
+            );
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', 'Rider assigned successfully to campaign.');
+                
+        // } catch (\Exception $e) {
+        //     return redirect()
+        //         ->back()
+        //         ->with('error', $e->getMessage());
+        // }
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Remove a rider assignment from campaign
      */
-    public function create()
+    public function removeAssignment(Campaign $campaign, $assignmentId)
     {
-        //
+        try {
+            $assignment = $campaign->assignments()->findOrFail($assignmentId);
+            
+            $this->assignmentService->removeAssignment($assignment);
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', 'Rider assignment removed successfully.');
+                
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to remove assignment. Please try again.');
+        }
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Mark assignment as completed
      */
-    public function store(Request $request)
+    public function completeAssignment(Campaign $campaign, $assignmentId)
     {
-        //
+        try {
+            $assignment = $campaign->assignments()->findOrFail($assignmentId);
+            
+            $this->assignmentService->completeAssignment($assignment);
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', 'Assignment marked as completed.');
+                
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to complete assignment. Please try again.');
+        }
     }
 
     /**
-     * Display the specified resource.
+     * Update campaign status
      */
-    public function show(CampaignAssignment $campaignAssignment)
+    public function updateStatus(Request $request, Campaign $campaign)
     {
-        //
+        $request->validate([
+            'status' => 'required|in:draft,pending_payment,paid,active,paused,completed,cancelled',
+        ]);
+
+        try {
+            $this->campaignService->updateCampaignStatus($campaign, $request->status);
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', 'Campaign status updated successfully.');
+                
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', $e->getMessage());
+        }
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Auto-assign riders to campaign
      */
-    public function edit(CampaignAssignment $campaignAssignment)
+    public function autoAssignRiders(Request $request, Campaign $campaign)
     {
-        //
+        $request->validate([
+            'count' => 'required|integer|min:1|max:' . $campaign->helmet_count,
+        ]);
+
+        try {
+            $result = $this->assignmentService->autoAssignRiders(
+                $campaign,
+                $request->count
+            );
+
+            $message = "Successfully assigned {$result['assignments']->count()} riders.";
+            
+            if (!empty($result['errors'])) {
+                $message .= " Some assignments failed: " . implode(', ', $result['errors']);
+            }
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', $message);
+                
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', $e->getMessage());
+        }
     }
 
     /**
-     * Update the specified resource in storage.
+     * Get assignment statistics for a campaign
      */
-    public function update(Request $request, CampaignAssignment $campaignAssignment)
+    public function assignmentStats(Campaign $campaign)
     {
-        //
-    }
+        $stats = $this->assignmentService->getAssignmentStats($campaign);
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(CampaignAssignment $campaignAssignment)
-    {
-        //
+        return response()->json($stats);
     }
 }

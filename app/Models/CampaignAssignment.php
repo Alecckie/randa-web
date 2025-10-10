@@ -13,9 +13,6 @@ class CampaignAssignment extends Model
         'campaign_id',
         'rider_id',
         'helmet_id',
-        'creative_id',
-        'zone_id',
-        'tracking_tag',
         'assigned_at',
         'completed_at',
         'status'
@@ -42,10 +39,7 @@ class CampaignAssignment extends Model
         return $this->belongsTo(Helmet::class);
     }
 
-    public function creative()
-    {
-        return $this->belongsTo(Creative::class);
-    }
+   
 
     public function zone()
     {
@@ -57,15 +51,15 @@ class CampaignAssignment extends Model
         return $this->hasMany(RiderCheckIn::class);
     }
 
-    public function qrScans()
-    {
-        return $this->hasMany(QrScan::class);
-    }
+    // public function qrScans()
+    // {
+    //     return $this->hasMany(QrScan::class);
+    // }
 
-    public function gpsTracksViaCheckIns()
-    {
-        return $this->hasManyThrough(GpsTrack::class, RiderCheckIn::class);
-    }
+    // public function gpsTracksViaCheckIns()
+    // {
+    //     return $this->hasManyThrough(GpsTrack::class, RiderCheckIn::class);
+    // }
 
     // Boot method to generate unique tracking tag
     protected static function boot()

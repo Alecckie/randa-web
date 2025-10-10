@@ -12,6 +12,8 @@ import { useMediaQuery } from '@mantine/hooks';
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
+        first_name: '',
+        last_name: '',
         name: '',
         email: '',
         phone: '',
@@ -200,16 +202,50 @@ export default function Register() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div className="sm:col-span-2">
                                     <label htmlFor="name" className="text-slate-800 font-semibold mb-3 block">
-                                        Full Name
+                                        First Name
+                                    </label>
+                                    <TextInput
+                                        id="name"
+                                        placeholder="Enter your first name"
+                                        required
+                                        value={data.first_name}
+                                        onChange={(event) => setData('first_name', event.currentTarget.value)}
+                                        error={errors.first_name}
+                                        autoComplete="first_name"
+                                        size="lg"
+                                        styles={{
+                                            input: {
+                                                padding: '16px 20px',
+                                                border: '2px solid #e2e8f0',
+                                                borderRadius: '12px',
+                                                fontSize: '16px',
+                                                fontWeight: '500',
+                                                backgroundColor: '#fafafa',
+                                                '&:focus': {
+                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    backgroundColor: '#ffffff',
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                },
+                                                '&::placeholder': {
+                                                    color: '#94a3b8',
+                                                },
+                                            },
+                                        }}
+                                    />
+                                </div>
+
+                                 <div className="sm:col-span-2">
+                                    <label htmlFor="name" className="text-slate-800 font-semibold mb-3 block">
+                                        Last Name
                                     </label>
                                     <TextInput
                                         id="name"
                                         placeholder="Enter your full name"
                                         required
-                                        value={data.name}
-                                        onChange={(event) => setData('name', event.currentTarget.value)}
-                                        error={errors.name}
-                                        autoComplete="name"
+                                        value={data.last_name}
+                                        onChange={(event) => setData('last_name', event.currentTarget.value)}
+                                        error={errors.last_name}
+                                        autoComplete="last_name"
                                         size="lg"
                                         styles={{
                                             input: {

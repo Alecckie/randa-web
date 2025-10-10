@@ -151,7 +151,7 @@ export default function Create() {
                 </form>
 
                 {/* Additional Information Card */}
-                <Card withBorder shadow="sm" radius="md" p="lg" className="mt-6">
+                {/* <Card withBorder shadow="sm" radius="md" p="lg" className="mt-6">
                     <Stack gap="md">
                         <Group>
                             <Info size={20} className="text-blue-500" />
@@ -181,7 +181,7 @@ export default function Create() {
                            
                         </div>
                     </Stack>
-                </Card>
+                </Card> */}
             </div>
         </AuthenticatedLayout>
     );

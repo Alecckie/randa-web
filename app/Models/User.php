@@ -76,6 +76,7 @@ class User extends Authenticatable
     // Helper Methods
     public function getDashboardRoute(): string
     {
+        // dd($this->role);
         return match ($this->role) {
             'admin' => 'dashboard',
             'advertiser' => 'advert-dash.index',

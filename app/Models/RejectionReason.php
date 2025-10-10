@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RejectionReason extends Model
 {
-    protected $fillable = ['rejected_by','reason'];
+    protected $fillable = ['rejected_by','rejectable_type','rejectable_id','reason'];
 
 
     public function rejectedBy()

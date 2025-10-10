@@ -7,15 +7,16 @@ import Header from '@/Components/frontend/layouts/Header';
 import CampaignForm from '@/Components/campaigns/CampaignForm';
 import type { PageProps, User } from '@/types';
 import {usePage} from '@inertiajs/react';
+import { Advertiser } from '@/types/advertiser';
 
 
-interface Advertiser {
-    id?: number;
-    company_name?: string;
-    business_registration?: string;
-    address?: string;
-    status?: string;
-}
+// interface Advertiser {
+//     id: number;
+//     company_name?: string;
+//     business_registration?: string;
+//     address?: string;
+//     status?: string;
+// }
 
 interface CoverageArea {
     id: number;
@@ -26,14 +27,14 @@ interface CoverageArea {
     ward?: string;
 }
 
-interface AdvertiserData {
-    id: number;
-    company_name: string;
-}
+// interface AdvertiserData {
+//     id: number;
+//     company_name: string;
+// }
 
 interface CreateCampaignProps {
-    advertiser?: Advertiser;
-    advertisers: AdvertiserData[];
+    advertiser: Advertiser;
+    advertisers: Advertiser[];
     coverageareas: CoverageArea[];
 }
 
@@ -73,7 +74,7 @@ export default function CreateCampaign({
                 {/* Header */}
                 <Header 
                     onMenuClick={() => setSidebarOpen(true)} 
-                    advertiser={advertiser}
+                    user={advertiser}
                     showCreateMenu={false}
                 />
 
@@ -104,7 +105,7 @@ export default function CreateCampaign({
 
                         {/* Campaign Form Component */}
                         <CampaignForm
-                            user={user}
+                            advertiser={advertiser}
                             advertisers={advertisers} 
                             coverageareas={coverageareas} 
                         />

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCampaignRequest;
 use App\Models\Campaign;
+use App\Services\CampaignAssignmentService;
 use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
@@ -11,12 +12,13 @@ use Inertia\Inertia;
 
 class CampaignController extends Controller
 {
-    protected $campaignService,$coverageAreasService;
+    protected $campaignService,$coverageAreasService,$assignmentService;
 
-    public function __construct(CampaignService $campaignService,CoverageAreasService $coverageAreasService)
+    public function __construct(CampaignService $campaignService,CoverageAreasService $coverageAreasService,CampaignAssignmentService $assignmentService)
     {
         $this->campaignService = $campaignService;
         $this->coverageAreasService = $coverageAreasService;
+        $this->assignmentService = $assignmentService;
     }
 
     /**
@@ -34,6 +36,7 @@ class CampaignController extends Controller
         $advertisers = $user->role === 'admin' 
             ? $this->campaignService->getApprovedAdvertisers() 
             : [];
+
 
         return Inertia::render('Campaigns/Index', [
             'campaigns' => $campaigns,
@@ -83,10 +86,26 @@ class CampaignController extends Controller
      */
     public function show(Campaign $campaign)
     {
-         $campaign->load(['advertiser.user', 'assignments', 'reports']);
+          $campaign->load([
+            'advertiser.user',
+            'coverageAreas',
+            'riderDemographics',
+            'currentCost',
+            'assignments.rider.user',
+            'assignments.helmet',
+            'payments'
+        ]);
+
+        $availableRiders = $this->assignmentService->getAvailableRiders($campaign);
+        $availableHelmets = $this->assignmentService->getAvailableHelmets();
+
+        $assignmentStats = $this->assignmentService->getAssignmentStats($campaign);
 
         return Inertia::render('Campaigns/Show', [
             'campaign' => $campaign,
+            'availableRiders' => $availableRiders,
+            'availableHelmets' => $availableHelmets,
+            'assignmentStats' => $assignmentStats,
         ]);
     }
 

@@ -23,15 +23,15 @@ interface Advertiser {
 
 interface HeaderProps {
     onMenuClick: () => void;
-    advertiser?: Advertiser;
+    user?: Advertiser;
     showCreateMenu?: boolean;
 }
 
-export default function Header({ onMenuClick, advertiser, showCreateMenu = true }: HeaderProps) {
-    const hasProfile = !!advertiser?.id;
-    const isApproved = advertiser?.status === 'approved';
-    const isPending = advertiser?.status === 'pending';
-    const isRejected = advertiser?.status === 'rejected';
+export default function Header({ onMenuClick, user, showCreateMenu = true }: HeaderProps) {
+    const hasProfile = !!user?.id;
+    const isApproved = user?.status === 'approved';
+    const isPending = user?.status === 'pending';
+    const isRejected = user?.status === 'rejected';
 
     return (
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-20">
@@ -101,8 +101,8 @@ export default function Header({ onMenuClick, advertiser, showCreateMenu = true 
                             }
                             className="hidden sm:flex"
                         >
-                            {hasProfile && advertiser.status
-                                ? advertiser?.status?.charAt(0).toUpperCase() + advertiser?.status?.slice(1)
+                            {hasProfile && user.status
+                                ? user?.status?.charAt(0).toUpperCase() + user?.status?.slice(1)
                                 : 'Not Completed'
                             }
                         </Badge>
