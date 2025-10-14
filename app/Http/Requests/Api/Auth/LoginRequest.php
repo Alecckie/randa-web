@@ -64,7 +64,7 @@ class LoginRequest extends BaseApiRequest
         $user = User::where('email', $email)->first();
 
         
-        if (Hash::check($password, $user->password)) {
+        if (!$user ||  !Hash::check($password, $user->password)) {
             RateLimiter::hit($this->throttleKey());
 
             throw new HttpResponseException(
