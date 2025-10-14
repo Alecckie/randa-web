@@ -22,17 +22,12 @@ class RegisterRequest extends BaseApiRequest
                 'max:255',
                 'regex:/^[a-zA-Z\s]+$/', 
             ],
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-                'min:2',
-            ],
+            
             'email' => [
                 'required',
                 'string',
                 'lowercase',
-                'email:rfc,dns',
+                'email',
                 'max:255',
                 'unique:' . User::class,
             ],
@@ -56,8 +51,8 @@ class RegisterRequest extends BaseApiRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'Full name is required.',
-            'name.min' => 'Name must be at least 2 characters long.',
+            // 'name.required' => 'Full name is required.',
+            // 'name.min' => 'Name must be at least 2 characters long.',
             'email.required' => 'Email address is required.',
             'email.email' => 'Please provide a valid email address.',
             'email.unique' => 'This email address is already registered.',
@@ -89,7 +84,7 @@ class RegisterRequest extends BaseApiRequest
     {
         // Trim whitespace and ensure consistent formatting
         $this->merge([
-            'name' => trim($this->name ?? ''),
+            // 'name' => trim($this->name ?? ''),
             'first_name' => trim($this->first_name ?? ''),
             'last_name' => trim($this->last_name ?? ''),
             'phone' => $this->phone ? preg_replace('/[^\d\+\-\(\)\s]/', '', $this->phone) : null,

@@ -30,7 +30,7 @@ class AuthController extends BaseApiController
             $user = $this->userService->createUser([
                 'first_name' => $validated['first_name'] ?? null,
                 'last_name' => $validated['last_name'] ?? null,
-                'name' => $validated['name'],
+                'name' => $validated['first_name'] . $validated['last_name'],
                 'email' => $validated['email'],
                 'password' => Hash::make($validated['password']),
                 'role' => $validated['role'],

@@ -264,7 +264,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                                     />
                                 </Grid.Col>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                <Grid.Col span={{ base: 12, md: 12 }}>
                                     <TextInput
                                         label="National ID Number"
                                         placeholder="Enter national ID number"
@@ -276,7 +276,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                                     />
                                 </Grid.Col>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                {/* <Grid.Col span={{ base: 12, md: 6 }}>
                                     <NumberInput
                                         label="Daily Rate (KSh)"
                                         placeholder="70.00"
@@ -288,7 +288,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                                         max={10000}
                                         decimalScale={2}
                                     />
-                                </Grid.Col>
+                                </Grid.Col> */}
                             </Grid>
                         </Stack>
                     </Card>
