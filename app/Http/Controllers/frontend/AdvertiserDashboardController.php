@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\frontend;
 
+use App\Http\Controllers\Controller;
 use App\Models\Advertiser;
 use App\Services\AdvertiserService;
 use Illuminate\Http\Request;
@@ -50,7 +51,7 @@ class AdvertiserDashboardController extends Controller
         $validated['user_id'] = $user->id;
         $validated['status'] = 'pending';
 
-        $advertiser = $this->advertiserService->createAdvertiserProfile($validated);
+        $this->advertiserService->createAdvertiserProfile($validated);
 
         return redirect()->route('advert-dash.index')->with(
             'success',
@@ -74,7 +75,7 @@ class AdvertiserDashboardController extends Controller
         }
 
         $validated = $this->validateAdvertiserData($request);
-        $validated['status'] = 'pending'; // Reset to pending when updated
+        // $validated['status'] = 'pending'; 
 
         $this->advertiserService->updateAdvertiserProfile($advertiser, $validated);
 

@@ -1,8 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\AdvertiserDashboardController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\LocationController;
-use App\Http\Controllers\Api\RiderController;
+use App\Http\Controllers\Api\RiderProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -25,17 +26,34 @@ Route::prefix('v1')->group(function () {
         Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::patch('/profile', [AuthController::class, 'updateProfile']);
 
-        Route::prefix('riders')->group(function () {
-            Route::get('/', [RiderController::class, 'index']);
-            Route::get('/create', [RiderController::class, 'create']);
-            Route::post('/', [RiderController::class, 'store']);
-            Route::get('/stats', [RiderController::class, 'stats']);
-            Route::get('/available', [RiderController::class, 'available']);
-            Route::get('/{rider}', [RiderController::class, 'show']);
-            Route::put('/{rider}', [RiderController::class, 'update']);
-            Route::patch('/{rider}/status', [RiderController::class, 'updateStatus']);
-            Route::patch('/{rider}/wallet', [RiderController::class, 'updateWallet']);
-            Route::delete('/{rider}', [RiderController::class, 'destroy']);
+        Route::prefix('rider')->group(function () {
+            Route::get('/profile', [RiderProfileController::class, 'index'])
+                ->name('api.rider.profile.index');
+
+            Route::post('/profile', [RiderProfileController::class, 'store'])
+                ->name('api.rider.profile.store');
+
+            Route::get('/profile/details', [RiderProfileController::class, 'show'])
+                ->name('api.rider.profile.show');
+        });
+
+        Route::prefix('advertiser')->group(function () {
+            // Dashboard
+            Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])
+                ->name('api.advertiser.dashboard');
+
+            // Advertiser Profile CRUD
+            Route::post('/profile', [AdvertiserDashboardController::class, 'store'])
+                ->name('api.advertiser.profile.store');
+
+            Route::get('/profile/{id}', [AdvertiserDashboardController::class, 'show'])
+                ->name('api.advertiser.profile.show');
+
+            Route::put('/profile/{id}', [AdvertiserDashboardController::class, 'update'])
+                ->name('api.advertiser.profile.update');
+
+            Route::delete('/profile/{id}', [AdvertiserDashboardController::class, 'destroy'])
+                ->name('api.advertiser.profile.destroy');
         });
 
         Route::prefix('locations')->name('api.locations.')->group(function () {
