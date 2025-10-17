@@ -555,133 +555,7 @@ class CampaignService
         });
     }
 
-    // /**
-    //  * Get campaigns summary for dashboard
-    //  */
-    // public function getCampaignsSummary(): array
-    // {
-    //     $stats = $this->getCampaignStats();
-    //     $recentCampaigns = Campaign::with(['advertiser', 'currentCost'])
-    //         ->orderBy('created_at', 'desc')
-    //         ->limit(5)
-    //         ->get();
-
-    //     $upcomingCampaigns = Campaign::where('status', 'paid')
-    //         ->where('start_date', '>', now())
-    //         ->orderBy('start_date')
-    //         ->limit(5)
-    //         ->get();
-
-    //     return [
-    //         'stats' => $stats,
-    //         'recent_campaigns' => $recentCampaigns,
-    //         'upcoming_campaigns' => $upcomingCampaigns,
-    //         'revenue_this_month' => Transaction::where('type', 'payment')
-    //             ->where('status', 'completed')
-    //             ->whereYear('created_at', now()->year)
-    //             ->whereMonth('created_at', now()->month)
-    //             ->sum('amount'),
-    //     ];
-    // }
-
-    /**
-     * Update campaign status
-     */
-    // public function updateCampaignStatus(Campaign $campaign, string $status): Campaign
-    // {
-    //     // Validate status transition
-    //     $allowedTransitions = [
-    //         'draft' => ['pending_payment', 'cancelled'],
-    //         'pending_payment' => ['paid', 'cancelled'],
-    //         'paid' => ['active', 'cancelled'],
-    //         'active' => ['paused', 'completed'],
-    //         'paused' => ['active', 'cancelled'],
-    //         'completed' => [], // No transitions from completed
-    //         'cancelled' => [], // No transitions from cancelled
-    //     ];
-
-    //     $currentStatus = $campaign->status;
-
-    //     if (!isset($allowedTransitions[$currentStatus]) || 
-    //         !in_array($status, $allowedTransitions[$currentStatus])) {
-    //         throw new \InvalidArgumentException("Cannot transition from {$currentStatus} to {$status}");
-    //     }
-
-    //     $campaign->update(['status' => $status]);
-
-    //     return $campaign->fresh();
-    // }
-
-    /**
-     * Duplicate a campaign
-     */
-    // public function duplicateCampaign(Campaign $originalCampaign, array $overrides = []): Campaign
-    // {
-    //     return DB::transaction(function () use ($originalCampaign, $overrides) {
-    //         // Prepare campaign data
-    //         $campaignData = array_merge([
-    //             'advertiser_id' => $originalCampaign->advertiser_id,
-    //             'name' => $originalCampaign->name . ' (Copy)',
-    //             'description' => $originalCampaign->description,
-    //             'business_type' => $originalCampaign->business_type,
-    //             'need_design' => $originalCampaign->need_design,
-    //             'design_requirements' => $originalCampaign->design_requirements,
-    //             'require_vat_receipt' => $originalCampaign->require_vat_receipt,
-    //             'special_instructions' => $originalCampaign->special_instructions,
-    //             'status' => 'draft', // Always start as draft
-    //             'agree_to_terms' => false, // Must re-agree
-    //         ], $overrides);
-
-    //         // Create new campaign
-    //         $newCampaign = Campaign::create($campaignData);
-
-    //         // Copy coverage areas
-    //         $coverageAreaIds = $originalCampaign->coverageAreas->pluck('id')->toArray();
-    //         $newCampaign->coverageAreas()->sync($coverageAreaIds);
-
-    //         // Copy rider demographics
-    //         $originalDemographics = [
-    //             'age_groups' => $originalCampaign->riderDemographics->pluck('age_group')->unique()->values()->toArray(),
-    //             'genders' => $originalCampaign->riderDemographics->pluck('gender')->unique()->values()->toArray(),
-    //             'rider_types' => $originalCampaign->riderDemographics->plunk('rider_type')->unique()->values()->toArray(),
-    //         ];
-    //         $this->createRiderDemographics($newCampaign, $originalDemographics);
-
-    //         // Calculate costs for the new campaign
-    //         $this->calculateAndStoreCosts($newCampaign);
-
-    //         return $newCampaign->load(['coverageAreas', 'riderDemographics', 'currentCost']);
-    //     });
-    // }
-
-    /**
-     * Get campaigns summary for dashboard
-     */
-    // public function getCampaignsSummary(): array
-    // {
-    //     $stats = $this->getCampaignStats();
-    //     $recentCampaigns = Campaign::with(['advertiser', 'currentCost'])
-    //         ->orderBy('created_at', 'desc')
-    //         ->limit(5)
-    //         ->get();
-
-    //     $upcomingCampaigns = Campaign::where('status', 'paid')
-    //         ->where('start_date', '>', now())
-    //         ->orderBy('start_date')
-    //         ->limit(5)
-    //         ->get();
-
-    //     return [
-    //         'stats' => $stats,
-    //         'recent_campaigns' => $recentCampaigns,
-    //         'upcoming_campaigns' => $upcomingCampaigns,
-    //         'revenue_this_month' => Transaction::where('type', 'payment')
-    //             ->where('status', 'completed')
-    //             ->whereYear('created_at', now()->year)
-    //             ->whereMonth('created_at', now()->month)
-    //             ->sum('amount'),
-    //     ];
-    // }
+   
 
     /**
      * Calculate cost preview for a campaign
@@ -757,24 +631,7 @@ class CampaignService
         });
     }
 
-    /**
-     * Get campaign statistics
-     */
-    // public function getCampaignStats(): array
-    // {
-    //     return [
-    //         'total_campaigns' => Campaign::count(),
-    //         'active_campaigns' => Campaign::where('status', 'active')->count(),
-    //         'draft_campaigns' => Campaign::where('status', 'draft')->count(),
-    //         'pending_payment' => Campaign::where('status', 'pending_payment')->count(),
-    //         'paid_campaigns' => Campaign::where('status', 'paid')->count(),
-    //         'completed_campaigns' => Campaign::where('status', 'completed')->count(),
-    //         'total_revenue' => Transaction::where('type', 'payment')
-    //             ->where('status', 'completed')
-    //             ->sum('amount'),
-    //         'coverage_areas_count' => \App\Models\CoverageArea::count(),
-    //     ];
-    // }
+   
 
     /**
      * Get approved advertisers for campaign creation
@@ -786,32 +643,7 @@ class CampaignService
             ->get();
     }
 
-    /**
-     * Get available coverage areas with hierarchical structure
-     */
-    // public function getAvailableCoverageAreas(): array
-    // {
-    //     $coverageAreaService = new CoverageAreasService();
-    //     return $coverageAreaService->getForSelect();
-    // }
-
-    /**
-     * Search coverage areas for frontend autocomplete
-     */
-    // public function searchCoverageAreas(string $search): array
-    // {
-    //     $coverageAreaService = new CoverageAreaService();
-    //     $results = $coverageAreaService->searchWithLocation($search);
-
-    //     return $results->map(function ($area) {
-    //         return [
-    //             'value' => $area->id,
-    //             'label' => $area->full_name,
-    //             'area_code' => $area->area_code,
-    //             'location_hierarchy' => $area->location_hierarchy,
-    //         ];
-    //     })->toArray();
-    // }
+    
 
     /**
      * Upload design file
@@ -925,67 +757,5 @@ class CampaignService
             ->toArray();
     }
 
-    /**
-     * Get a single campaign with all relationships
-     */
-    // public function getCampaign(int $campaignId): Campaign
-    // {
-    //     return Campaign::with([
-    //         'advertiser.user',
-    //         'coverageAreas.county',
-    //         'coverageAreas.subCounty', 
-    //         'coverageAreas.ward',
-    //         'riderDemographics',
-    //         'currentCost',
-    //         'costs' => function ($query) {
-    //             $query->orderBy('version', 'desc');
-    //         },
-    //         'payments.transactions',
-    //         'assignments.rider.user',
-    //         'assignments.helmet'
-    //     ])->findOrFail($campaignId);
-    // }
-    // public function getCampaignForEdit(int $campaignId): array
-    // {
-    //     $campaign = $this->getCampaign($campaignId);
-
-    //     // Format rider demographics for the form
-    //     $riderDemographics = [
-    //         'age_groups' => $campaign->riderDemographics->pluck('age_group')->unique()->values()->toArray(),
-    //         'genders' => $campaign->riderDemographics->pluck('gender')->unique()->values()->toArray(),
-    //         'rider_types' => $campaign->riderDemographics->pluck('rider_type')->unique()->values()->toArray(),
-    //     ];
-
-    //     return [
-    //         'campaign' => $campaign,
-    //         'coverage_area_ids' => $campaign->coverageAreas->pluck('id')->toArray(),
-    //         'rider_demographics' => $riderDemographics,
-    //         'cost_breakdown' => $this->getCampaignCostBreakdown($campaign),
-    //         'payment_history' => $this->getPaymentHistory($campaign),
-    //         'demographics_summary' => $this->getCampaignDemographics($campaign),
-    //     ];
-    // }
-    /**
-     * Get campaign for editing with formatted data
-     */
-    // public function getCampaignForEdit(int $campaignId): array
-    // {
-    //     $campaign = $this->getCampaign($campaignId);
-
-    //     // Format rider demographics for the form
-    //     $riderDemographics = [
-    //         'age_groups' => $campaign->riderDemographics->pluck('age_group')->unique()->values()->toArray(),
-    //         'genders' => $campaign->riderDemographics->pluck('gender')->unique()->values()->toArray(),
-    //         'rider_types' => $campaign->riderDemographics->pluck('rider_type')->unique()->values()->toArray(),
-    //     ];
-
-    //     return [
-    //         'campaign' => $campaign,
-    //         'coverage_area_ids' => $campaign->coverageAreas->pluck('id')->toArray(),
-    //         'rider_demographics' => $riderDemographics,
-    //         'cost_breakdown' => $this->getCampaignCostBreakdown($campaign),
-    //         'payment_history' => $this->getPaymentHistory($campaign),
-    //         'demographics_summary' => $this->getCampaignDemographics($campaign),
-    //     ];
-    // }
+    
 }

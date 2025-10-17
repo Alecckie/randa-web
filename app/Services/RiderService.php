@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Campaign;
+use App\Models\CampaignAssignment;
 use App\Models\Rider;
 use App\Models\RiderLocation;
 use App\Models\RiderLocationChangeLog;
@@ -91,7 +93,7 @@ class RiderService
         return DB::transaction(function () use ($data) {
             // Create or get user
             $user = $this->createOrGetUser($data);
-            
+
             // Handle file uploads
             $fileFields = [
                 'national_id_front_photo',
@@ -107,16 +109,16 @@ class RiderService
                     $data[$field] = $this->uploadFile($data[$field], "riders/{$field}");
                 }
             }
-            
+
             // Create rider
             $rider = $this->createRiderRecord($user, $data);
-            
+
             // Create rider location
             $location = $this->createRiderLocation($rider, $data['location']);
-            
+
             // Log the initial location assignment
             $this->logLocationChange($rider, null, $location, 'initial');
-            
+
             return $rider->load(['user', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward']);
         });
     }
@@ -152,7 +154,7 @@ class RiderService
         // Prepare rider data (remove user fields and location data)
         $riderData = collect($data)->except([
             'firstname',
-            'lastname', 
+            'lastname',
             'email',
             'phone',
             'location'
@@ -180,7 +182,7 @@ class RiderService
             'latitude' => $locationData['latitude'] ?: null,
             'longitude' => $locationData['longitude'] ?: null,
             'is_current' => true,
-            'effective_from' => now()->toDateString(), 
+            'effective_from' => now()->toDateString(),
             'effective_to' => null,
             'status' => 'active',
             'notes' => $locationData['notes'] ?? null,
@@ -258,9 +260,9 @@ class RiderService
             $rider->refresh();
 
             return $rider->load([
-                'user', 
-                'currentLocation.county', 
-                'currentLocation.subcounty', 
+                'user',
+                'currentLocation.county',
+                'currentLocation.subcounty',
                 'currentLocation.ward',
                 'rejectionReasons.rejectedBy'
             ]);
@@ -281,7 +283,7 @@ class RiderService
                 return $this->rejectRider($rider, $rejectionReason);
             } else {
                 $rider->update(['status' => $status]);
-                
+
                 if ($status === 'approved') {
                     $rider->user()->update(['is_active' => true]);
                 } elseif ($status === 'rejected') {
@@ -314,7 +316,7 @@ class RiderService
         return DB::transaction(function () use ($rider, $locationData, $reason) {
             // Get current location
             $oldLocation = $rider->currentLocation;
-            
+
             // Deactivate current location
             if ($oldLocation) {
                 $oldLocation->update([
@@ -323,7 +325,7 @@ class RiderService
                     'status' => 'inactive',
                 ]);
             }
-            
+
             // Create new location
             $newLocation = RiderLocation::create([
                 'rider_id' => $rider->id,
@@ -339,14 +341,14 @@ class RiderService
                 'status' => 'active',
                 'notes' => $locationData['notes'] ?? null,
             ]);
-            
+
             // Update rider's location tracking
             $rider->increment('location_changes_count');
             $rider->update(['location_last_updated' => now()]);
-            
+
             // Log the location change
             $this->logLocationChange($rider, $oldLocation, $newLocation, 'transfer', $reason);
-            
+
             return $newLocation->load(['county', 'subcounty', 'ward']);
         });
     }
@@ -367,7 +369,7 @@ class RiderService
     public function getRidersByLocation(int $wardId = null, int $subcountyId = null, int $countyId = null): \Illuminate\Database\Eloquent\Collection
     {
         $query = Rider::approved()->withCurrentLocation();
-        
+
         if ($wardId) {
             $query->byLocation($wardId);
         } elseif ($subcountyId) {
@@ -375,7 +377,7 @@ class RiderService
         } elseif ($countyId) {
             $query->byCounty($countyId);
         }
-        
+
         return $query->get();
     }
 
@@ -493,7 +495,7 @@ class RiderService
                 $query->select('id', 'rider_id', 'campaign_id', 'assigned_at', 'status');
             },
             'currentLocation.county',
-            'currentLocation.subcounty', 
+            'currentLocation.subcounty',
             'currentLocation.ward',
             'rejectionReasons.rejectedBy'
         ])->find($riderId);
@@ -511,7 +513,7 @@ class RiderService
                 $query->select('id', 'rider_id', 'campaign_id', 'assigned_at', 'status');
             },
             'currentLocation.county',
-            'currentLocation.subcounty', 
+            'currentLocation.subcounty',
             'currentLocation.ward',
             'rejectionReasons.rejectedBy'
         ]);
@@ -543,5 +545,117 @@ class RiderService
         }
 
         return $query->exists();
+    }
+
+    /**
+     * Get campaigns assigned to a rider with minimal details
+     * Riders should only see limited campaign information for privacy
+     */
+    public function getCampaignsForRider(Rider $rider, array $filters = []): LengthAwarePaginator
+    {
+        $query = Campaign::query()
+            ->select([
+                'campaigns.id',
+                'campaigns.name',
+                'campaigns.start_date',
+                'campaigns.end_date',
+                'campaigns.status',
+                'campaign_assignments.assigned_at',
+            ])
+            ->join('campaign_assignments', 'campaigns.id', '=', 'campaign_assignments.campaign_id')
+            ->where('campaign_assignments.rider_id', $rider->id)
+            ->with([
+                'assignments' => function ($query) use ($rider) {
+                    $query->where('rider_id', $rider->id)
+                        ->select('id', 'campaign_id', 'rider_id', 'helmet_id', 'assigned_at', 'completed_at', 'status')
+                        ->with(['helmet:id,helmet_code,qr_code,status,current_branding']);
+                },
+                'coverageAreas:id,name,area_code,county_id,sub_county_id,ward_id',
+                'coverageAreas.county:id,name',
+                'coverageAreas.subcounty:id,name',
+                'coverageAreas.ward:id,name',
+            ])
+            ->groupBy([
+                'campaigns.id',
+                'campaigns.name',
+                'campaigns.start_date',
+                'campaigns.end_date',
+                'campaigns.status',
+                'campaign_assignments.assigned_at',
+            ]);
+
+        // Apply filters
+        if (!empty($filters['status'])) {
+            $query->where('campaign_assignments.status', $filters['status']);
+        }
+
+        if (!empty($filters['campaign_status'])) {
+            $query->where('campaigns.status', $filters['campaign_status']);
+        }
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where('campaigns.name', 'like', "%{$search}%");
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('campaigns.start_date', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('campaigns.end_date', '<=', $filters['date_to']);
+        }
+
+        // Order by assignment date (most recent first)
+        $query->orderBy('campaign_assignments.assigned_at', 'desc');
+
+        return $query->paginate($filters['per_page'] ?? 15);
+    }
+
+    /**
+     * Get campaign statistics for a specific rider
+     */
+    public function getRiderCampaignStats(Rider $rider): array
+    {
+        $assignments = CampaignAssignment::where('rider_id', $rider->id);
+
+        return [
+            'total_campaigns' => (clone $assignments)->distinct('campaign_id')->count('campaign_id'),
+            'active_campaigns' => (clone $assignments)->where('status', 'active')->distinct('campaign_id')->count('campaign_id'),
+            'completed_campaigns' => (clone $assignments)->where('status', 'completed')->distinct('campaign_id')->count('campaign_id'),
+            'total_days_worked' => (clone $assignments)->where('status', 'completed')
+                ->get()
+                ->sum(function ($assignment) {
+                    if ($assignment->assigned_at && $assignment->completed_at) {
+                        return $assignment->assigned_at->diffInDays($assignment->completed_at) + 1;
+                    }
+                    return 0;
+                }),
+        ];
+    }
+
+    /**
+     * Get single campaign details for rider (limited information)
+     */
+    public function getCampaignForRider(Rider $rider, int $campaignId): ?Campaign
+    {
+        return Campaign::select([
+            'campaigns.id',
+            'campaigns.name',
+            'campaigns.description',
+            'campaigns.start_date',
+            'campaigns.end_date',
+            'campaigns.status',
+        ])
+            ->whereHas('assignments', function ($query) use ($rider) {
+                $query->where('rider_id', $rider->id);
+            })
+            ->with([
+                'assignments' => function ($query) use ($rider) {
+                    $query->where('rider_id', $rider->id)
+                        ->select('id', 'campaign_id', 'rider_id', 'helmet_id', 'tracking_tag', 'assigned_at', 'completed_at', 'status');
+                }
+            ])
+            ->find($campaignId);
     }
 }
