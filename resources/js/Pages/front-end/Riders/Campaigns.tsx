@@ -15,7 +15,8 @@ import {
     Table,
     Pagination,
     Alert,
-    Paper
+    Paper,
+    Tooltip
 } from '@mantine/core';
 import {
     Search,
@@ -28,20 +29,44 @@ import {
     Pause,
     Trophy,
     TrendingUp,
-    Package
+    Package,
+    HardHat,
+    MapPin
 } from 'lucide-react';
 import { usePage } from '@inertiajs/react';
 import type { PageProps } from '@/types';
 import RiderHeader from '@/Components/frontend/layouts/RiderHeader';
 import RiderSidebar from '@/Components/frontend/layouts/RiderSidebar';
 
+interface Helmet {
+    id: number;
+    helmet_code: string;
+    qr_code: string | null;
+    status: string;
+    current_branding: string | null;
+}
+
+interface Location {
+    id: number;
+    name: string;
+}
+
+interface CoverageArea {
+    id: number;
+    name: string;
+    area_code: string;
+    county: Location | null;
+    subcounty: Location | null;
+    ward: Location | null;
+    full_name: string;
+}
+
 interface Assignment {
     id: number;
-    tracking_tag: string;
     assigned_at: string;
     completed_at: string | null;
     status: string;
-    days_worked: number;
+    helmet: Helmet | null;
 }
 
 interface Campaign {
@@ -53,6 +78,7 @@ interface Campaign {
     duration_days: number;
     is_active: boolean;
     assignment: Assignment | null;
+    coverage_areas: CoverageArea[];
 }
 
 interface Stats {
@@ -75,7 +101,7 @@ interface Filters {
     date_from?: string;
     date_to?: string;
     per_page: number;
-    [key: string]: any; // Add index signature for Inertia router
+    [key: string]: any;
 }
 
 interface CampaignsProps {
@@ -135,6 +161,23 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
         
         return config ? (
             <Badge color={config.color} variant="light" size="xs">
+                {config.label}
+            </Badge>
+        ) : null;
+    };
+
+    const getHelmetStatusBadge = (status: string) => {
+        const statusConfig = {
+            available: { color: 'green', label: 'Available' },
+            assigned: { color: 'blue', label: 'Assigned' },
+            maintenance: { color: 'orange', label: 'Maintenance' },
+            retired: { color: 'gray', label: 'Retired' },
+        };
+
+        const config = statusConfig[status as keyof typeof statusConfig];
+        
+        return config ? (
+            <Badge color={config.color} variant="dot" size="xs">
                 {config.label}
             </Badge>
         ) : null;
@@ -266,7 +309,7 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                 <StatCard
                                     icon={TrendingUp}
                                     label="Total Days Worked"
-                                    value={stats.total_days_worked.toFixed(2)}
+                                    value={stats.total_days_worked}
                                     color="purple"
                                 />
                             </Grid.Col>
@@ -380,8 +423,8 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                     <Table.Th>Duration</Table.Th>
                                                     <Table.Th>Status</Table.Th>
                                                     <Table.Th>Assignment</Table.Th>
-                                                    <Table.Th>Days Worked</Table.Th>
-                                                    {/* <Table.Th>Tracking Tag</Table.Th> */}
+                                                    <Table.Th>Helmet</Table.Th>
+                                                    <Table.Th>Coverage Areas</Table.Th>
                                                 </Table.Tr>
                                             </Table.Thead>
                                             <Table.Tbody>
@@ -437,23 +480,53 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                             )}
                                                         </Table.Td>
                                                         <Table.Td>
-                                                            {campaign.assignment ? (
-                                                                <Badge color="blue" variant="light">
-                                                                    {campaign.assignment.days_worked.toFixed(0)} days
-                                                                </Badge>
+                                                            {campaign.assignment?.helmet ? (
+                                                                <div>
+                                                                    <Group gap={4} mb={4}>
+                                                                        <HardHat size={14} className="text-blue-600" />
+                                                                        <Text size="xs" fw={500} className="font-mono">
+                                                                            {campaign.assignment.helmet.helmet_code}
+                                                                        </Text>
+                                                                    </Group>
+                                                                    {getHelmetStatusBadge(campaign.assignment.helmet.status)}
+                                                                    {campaign.assignment.helmet.current_branding && (
+                                                                        <Text size="xs" c="dimmed" mt={4}>
+                                                                            Branding: {campaign.assignment.helmet.current_branding}
+                                                                        </Text>
+                                                                    )}
+                                                                </div>
                                                             ) : (
-                                                                <Text size="xs" c="dimmed">-</Text>
+                                                                <Text size="xs" c="dimmed">No helmet</Text>
                                                             )}
                                                         </Table.Td>
-                                                        {/* <Table.Td>
-                                                            {campaign.assignment ? (
-                                                                <Text size="xs" className="font-mono">
-                                                                    {campaign.assignment.tracking_tag}
-                                                                </Text>
+                                                        <Table.Td>
+                                                            {campaign?.coverage_areas?.length > 0 ? (
+                                                                <div>
+                                                                    {campaign?.coverage_areas?.slice(0, 2).map((area) => (
+                                                                        <div key={area.id} className="mb-2">
+                                                                            <Group gap={4}>
+                                                                                <MapPin size={12} className="text-green-600" />
+                                                                                <Tooltip label={area.full_name}>
+                                                                                    <Text size="xs" lineClamp={1}>
+                                                                                        {area.name}
+                                                                                    </Text>
+                                                                                </Tooltip>
+                                                                            </Group>
+                                                                            <Text size="xs" c="dimmed" className="ml-4">
+                                                                                {area.county?.name || 'N/A'}
+                                                                            </Text>
+                                                                        </div>
+                                                                    ))}
+                                                                    {campaign?.coverage_areas?.length > 2 && (
+                                                                        <Badge size="xs" variant="light" color="gray">
+                                                                            +{campaign.coverage_areas?.length - 2} more
+                                                                        </Badge>
+                                                                    )}
+                                                                </div>
                                                             ) : (
-                                                                <Text size="xs" c="dimmed">-</Text>
+                                                                <Text size="xs" c="dimmed">No areas</Text>
                                                             )}
-                                                        </Table.Td> */}
+                                                        </Table.Td>
                                                     </Table.Tr>
                                                 ))}
                                             </Table.Tbody>
