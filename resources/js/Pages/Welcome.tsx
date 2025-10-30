@@ -93,7 +93,7 @@ export default function Homepage() {
                 <div className="absolute inset-0 opacity-10">
                     <div className="absolute inset-0 bg-black"></div>
                 </div>
-                
+
                 {/* Floating Elements */}
                 <div className="absolute top-20 left-10 w-20 h-20 bg-purple-400 rounded-full opacity-20 animate-pulse"></div>
                 <div className="absolute top-40 right-20 w-16 h-16 bg-blue-400 rounded-full opacity-30 animate-pulse delay-1000"></div>
@@ -110,7 +110,7 @@ export default function Homepage() {
                         <p className="text-xl md:text-2xl text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
                             Connect advertisers with motorbike riders to create mobile advertising campaigns that reach audiences on the move
                         </p>
-                        
+
                         {/* CTA Buttons */}
                         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
                             <Link
@@ -162,7 +162,7 @@ export default function Homepage() {
                         </p>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-16 items-center">
+                    <div className="grid md:grid-cols-3 gap-16 items-center">
                         {/* For Advertisers */}
                         <div className="space-y-8">
                             <div className="text-center md:text-left">
@@ -170,7 +170,7 @@ export default function Homepage() {
                                     For Advertisers
                                 </h3>
                             </div>
-                            
+
                             <div className="space-y-6">
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
@@ -181,7 +181,7 @@ export default function Homepage() {
                                         <p className="text-slate-600">Design your brand message and set campaign parameters including budget, duration, and target areas.</p>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
                                         2
@@ -191,7 +191,7 @@ export default function Homepage() {
                                         <p className="text-slate-600">Our team reviews and approves your campaign to ensure quality and compliance standards.</p>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
                                         3
@@ -211,7 +211,7 @@ export default function Homepage() {
                                     For Riders
                                 </h3>
                             </div>
-                            
+
                             <div className="space-y-6">
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
@@ -222,7 +222,7 @@ export default function Homepage() {
                                         <p className="text-slate-600">Sign up and complete verification process including license validation and location confirmation.</p>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                                         2
@@ -232,7 +232,7 @@ export default function Homepage() {
                                         <p className="text-slate-600">Receive your custom branded helmet from approved campaigns in your area.</p>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex items-start space-x-4">
                                     <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                                         3
@@ -240,6 +240,56 @@ export default function Homepage() {
                                     <div>
                                         <h4 className="text-xl font-semibold text-slate-900 mb-2">Earn While Riding</h4>
                                         <p className="text-slate-600">Wear the branded helmet during your daily rides and earn money based on campaign performance.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* For Riders */}
+                        <div className="space-y-8">
+                            <div className="text-center md:text-left">
+                                <h3 className="text-2xl font-bold text-slate-900 mb-4">
+                                    For Community
+                                </h3>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex items-start space-x-4">
+                                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                                        1
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xl font-semibold text-slate-900 mb-2">Helmet Safety First</h4>
+                                        <p className="text-slate-600">Branded helmets provided by RANDA keep riders and passengers safe.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start space-x-4">
+                                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                                        2
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xl font-semibold text-slate-900 mb-2">Daily Rider Income</h4>
+                                        <p className="text-slate-600">Each helmet means extra income supporting local families.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start space-x-4">
+                                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                                        3
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xl font-semibold text-slate-900 mb-2">Community Growth</h4>
+                                        <p className="text-slate-600">Advertising budgets flow into the community by empowering everyday riders.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start space-x-4">
+                                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                                        4
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xl font-semibold text-slate-900 mb-2">Shared Value</h4>
+                                        <p className="text-slate-600">Brands advertising with RANDA directly contribute to safer roads and stronger communities.</p>
                                     </div>
                                 </div>
                             </div>
