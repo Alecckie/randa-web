@@ -27,8 +27,6 @@ interface LocationData {
     sub_county_id: number | '';
     ward_id: number | '';
     stage_name: string;
-    latitude: number | '';
-    longitude: number | '';
     effective_from: Date | null;
     notes: string;
 }
@@ -85,8 +83,6 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
             sub_county_id: '',
             ward_id: '',
             stage_name: '',
-            latitude: '',
-            longitude: '',
             effective_from: new Date(),
             notes: ''
         }
@@ -367,7 +363,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                                     />
                                 </Grid.Col>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                {/* <Grid.Col span={{ base: 12, md: 6 }}>
                                     <NumberInput
                                         label="Latitude (Optional)"
                                         placeholder="e.g., -1.2864"
@@ -393,7 +389,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                                         min={-180}
                                         max={180}
                                     />
-                                </Grid.Col>
+                                </Grid.Col> */}
 
                                 {/* <Grid.Col span={{ base: 12, md: 6 }}>
                                     <DateInput

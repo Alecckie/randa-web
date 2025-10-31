@@ -24,7 +24,9 @@ import {
     Progress,
     Modal,
     Box,
-    rem
+    rem,
+    Badge,
+    ThemeIcon
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -41,13 +43,13 @@ import {
     Users,
     Palette,
     Plus,
-    Building
+    Building,
+    Calendar,
+    Target
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Advertiser } from '@/types/advertiser';
-
-
 
 interface CoverageArea {
     id: number;
@@ -92,8 +94,6 @@ interface CostBreakdown {
     total_cost: number;
     currency: string;
 }
-
-
 
 interface CampaignFormProps {
     advertiser: Advertiser
@@ -296,14 +296,20 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         });
     }, [newCoverageArea, closeCoverageModal]);
 
-    // Step components
+    // Step components with improved design
     const StepBasicInfo = useMemo(() => (
-        <Stack gap="md">
-            <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <FileText size={20} className="text-blue-600" />
-                Basic Campaign Information
-            </Title>
-            <Grid>
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'blue', to: 'cyan', deg: 45 }}>
+                    <FileText size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">Basic Campaign Information</Title>
+                    <Text size="sm" c="dimmed">Tell us about your campaign</Text>
+                </div>
+            </div>
+
+            <Grid gutter="lg">
                 {isAdmin() && (
                     <Grid.Col span={12}>
                         <Select
@@ -316,10 +322,13 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             searchable
                             required
                             size="md"
-                            leftSection={<Building size={16} />}
+                            leftSection={<Building size={18} />}
+                            radius="md"
+                            styles={{
+                                input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                            }}
                         />
                     </Grid.Col>
-
                 )}
 
                 <Grid.Col span={{ base: 12, md: 6 }}>
@@ -331,8 +340,14 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         error={errors.name}
                         required
                         size="md"
+                        radius="md"
+                        leftSection={<Target size={18} />}
+                        styles={{
+                            input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                        }}
                     />
                 </Grid.Col>
+                
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select
                         label="Business Type"
@@ -343,8 +358,14 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         error={errors.business_type}
                         searchable
                         size="md"
+                        radius="md"
+                        leftSection={<Building size={18} />}
+                        styles={{
+                            input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                        }}
                     />
                 </Grid.Col>
+                
                 <Grid.Col span={12}>
                     <Textarea
                         label="Campaign Description"
@@ -352,43 +373,81 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         value={formData.description}
                         onChange={(e) => updateFormData({ description: e.currentTarget.value })}
                         error={errors.description}
-                        minRows={3}
+                        minRows={4}
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                        }}
                     />
                 </Grid.Col>
             </Grid>
         </Stack>
-    ), [advertiserOptions, formData, errors, updateFormData]);
+    ), [advertiserOptions, formData, errors, updateFormData, isAdmin]);
 
     const StepCampaignDetails = useMemo(() => (
-        <Stack gap="md">
-            <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <MapPin size={20} className="text-green-600" />
-                Campaign Details & Coverage
-            </Title>
-            <Grid>
-                <Grid.Col span={{ base: 12, md: 6 }}>
-                    <TextInput
-                        type="date"
-                        label="Start Date"
-                        value={formData.start_date}
-                        onChange={(e) => updateFormData({ start_date: e.currentTarget.value })}
-                        error={errors.start_date}
-                        required
-                        size="md"
-                    />
-                </Grid.Col>
-                <Grid.Col span={{ base: 12, md: 6 }}>
-                    <TextInput
-                        type="date"
-                        label="End Date"
-                        value={formData.end_date}
-                        onChange={(e) => updateFormData({ end_date: e.currentTarget.value })}
-                        error={errors.end_date}
-                        required
-                        size="md"
-                    />
-                </Grid.Col>
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
+                    <MapPin size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">Campaign Details & Coverage</Title>
+                    <Text size="sm" c="dimmed">Set duration and target areas</Text>
+                </div>
+            </div>
+
+            <Card withBorder radius="lg" p="lg" className="bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-gray-800 dark:to-gray-800 border-blue-100 dark:border-gray-700">
+                <Grid gutter="lg">
+                    <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <TextInput
+                            type="date"
+                            label="Start Date"
+                            value={formData.start_date}
+                            onChange={(e) => updateFormData({ start_date: e.currentTarget.value })}
+                            error={errors.start_date}
+                            required
+                            size="md"
+                            radius="md"
+                            leftSection={<Calendar size={18} />}
+                            styles={{
+                                input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                            }}
+                        />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, sm: 6 }}>
+                        <TextInput
+                            type="date"
+                            label="End Date"
+                            value={formData.end_date}
+                            onChange={(e) => updateFormData({ end_date: e.currentTarget.value })}
+                            error={errors.end_date}
+                            required
+                            size="md"
+                            radius="md"
+                            leftSection={<Calendar size={18} />}
+                            styles={{
+                                input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                            }}
+                        />
+                    </Grid.Col>
+                    
+                    {duration > 0 && (
+                        <Grid.Col span={12}>
+                            <Paper p="md" radius="md" className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+                                <Group justify="space-between" align="center">
+                                    <Text size="sm" fw={500}>Campaign Duration</Text>
+                                    <Badge size="xl" variant="white" color="blue" radius="md">
+                                        {duration} {duration === 1 ? 'day' : 'days'}
+                                    </Badge>
+                                </Group>
+                            </Paper>
+                        </Grid.Col>
+                    )}
+                </Grid>
+            </Card>
+
+            <Grid gutter="lg">
                 <Grid.Col span={12}>
                     <Group gap="sm" align="flex-end">
                         <Box style={{ flex: 1 }}>
@@ -403,18 +462,25 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 clearable
                                 required
                                 size="md"
+                                radius="md"
+                                leftSection={<MapPin size={18} />}
+                                styles={{
+                                    input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                                }}
                             />
                         </Box>
                         <Button
                             variant="light"
-                            leftSection={<Plus size={16} />}
+                            leftSection={<Plus size={18} />}
                             onClick={openCoverageModal}
                             size="md"
+                            radius="md"
                         >
                             Add New
                         </Button>
                     </Group>
                 </Grid.Col>
+                
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <NumberInput
                         label="Number of Helmets"
@@ -426,18 +492,26 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         max={10000}
                         required
                         size="md"
+                        radius="md"
+                        leftSection={<Users size={18} />}
+                        styles={{
+                            input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-blue-6)' } }
+                        }}
                     />
-                </Grid.Col>
-                <Grid.Col span={{ base: 12, md: 6 }}>
-                    <Paper p="md" className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                        <Text size="sm" fw={500} c="blue.7">Campaign Duration</Text>
-                        <Text size="xl" fw={700} c="blue.8">{duration} days</Text>
-                    </Paper>
                 </Grid.Col>
             </Grid>
 
-            <Divider label="Rider Demographics (Optional)" labelPosition="center" size="sm" />
-            <Grid>
+            <Divider 
+                label={
+                    <Group gap="xs">
+                        <Users size={18} className="text-gray-500" />
+                        <Text size="sm" fw={500}>Rider Demographics (Optional)</Text>
+                    </Group>
+                } 
+                labelPosition="center" 
+            />
+            
+            <Grid gutter="lg">
                 <Grid.Col span={{ base: 12, md: 4 }}>
                     <MultiSelect
                         label="Preferred Age Groups"
@@ -447,6 +521,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             rider_demographics: { ...formData.rider_demographics, age_groups: values }
                         })}
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 4 }}>
@@ -458,6 +536,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             rider_demographics: { ...formData.rider_demographics, genders: values }
                         })}
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 4 }}>
@@ -469,6 +551,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             rider_demographics: { ...formData.rider_demographics, rider_types: values }
                         })}
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
                 </Grid.Col>
             </Grid>
@@ -476,16 +562,26 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     ), [formData, errors, duration, coverageAreaOptions, updateFormData, openCoverageModal]);
 
     const StepDesignRequirements = useMemo(() => (
-        <Stack gap="md">
-            <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <Palette size={20} className="text-purple-600" />
-                Design Requirements
-            </Title>
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'purple', to: 'pink', deg: 45 }}>
+                    <Palette size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">Design Requirements</Title>
+                    <Text size="sm" c="dimmed">Upload your design or request our services</Text>
+                </div>
+            </div>
 
-            <Card withBorder p="lg">
+            <Card withBorder p="xl" radius="lg" className="border-2 hover:border-purple-200 dark:hover:border-purple-800 transition-colors">
                 <Checkbox
-                    label="I need design services (+ KES 3,000)"
-                    description="Our professional designers will create your helmet graphics"
+                    label={
+                        <Group gap="xs">
+                            <Text fw={500}>I need design services</Text>
+                            <Badge color="purple" variant="light" size="sm">+ KES 3,000</Badge>
+                        </Group>
+                    }
+                    description="Our professional designers will create stunning helmet graphics for your brand"
                     checked={formData.need_design}
                     onChange={(e) => updateFormData({ need_design: e.currentTarget.checked })}
                     size="md"
@@ -495,32 +591,41 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             {formData.need_design ? (
                 <Textarea
                     label="Design Requirements"
-                    placeholder="Describe your design preferences, brand colors, logos, messages, etc..."
+                    placeholder="Describe your design preferences, brand colors, logos, messages, style preferences, etc..."
                     value={formData.design_requirements}
                     onChange={(e) => updateFormData({ design_requirements: e.currentTarget.value })}
                     error={errors.design_requirements}
-                    minRows={4}
+                    minRows={5}
                     required
                     size="md"
+                    radius="md"
+                    styles={{
+                        input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-purple-6)' } }
+                    }}
                 />
             ) : (
                 <FileInput
                     label="Upload Design File"
-                    placeholder="Upload your design file (JPG, PNG, PDF, AI, PSD)"
+                    placeholder="Click to upload your design file"
+                    description="Supported formats: JPG, PNG, PDF, AI, PSD (Max 10MB)"
                     accept=".jpg,.jpeg,.png,.pdf,.ai,.psd"
                     value={formData.design_file}
                     onChange={(file) => updateFormData({ design_file: file })}
                     error={errors.design_file}
-                    leftSection={<Upload size={16} />}
+                    leftSection={<Upload size={18} />}
                     size="md"
+                    radius="md"
+                    styles={{
+                        input: { borderWidth: 2, '&:focus': { borderColor: 'var(--mantine-color-purple-6)' } }
+                    }}
                 />
             )}
 
-            <Alert icon={<Info size={16} />} color="blue" variant="light">
-                <Text size="sm">
+            <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
+                <Text size="sm" fw={500}>
                     {formData.need_design
-                        ? "Our design team will create professional graphics based on your requirements."
-                        : "Please upload your design in high resolution. We support JPG, PNG, PDF, AI, and PSD formats."
+                        ? "Our design team will create professional graphics based on your requirements and send proofs for approval."
+                        : "Please upload your design in high resolution. We'll review it and contact you if any adjustments are needed."
                     }
                 </Text>
             </Alert>
@@ -528,16 +633,26 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     ), [formData, errors, updateFormData]);
 
     const StepAgreement = useMemo(() => (
-        <Stack gap="md">
-            <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <Users size={20} className="text-orange-600" />
-                Agreement Details
-            </Title>
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'orange', to: 'red', deg: 45 }}>
+                    <FileText size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">Additional Details</Title>
+                    <Text size="sm" c="dimmed">VAT and special instructions</Text>
+                </div>
+            </div>
 
-            <Divider label="VAT Information" labelPosition="center" />
-            <Card withBorder p="lg">
+            <Card withBorder p="xl" radius="lg" className="border-2">
                 <Checkbox
-                    label="I require a VAT receipt"
+                    label={
+                        <Group gap="xs">
+                            <Text fw={500}>I require a VAT receipt</Text>
+                            <Badge color="orange" variant="light" size="sm">16% VAT</Badge>
+                        </Group>
+                    }
+                    description="VAT-registered businesses can request official VAT receipts for tax purposes"
                     checked={formData.require_vat_receipt}
                     onChange={(e) => updateFormData({ require_vat_receipt: e.currentTarget.checked })}
                     size="md"
@@ -546,123 +661,170 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
             <Textarea
                 label="Special Instructions"
-                placeholder="Any special requirements or instructions for your campaign..."
+                placeholder="Any special requirements, preferences, or instructions for your campaign..."
                 value={formData.special_instructions}
                 onChange={(e) => updateFormData({ special_instructions: e.currentTarget.value })}
-                minRows={3}
+                minRows={4}
                 size="md"
+                radius="md"
+                styles={{
+                    input: { borderWidth: 2 }
+                }}
             />
         </Stack>
     ), [formData, updateFormData]);
 
     const StepCostReview = useMemo(() => (
-        <Stack gap="md">
+        <Stack gap="lg">
             <Group justify="space-between" align="center">
-                <Title order={3} className="flex items-center gap-2 text-gray-800">
-                    <Calculator size={20} className="text-emerald-600" />
-                    Cost Breakdown & Review
-                </Title>
+                <div className="flex items-center gap-3">
+                    <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'emerald', to: 'green', deg: 45 }}>
+                        <Calculator size={24} />
+                    </ThemeIcon>
+                    <div>
+                        <Title order={3} className="text-gray-800 dark:text-gray-100">Cost Breakdown</Title>
+                        <Text size="sm" c="dimmed">Review your campaign pricing</Text>
+                    </div>
+                </div>
                 <Button
                     variant="light"
                     size="sm"
                     onClick={calculateCosts}
                     disabled={!formData.helmet_count || !duration || loadingCosts}
                     leftSection={<Calculator size={16} />}
+                    radius="md"
                 >
                     Recalculate
                 </Button>
             </Group>
 
             {loadingCosts ? (
-                <Paper p="xl" className="text-center">
-                    <Loader size="lg" />
-                    <Text mt="md" c="dimmed">Calculating your campaign costs...</Text>
+                <Paper p="xl" radius="lg" className="text-center bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800">
+                    <Loader size="xl" type="dots" />
+                    <Text mt="md" c="dimmed" fw={500}>Calculating your campaign costs...</Text>
                 </Paper>
             ) : costBreakdown ? (
-                <Stack gap="md">
-                    <Card withBorder p="lg">
-                        <Stack gap="sm">
-                            <Text size="lg" fw={600} c="gray.8">Campaign Summary</Text>
-                            <Grid>
-                                <Grid.Col span={6}>
-                                    <Text size="sm" c="dimmed">Helmets</Text>
-                                    <Text fw={500} size="lg">{costBreakdown.helmet_count}</Text>
-                                </Grid.Col>
-                                <Grid.Col span={6}>
-                                    <Text size="sm" c="dimmed">Duration</Text>
-                                    <Text fw={500} size="lg">{costBreakdown.duration_days} days</Text>
-                                </Grid.Col>
-                            </Grid>
+                <Stack gap="lg">
+                    <Grid gutter="lg">
+                        <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Card withBorder p="lg" radius="lg" className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-gray-800 dark:to-gray-800 border-blue-200 dark:border-gray-700">
+                                <Stack gap="xs">
+                                    <Text size="sm" c="dimmed" tt="uppercase" fw={600}>Helmets</Text>
+                                    <Text fw={700} size="2rem" className="text-blue-600 dark:text-blue-400">
+                                        {costBreakdown.helmet_count.toLocaleString()}
+                                    </Text>
+                                </Stack>
+                            </Card>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, sm: 6 }}>
+                            <Card withBorder p="lg" radius="lg" className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-purple-200 dark:border-gray-700">
+                                <Stack gap="xs">
+                                    <Text size="sm" c="dimmed" tt="uppercase" fw={600}>Duration</Text>
+                                    <Text fw={700} size="2rem" className="text-purple-600 dark:text-purple-400">
+                                        {costBreakdown.duration_days} days
+                                    </Text>
+                                </Stack>
+                            </Card>
+                        </Grid.Col>
+                    </Grid>
+
+                    <Card withBorder radius="lg" p="lg" className="border-2">
+                        <Stack gap="md">
+                            <Table horizontalSpacing="lg" verticalSpacing="md">
+                                <Table.Tbody>
+                                    <Table.Tr>
+                                        <Table.Td>
+                                            <Text fw={500} size="md">Base Campaign Cost</Text>
+                                            <Text size="xs" c="dimmed" mt={4}>
+                                                {costBreakdown.helmet_count} helmets × {costBreakdown.duration_days} days × KES {costBreakdown.daily_rate}
+                                            </Text>
+                                        </Table.Td>
+                                        <Table.Td className="text-right">
+                                            <Text fw={600} size="lg">
+                                                KES {costBreakdown.base_cost.toLocaleString()}
+                                            </Text>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                    
+                                    {costBreakdown.design_cost > 0 && (
+                                        <Table.Tr>
+                                            <Table.Td>
+                                                <Text fw={500} size="md">Design Services</Text>
+                                                <Text size="xs" c="dimmed" mt={4}>Professional graphic design</Text>
+                                            </Table.Td>
+                                            <Table.Td className="text-right">
+                                                <Text fw={600} size="lg">
+                                                    KES {costBreakdown.design_cost.toLocaleString()}
+                                                </Text>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    )}
+                                    
+                                    <Table.Tr className="border-t-2">
+                                        <Table.Td>
+                                            <Text fw={600} size="md">Subtotal</Text>
+                                        </Table.Td>
+                                        <Table.Td className="text-right">
+                                            <Text fw={600} size="lg">
+                                                KES {costBreakdown.subtotal.toLocaleString()}
+                                            </Text>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                    
+                                    <Table.Tr>
+                                        <Table.Td>
+                                            <Text fw={500} size="md">VAT (16%)</Text>
+                                        </Table.Td>
+                                        <Table.Td className="text-right">
+                                            <Text fw={600} size="lg">
+                                                KES {costBreakdown.vat_amount.toLocaleString()}
+                                            </Text>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                    
+                                    <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
+                                        <Table.Td>
+                                            <Text fw={700} size="xl" className="text-emerald-700 dark:text-emerald-400">
+                                                Total Amount
+                                            </Text>
+                                        </Table.Td>
+                                        <Table.Td className="text-right">
+                                            <Text fw={700} size="2rem" className="text-emerald-700 dark:text-emerald-400">
+                                                KES {costBreakdown.total_cost.toLocaleString()}
+                                            </Text>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                </Table.Tbody>
+                            </Table>
                         </Stack>
                     </Card>
 
-                    <Paper withBorder p="lg">
-                        <Table striped highlightOnHover>
-                            <Table.Tbody>
-                                <Table.Tr>
-                                    <Table.Td fw={500}>Base Campaign Cost</Table.Td>
-                                    <Table.Td className="text-right text-sm text-gray-600">
-                                        {costBreakdown.helmet_count} × {costBreakdown.duration_days} × KES {costBreakdown.daily_rate}
-                                    </Table.Td>
-                                    <Table.Td className="text-right font-semibold text-lg">
-                                        KES {costBreakdown.base_cost.toLocaleString()}
-                                    </Table.Td>
-                                </Table.Tr>
-                                {costBreakdown.design_cost > 0 && (
-                                    <Table.Tr>
-                                        <Table.Td fw={500}>Design Services</Table.Td>
-                                        <Table.Td className="text-right text-sm text-gray-600">One-time fee</Table.Td>
-                                        <Table.Td className="text-right font-semibold text-lg">
-                                            KES {costBreakdown.design_cost.toLocaleString()}
-                                        </Table.Td>
-                                    </Table.Tr>
-                                )}
-                                <Table.Tr>
-                                    <Table.Td fw={600}>Subtotal</Table.Td>
-                                    <Table.Td></Table.Td>
-                                    <Table.Td className="text-right font-semibold text-lg">
-                                        KES {costBreakdown.subtotal.toLocaleString()}
-                                    </Table.Td>
-                                </Table.Tr>
-                                <Table.Tr>
-                                    <Table.Td fw={500}>VAT (16%)</Table.Td>
-                                    <Table.Td></Table.Td>
-                                    <Table.Td className="text-right font-semibold text-lg">
-                                        KES {costBreakdown.vat_amount.toLocaleString()}
-                                    </Table.Td>
-                                </Table.Tr>
-                                <Table.Tr className="bg-gradient-to-r from-emerald-50 to-green-50">
-                                    <Table.Td fw={700}>
-                                        <Text size="lg" fw={700}>Total Amount</Text>
-                                    </Table.Td>
-                                    <Table.Td></Table.Td>
-                                    <Table.Td className="text-right font-bold text-2xl text-emerald-700">
-                                        KES {costBreakdown.total_cost.toLocaleString()}
-                                    </Table.Td>
-                                </Table.Tr>
-                            </Table.Tbody>
-                        </Table>
-                    </Paper>
-
-                    <Alert icon={<Info size={16} />} color="green" variant="light">
+                    <Alert icon={<CheckCircle size={18} />} color="green" variant="light" radius="md">
                         <Text size="sm" fw={500}>
                             Your campaign total is <Text component="span" fw={700} c="green.7">KES {costBreakdown.total_cost.toLocaleString()}</Text>.
-                            Proceed to the next step to review and submit your campaign.
+                            Proceed to review and submit your campaign.
                         </Text>
                     </Alert>
                 </Stack>
             ) : (
-                <Paper p="xl" className="text-center">
-                    <Text c="dimmed" size="lg" mb="md">No cost breakdown available</Text>
+                <Paper p="xl" radius="lg" className="text-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800">
+                    <div className="flex justify-center mb-4">
+                        <ThemeIcon size={64} radius="xl" variant="light" color="gray">
+                            <Calculator size={32} />
+                        </ThemeIcon>
+                    </div>
+                    <Text c="dimmed" size="lg" mb="md" fw={600}>No cost breakdown available</Text>
                     <Text c="dimmed" size="sm" mb="xl">
                         Please ensure you have filled in the helmet count and campaign dates in previous steps.
                     </Text>
                     <Button
                         onClick={calculateCosts}
                         disabled={!formData.helmet_count || !duration}
-                        leftSection={<Calculator size={16} />}
+                        leftSection={<Calculator size={18} />}
                         gradient={{ from: 'blue', to: 'purple', deg: 45 }}
                         variant="gradient"
+                        size="lg"
+                        radius="md"
                     >
                         Calculate Costs
                     </Button>
@@ -672,116 +834,231 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     ), [loadingCosts, costBreakdown, formData.helmet_count, duration, calculateCosts]);
 
     const StepFinalReview = useMemo(() => (
-        <Stack gap="md">
-            <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <Eye size={20} className="text-indigo-600" />
-                Final Review & Submit
-            </Title>
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'indigo', to: 'violet', deg: 45 }}>
+                    <Eye size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">Final Review</Title>
+                    <Text size="sm" c="dimmed">Review and submit your campaign</Text>
+                </div>
+            </div>
 
-            <Alert icon={<CheckCircle size={16} />} color="blue" variant="light">
-                <Text size="sm">
-                    Please review all details before submitting your campaign.
+            <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
+                <Text size="sm" fw={500}>
+                    Please review all details carefully before submitting your campaign.
                 </Text>
             </Alert>
 
-            <Card withBorder p="lg">
-                <Stack gap="sm">
-                    <Text fw={600} size="lg" c="gray.8">Campaign Overview</Text>
+            <Card withBorder p="xl" radius="lg" className="border-2 border-blue-100 dark:border-gray-700">
+                <Stack gap="lg">
+                    <div>
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Campaign Name</Text>
+                        <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">{formData.name}</Text>
+                    </div>
+                    
+                    <Divider />
+                    
                     <Grid>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Text size="sm" c="dimmed">Name</Text>
-                            <Text fw={500}>{formData.name}</Text>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Duration</Text>
+                            <Group gap="xs">
+                                <Calendar size={16} className="text-gray-500" />
+                                <Text fw={500}>{formData.start_date} to {formData.end_date}</Text>
+                            </Group>
+                            <Badge color="blue" variant="light" size="sm" mt="xs">
+                                {duration} days
+                            </Badge>
                         </Grid.Col>
+                        
                         <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Text size="sm" c="dimmed">Duration</Text>
-                            <Text fw={500}>{formData.start_date} to {formData.end_date}</Text>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Helmets</Text>
+                            <Group gap="xs">
+                                <Users size={16} className="text-gray-500" />
+                                <Text fw={500} size="lg">{formData.helmet_count}</Text>
+                            </Group>
                         </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Text size="sm" c="dimmed">Helmets</Text>
-                            <Text fw={500}>{formData.helmet_count}</Text>
-                        </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Text size="sm" c="dimmed">Total Cost</Text>
-                            <Text fw={700} c="green.7" size="lg">
-                                KES {costBreakdown?.total_cost.toLocaleString()}
-                            </Text>
+                        
+                        <Grid.Col span={12}>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Coverage Areas</Text>
+                            <Group gap="xs">
+                                {formData.coverage_areas.map(areaId => {
+                                    const area = coverageareas?.find(a => a.id.toString() === areaId);
+                                    return area ? (
+                                        <Badge key={areaId} color="green" variant="light" size="md">
+                                            {area.name}
+                                        </Badge>
+                                    ) : null;
+                                })}
+                            </Group>
                         </Grid.Col>
                     </Grid>
+                    
+                    <Divider />
+                    
+                    <div>
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Total Cost</Text>
+                        <Paper p="md" radius="md" className="bg-gradient-to-r from-emerald-500 to-green-600 text-white">
+                            <Group justify="space-between" align="center">
+                                <Text fw={600}>Campaign Total</Text>
+                                <Text fw={700} size="2rem">
+                                    KES {costBreakdown?.total_cost.toLocaleString()}
+                                </Text>
+                            </Group>
+                        </Paper>
+                    </div>
                 </Stack>
             </Card>
+
+            <Card withBorder p="lg" radius="lg" className="border-2">
+                <Checkbox
+                    label={<Text fw={500}>I agree to the terms and conditions</Text>}
+                    description="By submitting this campaign, you agree to our service terms and pricing"
+                    checked={formData.agree_to_terms}
+                    onChange={(e) => updateFormData({ agree_to_terms: e.currentTarget.checked })}
+                    size="md"
+                    required
+                />
+            </Card>
         </Stack>
-    ), [formData, costBreakdown]);
+    ), [formData, costBreakdown, duration, coverageareas, updateFormData]);
 
     return (
         <>
-            <Card withBorder shadow="lg" radius="xl" p={{ base: "md", sm: "lg" }} className="w-full max-w-none">
-                <Stack gap="xl">
-                    <Stepper
-                        active={activeStep}
-                        onStepClick={setActiveStep}
-                        allowNextStepsSelect={false}
-                        size="sm"
-                        radius="md"
-                        completedIcon={<CheckCircle size={16} />}
-                    >
-                        <Stepper.Step label="Basic Info" description="Campaign details" icon={<FileText size={16} />} />
-                        <Stepper.Step label="Campaign Setup" description="Dates & coverage" icon={<MapPin size={16} />} />
-                        <Stepper.Step label="Design" description="Visual requirements" icon={<Palette size={16} />} />
-                        <Stepper.Step label="Additional Details" description="VAT and Special Instructions" icon={<Users size={16} />} />
-                        <Stepper.Step label="Cost Review" description="Pricing breakdown" icon={<Calculator size={16} />} />
-                        <Stepper.Step label="Submit" description="Final review" icon={<Flag size={16} />} />
-                    </Stepper>
-
-                    <Progress
-                        value={(activeStep + 1) / 6 * 100}
-                        size="md"
-                        radius="xl"
-                        className="w-full"
-                    />
-
-                    <form onSubmit={handleSubmit}>
-                        {activeStep === 0 && StepBasicInfo}
-                        {activeStep === 1 && StepCampaignDetails}
-                        {activeStep === 2 && StepDesignRequirements}
-                        {activeStep === 3 && StepAgreement}
-                        {activeStep === 4 && StepCostReview}
-                        {activeStep === 5 && StepFinalReview}
-
-                        <Group justify="space-between" pt="xl">
-                            <Button
-                                variant="light"
-                                onClick={prevStep}
-                                disabled={activeStep === 0}
-                                size="md"
+            <div className="w-full">
+                <Card 
+                    withBorder 
+                    shadow="xl" 
+                    radius="xl" 
+                    p={{ base: "lg", sm: "xl" }} 
+                    className="w-full border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                >
+                    <Stack gap="xl">
+                        {/* Stepper */}
+                        <div className="overflow-x-auto">
+                            <Stepper
+                                active={activeStep}
+                                onStepClick={setActiveStep}
+                                allowNextStepsSelect={false}
+                                size="sm"
                                 radius="md"
-                                leftSection={<ArrowLeft size={16} />}
+                                completedIcon={<CheckCircle size={18} />}
+                                styles={{
+                                    step: {
+                                        padding: '0.75rem'
+                                    },
+                                    stepIcon: {
+                                        borderWidth: 2
+                                    }
+                                }}
                             >
-                                Previous
-                            </Button>
-                            <Button
-                                type="submit"
-                                loading={submitting || (activeStep === 4 && loadingCosts)}
-                                disabled={!isStepValid}
-                                rightSection={activeStep === 5 ? <Flag size={16} /> : <ArrowRight size={16} />}
-                                size="md"
-                                radius="md"
-                                gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                                variant="gradient"
-                            >
-                                {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
-                            </Button>
-                        </Group>
-                    </form>
-                </Stack>
-            </Card>
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Basic Info</Text>} 
+                                    description={<Text size="xs" c="dimmed">Campaign details</Text>}
+                                    icon={<FileText size={18} />} 
+                                />
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Setup</Text>} 
+                                    description={<Text size="xs" c="dimmed">Dates & coverage</Text>}
+                                    icon={<MapPin size={18} />} 
+                                />
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Design</Text>} 
+                                    description={<Text size="xs" c="dimmed">Visual requirements</Text>}
+                                    icon={<Palette size={18} />} 
+                                />
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Details</Text>} 
+                                    description={<Text size="xs" c="dimmed">VAT & instructions</Text>}
+                                    icon={<FileText size={18} />} 
+                                />
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Costs</Text>} 
+                                    description={<Text size="xs" c="dimmed">Pricing breakdown</Text>}
+                                    icon={<Calculator size={18} />} 
+                                />
+                                <Stepper.Step 
+                                    label={<Text size="sm" fw={500}>Submit</Text>} 
+                                    description={<Text size="xs" c="dimmed">Final review</Text>}
+                                    icon={<Flag size={18} />} 
+                                />
+                            </Stepper>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div>
+                            <Progress
+                                value={(activeStep + 1) / 6 * 100}
+                                size="lg"
+                                radius="xl"
+                                className="w-full"
+                                styles={{
+                                    root: { backgroundColor: 'var(--mantine-color-gray-2)' }
+                                }}
+                            />
+                            <Text size="xs" c="dimmed" ta="center" mt="xs">
+                                Step {activeStep + 1} of 6
+                            </Text>
+                        </div>
+
+                        {/* Form Content */}
+                        <form onSubmit={handleSubmit}>
+                            <div className="min-h-[400px]">
+                                {activeStep === 0 && StepBasicInfo}
+                                {activeStep === 1 && StepCampaignDetails}
+                                {activeStep === 2 && StepDesignRequirements}
+                                {activeStep === 3 && StepAgreement}
+                                {activeStep === 4 && StepCostReview}
+                                {activeStep === 5 && StepFinalReview}
+                            </div>
+
+                            {/* Navigation Buttons */}
+                            <Group justify="space-between" pt="xl" mt="xl" className="border-t-2 border-gray-100 dark:border-gray-700">
+                                <Button
+                                    variant="light"
+                                    onClick={prevStep}
+                                    disabled={activeStep === 0}
+                                    size="lg"
+                                    radius="md"
+                                    leftSection={<ArrowLeft size={18} />}
+                                    color="gray"
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    loading={submitting || (activeStep === 4 && loadingCosts)}
+                                    disabled={!isStepValid}
+                                    rightSection={activeStep === 5 ? <Flag size={18} /> : <ArrowRight size={18} />}
+                                    size="lg"
+                                    radius="md"
+                                    gradient={{ from: 'blue', to: 'purple', deg: 45 }}
+                                    variant="gradient"
+                                >
+                                    {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
+                                </Button>
+                            </Group>
+                        </form>
+                    </Stack>
+                </Card>
+            </div>
 
             {/* Coverage Area Modal */}
             <Modal
                 opened={coverageAreaModalOpened}
                 onClose={closeCoverageModal}
-                title="Add New Coverage Area"
+                title={
+                    <Group gap="sm">
+                        <ThemeIcon size="md" radius="md" variant="light" color="blue">
+                            <Plus size={18} />
+                        </ThemeIcon>
+                        <Text fw={600}>Add New Coverage Area</Text>
+                    </Group>
+                }
                 size="md"
-                radius="md"
+                radius="lg"
+                centered
             >
                 <Stack gap="md">
                     <TextInput
@@ -794,6 +1071,11 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         })}
                         required
                         size="md"
+                        radius="md"
+                        leftSection={<MapPin size={18} />}
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
 
                     <Select
@@ -812,6 +1094,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         })}
                         searchable
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
 
                     <Textarea
@@ -824,10 +1110,19 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         })}
                         minRows={3}
                         size="md"
+                        radius="md"
+                        styles={{
+                            input: { borderWidth: 2 }
+                        }}
                     />
 
                     <Group justify="flex-end" mt="md">
-                        <Button variant="light" onClick={closeCoverageModal} radius="md">
+                        <Button 
+                            variant="light" 
+                            onClick={closeCoverageModal} 
+                            radius="md"
+                            size="md"
+                        >
                             Cancel
                         </Button>
                         <Button
@@ -836,6 +1131,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             gradient={{ from: 'blue', to: 'purple', deg: 45 }}
                             variant="gradient"
                             radius="md"
+                            size="md"
+                            leftSection={<Plus size={18} />}
                         >
                             Add Coverage Area
                         </Button>

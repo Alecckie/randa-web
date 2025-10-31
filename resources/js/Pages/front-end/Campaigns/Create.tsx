@@ -6,17 +6,8 @@ import Sidebar from '@/Components/frontend/layouts/Sidebar';
 import Header from '@/Components/frontend/layouts/Header';
 import CampaignForm from '@/Components/campaigns/CampaignForm';
 import type { PageProps, User } from '@/types';
-import {usePage} from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { Advertiser } from '@/types/advertiser';
-
-
-// interface Advertiser {
-//     id: number;
-//     company_name?: string;
-//     business_registration?: string;
-//     address?: string;
-//     status?: string;
-// }
 
 interface CoverageArea {
     id: number;
@@ -26,11 +17,6 @@ interface CoverageArea {
     sub_county?: string;
     ward?: string;
 }
-
-// interface AdvertiserData {
-//     id: number;
-//     company_name: string;
-// }
 
 interface CreateCampaignProps {
     advertiser: Advertiser;
@@ -45,12 +31,11 @@ export default function CreateCampaign({
 }: CreateCampaignProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeNav, setActiveNav] = useState('campaigns');
-      const { auth } = usePage<PageProps>().props;
-        
-        const user = auth?.user;
+    const { auth } = usePage<PageProps>().props;
+    const user = auth?.user;
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex">
             <Head title="Create Campaign" />
 
             {/* Desktop Sidebar */}
@@ -79,37 +64,39 @@ export default function CreateCampaign({
                 />
 
                 {/* Page Content */}
-                <div className="p-4 sm:p-6 lg:p-8">
-                    <Container size="xl">
-                        {/* Page Header */}
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+                <div className="p-4 sm:p-6 lg:p-8 pb-12">
+                    {/* Page Header with improved styling */}
+                    <div className="mb-8">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-2">
                             <Button
                                 variant="subtle"
-                                leftSection={<ArrowLeft size={16} />}
+                                leftSection={<ArrowLeft size={18} />}
                                 component={Link}
                                 href={route('campaigns.index')}
                                 size="md"
-                                style={{ borderRadius: rem(8) }}
+                                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
+                                style={{ borderRadius: rem(10) }}
                             >
-                                Back to Campaigns
+                                Back
                             </Button>
-                            <div className="flex-1">
-                                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                                    Create New Campaign
-                                </h2>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                    Set up your helmet advertising campaign
-                                </p>
-                            </div>
                         </div>
+                        <div className="space-y-2">
+                            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                                Create New Campaign
+                            </h1>
+                            <p className="text-base text-gray-600 dark:text-gray-400">
+                                Set up your helmet advertising campaign in just a few steps
+                            </p>
+                        </div>
+                    </div>
 
-                        {/* Campaign Form Component */}
+                    <div className="w-full">
                         <CampaignForm
                             advertiser={advertiser}
                             advertisers={advertisers} 
                             coverageareas={coverageareas} 
                         />
-                    </Container>
+                    </div>
                 </div>
             </div>
         </div>

@@ -114,7 +114,7 @@ export default function Authenticated({
                 { name: 'Advertisers', href: '/advertisers', icon: '📢' },
                 { name: 'Campaigns', href: '/campaigns', icon: '🎯' },
                 { name: 'Helmets', href: '/helmets', icon: '🪖' },
-                { name: 'Zones', href: '/zones', icon: '🪖' },
+                { name: 'Coverage Areas', href: '/zones', icon: '🪖' },
                 { name: 'Payments', href: '/admin/payments', icon: '💰' },
                 { name: 'Settings', href: '/admin/settings', icon: '⚙️' },
             ],
