@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\CoverageAreaController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->group(function () {
@@ -20,4 +21,5 @@ Route::middleware('auth')->group(function () {
         Route::get('details/{ward}', [LocationController::class, 'locationDetails'])
             ->name('details');
     });
+    Route::resource('coverage-areas',CoverageAreaController::class);
 });

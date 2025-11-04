@@ -93,7 +93,7 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
         { label: 'Location Details', description: 'Rider operational location' },
         { label: 'Documents', description: 'Required documents upload' },
         { label: 'Contact & Payment', description: 'Contact details and M-Pesa' },
-        { label: 'Agreement', description: 'Terms and conditions' },
+        // { label: 'Agreement', description: 'Terms and conditions' },
     ];
 
     const [subcounties, setSubcounties] = useState<SubCounty[]>([]);
@@ -193,8 +193,8 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                     data.motorbike_registration;
             case 3:
                 return data.mpesa_number && data.next_of_kin_name && data.next_of_kin_phone;
-            case 4:
-                return data.signed_agreement.length >= 10;
+            // case 4:
+            //     return data.signed_agreement.length >= 10;
             default:
                 return false;
         }
@@ -579,51 +579,51 @@ export default function RiderCreate({ counties }: ExtendedRiderCreateProps) {
                     </Card>
                 );
 
-            case 4:
-                return (
-                    <Card>
-                        <Stack>
-                            <div>
-                                <Text size="lg" fw={600} mb="sm">Terms & Agreement</Text>
-                                <Text size="sm" c="dimmed">
-                                    Please read and acknowledge the rider agreement terms.
-                                </Text>
-                            </div>
+            // case 4:
+            //     return (
+            //         <Card>
+            //             <Stack>
+            //                 <div>
+            //                     <Text size="lg" fw={600} mb="sm">Terms & Agreement</Text>
+            //                     <Text size="sm" c="dimmed">
+            //                         Please read and acknowledge the rider agreement terms.
+            //                     </Text>
+            //                 </div>
 
-                            <Paper p="md" withBorder className="bg-gray-50 dark:bg-gray-700">
-                                <Text size="sm" fw={500} mb="sm">Rider Agreement Summary:</Text>
-                                <Text size="xs" c="dimmed">
-                                    • Agree to work according to assigned schedules and routes<br />
-                                    • Maintain helmet and equipment in good condition<br />
-                                    • Follow traffic rules and safety guidelines at all times<br />
-                                    • Report any incidents or issues immediately<br />
-                                    • Daily rate of KSh {data.daily_rate} will be paid as agreed<br />
-                                    • Payments will be processed to the registered M-Pesa number<br />
-                                    • Agreement can be terminated by either party with proper notice
-                                </Text>
-                            </Paper>
+            //                 <Paper p="md" withBorder className="bg-gray-50 dark:bg-gray-700">
+            //                     <Text size="sm" fw={500} mb="sm">Rider Agreement Summary:</Text>
+            //                     <Text size="xs" c="dimmed">
+            //                         • Agree to work according to assigned schedules and routes<br />
+            //                         • Maintain helmet and equipment in good condition<br />
+            //                         • Follow traffic rules and safety guidelines at all times<br />
+            //                         • Report any incidents or issues immediately<br />
+            //                         • Daily rate of KSh {data.daily_rate} will be paid as agreed<br />
+            //                         • Payments will be processed to the registered M-Pesa number<br />
+            //                         • Agreement can be terminated by either party with proper notice
+            //                     </Text>
+            //                 </Paper>
 
-                            <Textarea
-                                label="Digital Signature & Agreement"
-                                placeholder="Type 'I agree to the terms and conditions stated above' and add your full name"
-                                description="By typing your agreement here, you acknowledge that you have read, understood, and agree to all terms and conditions."
-                                value={data.signed_agreement}
-                                onChange={(e) => setData('signed_agreement', e.currentTarget.value)}
-                                error={errors.signed_agreement}
-                                minRows={4}
-                                required
-                            />
+            //                 <Textarea
+            //                     label="Digital Signature & Agreement"
+            //                     placeholder="Type 'I agree to the terms and conditions stated above' and add your full name"
+            //                     description="By typing your agreement here, you acknowledge that you have read, understood, and agree to all terms and conditions."
+            //                     value={data.signed_agreement}
+            //                     onChange={(e) => setData('signed_agreement', e.currentTarget.value)}
+            //                     error={errors.signed_agreement}
+            //                     minRows={4}
+            //                     required
+            //                 />
 
-                            {data.signed_agreement && (
-                                <Alert color="green" variant="light">
-                                    <Text size="sm">
-                                        Agreement acknowledged. Ready to submit application.
-                                    </Text>
-                                </Alert>
-                            )}
-                        </Stack>
-                    </Card>
-                );
+            //                 {data.signed_agreement && (
+            //                     <Alert color="green" variant="light">
+            //                         <Text size="sm">
+            //                             Agreement acknowledged. Ready to submit application.
+            //                         </Text>
+            //                     </Alert>
+            //                 )}
+            //             </Stack>
+            //         </Card>
+            //     );
 
             default:
                 return null;

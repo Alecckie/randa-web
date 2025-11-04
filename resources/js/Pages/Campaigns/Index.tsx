@@ -3,7 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, TextInput, Select, Badge, Card, Group, Text, Stack, ActionIcon, Menu, Modal, Textarea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { CheckCircleIcon, Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon } from 'lucide-react';
+import { CheckCircleIcon, Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon, FullscreenIcon } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
 import type { CampaignsIndexProps, CampaignStatus } from '@/types/campaign';
 import { Campaign } from '@/types/dashboard';
@@ -41,7 +41,8 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             paused: 'red',
             completed: 'green',
             cancelled: 'red',
-            pending_payment:'yellow'
+            pending_payment:'yellow',
+            paid: 'green'
         };
         return colors[status];
     };
@@ -54,6 +55,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             completed: <Fullscreen size={14} />,
             cancelled: <BookLockIcon size={14} />,
             pending_payment:<BookLockIcon size={14} />,
+            paid: <FullscreenIcon size={14}/>
         };
         return icons[status];
     };

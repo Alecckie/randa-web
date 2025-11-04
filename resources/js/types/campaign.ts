@@ -33,6 +33,9 @@ export interface Campaign {
     duration_days: number;
     payment_status: string;
     total_paid_amount: number;
+    coverage_areas:CoverageArea
+    advertiser:Advertiser
+
 }
 
 export interface CoverageArea {
@@ -122,13 +125,5 @@ export interface CampaignsIndexProps {
         status?: string;
         user_id?: number;
     };
-    advertisers: Array<{
-        id: number;
-        company_name: string;
-        user: {
-            id: number;
-            name: string;
-            email: string;
-        };
-    }>;
+    advertisers: Array<Advertiser>;
 }

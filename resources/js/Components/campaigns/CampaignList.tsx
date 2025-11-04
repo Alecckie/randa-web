@@ -32,23 +32,11 @@ import {
 } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
 import type { CampaignStatus } from '@/types/campaign';
+import type { Campaign } from '@/types/campaign';
 
-interface Campaign {
-    id: number;
-    name: string;
-    description?: string;
-    status: CampaignStatus;
-    start_date: string;
-    end_date: string;
-    coverage_areas?: any;
-    helmet_count?: number;
-    advertiser?: {
-        company_name: string;
-    };
-}
 
 interface PaginatedCampaigns {
-    data: Campaign[];
+   data: Campaign[];
     current_page: number;
     last_page: number;
     from: number;
