@@ -37,7 +37,7 @@ class RegisteredUserController extends Controller
             'phone' => [
                 'required',
                 'string',
-                'regex:/^254[0-9]{9}$/',
+                'regex:/^0[0-9]{9}$/',
                 'unique:users,phone',
             ],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
@@ -60,8 +60,8 @@ class RegisteredUserController extends Controller
 
         event(new Registered($user));
 
-        Auth::login($user);
+        // Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        return redirect(route('login', absolute: false));
     }
 }

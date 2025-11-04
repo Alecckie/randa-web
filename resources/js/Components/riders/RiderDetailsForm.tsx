@@ -24,8 +24,8 @@ interface LocationData {
     sub_county_id: number | '';
     ward_id: number | '';
     stage_name: string;
-    latitude: number | '';
-    longitude: number | '';
+    // latitude: number | '';
+    // longitude: number | '';
     effective_from: Date | null;
     notes: string;
 }
@@ -241,7 +241,7 @@ export default function RiderDetailsForm({
                                     />
                                 </Grid.Col>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                {/* <Grid.Col span={{ base: 12, md: 6 }}>
                                     <NumberInput
                                         label="Latitude (Optional)"
                                         placeholder="e.g., -1.2864"
@@ -267,7 +267,7 @@ export default function RiderDetailsForm({
                                         min={-180}
                                         max={180}
                                     />
-                                </Grid.Col>
+                                </Grid.Col> */}
 
                                 <Grid.Col span={12}>
                                     <Textarea

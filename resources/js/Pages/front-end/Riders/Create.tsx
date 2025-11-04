@@ -13,8 +13,8 @@ interface LocationData {
     sub_county_id: number | '';
     ward_id: number | '';
     stage_name: string;
-    latitude: number | '';
-    longitude: number | '';
+    // latitude: number | '';
+    // longitude: number | '';
     effective_from: Date | null;
     notes: string;
 }
@@ -94,8 +94,8 @@ export default function Create({
             sub_county_id: '',
             ward_id: '',
             stage_name: '',
-            latitude: '',
-            longitude: '',
+            // latitude: '',
+            // longitude: '',
             effective_from: new Date(),
             notes: ''
         }
@@ -149,7 +149,7 @@ export default function Create({
                 {/* Header */}
                 <Header 
                     onMenuClick={() => setSidebarOpen(true)} 
-                    advertiser={rider}
+                    user={rider}
                     showCreateMenu={false}
                 />
 

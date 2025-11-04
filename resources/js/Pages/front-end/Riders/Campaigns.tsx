@@ -421,7 +421,7 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                 <Table.Tr>
                                                     <Table.Th>Campaign Name</Table.Th>
                                                     <Table.Th>Duration</Table.Th>
-                                                    <Table.Th>Status</Table.Th>
+                                                    {/* <Table.Th>Status</Table.Th> */}
                                                     <Table.Th>Assignment</Table.Th>
                                                     <Table.Th>Helmet</Table.Th>
                                                     <Table.Th>Coverage Areas</Table.Th>
@@ -459,9 +459,9 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                                 </Text>
                                                             </div>
                                                         </Table.Td>
-                                                        <Table.Td>
+                                                        {/* <Table.Td>
                                                             {getCampaignStatusBadge(campaign.status)}
-                                                        </Table.Td>
+                                                        </Table.Td> */}
                                                         <Table.Td>
                                                             {campaign.assignment ? (
                                                                 <div>

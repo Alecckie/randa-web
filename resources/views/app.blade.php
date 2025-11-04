@@ -26,7 +26,9 @@
         <meta name="twitter:title" content="{{ config('app.name', 'Randa App') }}">
         <meta name="twitter:description" content="Randa app connects advertisers with riders who market branded helmet ads to pillion passengers, boosting brand exposure in urban areas.">
         <meta name="twitter:image" content="{{ asset('/assets/favicon.png') }}">
-
+         <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         
         <!-- Scripts -->
         @routes
