@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AdvertiserDashboardController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\MpesaCallbackController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\RiderProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -14,6 +16,11 @@ Route::get('/user', function (Request $request) {
 Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    // M-Pesa STK Push 
+    Route::post('/mpesa/callback', [MpesaCallbackController::class, 'handleCallback']);
+
+    // M-Pesa timeout callback
+    Route::post('/mpesa/timeout', [MpesaCallbackController::class, 'handleTimeout']);
 
 
     // Protected routes (require authentication)
@@ -71,6 +78,24 @@ Route::prefix('v1')->group(function () {
 
             Route::get('details/{ward}', [LocationController::class, 'locationDetails'])
                 ->name('details');
+        });
+
+        Route::prefix('payments')->name('payments.')->group(function () {
+
+            Route::post('/mpesa/initiate', [PaymentController::class, 'initiateMpesaPayment'])
+                ->name('mpesa.initiate');
+
+            Route::post('/mpesa/query', [PaymentController::class, 'queryPaymentStatus'])
+                ->name('mpesa.query');
+
+            Route::get('/mpesa/{paymentReference}', [PaymentController::class, 'getPaymentDetails'])
+                ->name('mpesa.details');
+
+            Route::get('/list', [PaymentController::class, 'listPayments'])
+                ->name('list');
+
+            Route::get('/stats', [PaymentController::class, 'getStats'])
+                ->name('stats');
         });
     });
 });

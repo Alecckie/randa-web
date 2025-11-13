@@ -2,14 +2,16 @@ import { Advertiser } from "./advertiser";
 
 // types/campaign.ts - Add this to your existing types file
 
-export type CampaignStatus = 
-    | 'draft' 
-    | 'pending_payment' 
-    | 'paid' 
-    | 'active' 
-    | 'paused' 
-    | 'completed' 
+export type CampaignStatus =
+    | 'draft'
+    | 'pending_payment'
+    | 'paid'
+    | 'active'
+    | 'paused'
+    | 'completed'
     | 'cancelled';
+
+export type PaymentStatus = 'idle' | 'initiating' | 'pending' | 'success' | 'failed' | 'timeout';
 
 export interface Campaign {
     id: number;
@@ -33,8 +35,8 @@ export interface Campaign {
     duration_days: number;
     payment_status: string;
     total_paid_amount: number;
-    coverage_areas:CoverageArea
-    advertiser:Advertiser
+    coverage_areas: CoverageArea
+    advertiser: Advertiser
 
 }
 

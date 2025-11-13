@@ -11,6 +11,13 @@ import { DatesProvider } from '@mantine/dates';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
+import { configureEcho } from '@laravel/echo-react';
+
+
+
+configureEcho({
+    broadcaster: 'reverb',
+});
 
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';

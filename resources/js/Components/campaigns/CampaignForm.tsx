@@ -24,9 +24,10 @@ import {
     Progress,
     Modal,
     Box,
-    rem,
+    Notification,
     Badge,
-    ThemeIcon
+    ThemeIcon,
+
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -45,11 +46,26 @@ import {
     Plus,
     Building,
     Calendar,
-    Target
+    Target,
+    CreditCard,
+    AlertCircle,
+    Smartphone,
+    XCircle,
+    Clock
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Advertiser } from '@/types/advertiser';
+import { PaymentStatus } from '@/types/campaign';
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+declare global {
+    interface Window {
+        Pusher: typeof Pusher;
+        Echo: Echo<'reverb'>;
+    }
+}
 
 interface CoverageArea {
     id: number;
@@ -138,6 +154,18 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         description: ''
     });
 
+
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
+    const [paymentError, setPaymentError] = useState('');
+    const [paymentReference, setPaymentReference] = useState('');
+    const [showPaymentNotification, setShowPaymentNotification] = useState(false);
+
+
+
+
+
+
     // Memoize options
     const advertiserOptions = useMemo(() =>
         advertisers?.map(advertiser => ({
@@ -203,7 +231,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         setLoadingCosts(true);
 
         setTimeout(() => {
-            const baseCost = formData.helmet_count! * duration * 200;
+            const baseCost = formData.helmet_count! * duration * 1;
             const designCost = formData.need_design ? 3000 : 0;
             const subtotal = baseCost + designCost;
             const vatAmount = subtotal * 0.16;
@@ -212,7 +240,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             setCostBreakdown({
                 helmet_count: formData.helmet_count!,
                 duration_days: duration,
-                daily_rate: 200,
+                daily_rate: 1,
                 base_cost: baseCost,
                 design_cost: designCost,
                 subtotal: subtotal,
@@ -224,6 +252,187 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         }, 1000);
     }, [formData.helmet_count, duration, formData.need_design]);
 
+
+    const initiatePayment = useCallback(async () => {
+        if (!phoneNumber || !costBreakdown) return;
+
+        setPaymentStatus('initiating');
+        setPaymentError('');
+        setShowPaymentNotification(false);
+
+        try {
+            // Use WEB route for Inertia apps (session authentication)
+            const response = await fetch(route('payments.mpesa.initiate.stk-push'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    phone_number: phoneNumber,
+                    amount: costBreakdown.total_cost,
+                    campaign_id: null, // Will be set after campaign creation
+                    campaign_data: {
+                        name: formData.name,
+                        helmet_count: formData.helmet_count,
+                        duration: duration
+                    },
+                    description: `Payment for ${formData.name}`
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                setPaymentReference(data.reference);
+                setPaymentStatus('pending');
+
+                // Echo will automatically update status when callback is received
+            } else {
+                throw new Error(data.message || 'Payment initiation failed');
+            }
+        } catch (error) {
+            setPaymentStatus('failed');
+            setPaymentError(error instanceof Error ? error.message : 'Failed to initiate payment');
+            setShowPaymentNotification(true);
+        }
+    }, [phoneNumber, costBreakdown, formData, duration]);
+
+ useEffect(() => {
+    console.log('🎯 Echo Effect Running', {
+        hasAdvertiser: !!advertiser?.id,
+        advertiserId: advertiser?.id,
+        paymentStatus,
+        paymentReference
+    });
+
+    if (!advertiser?.id) {
+        console.warn('⚠️ No advertiser ID');
+        return;
+    }
+
+    // ✅ REMOVED: Don't check payment status here - always initialize Echo
+    // This way Echo is ready BEFORE payment is initiated
+
+    // Get Reverb configuration
+    const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
+    const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
+    const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
+    const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
+
+    if (!reverbAppKey) {
+        console.error('❌ VITE_REVERB_APP_KEY is not defined');
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+        console.error('❌ CSRF token not found');
+        return;
+    }
+
+    console.log('✅ Initializing Echo with:', {
+        advertiserId: advertiser.id,
+        hasCSRF: !!csrfToken,
+        reverbHost,
+        reverbPort,
+        scheme: reverbScheme
+    });
+
+    // Initialize Echo if not already initialized
+    if (!window.Echo) {
+        window.Pusher = Pusher;
+        
+        try {
+            window.Echo = new Echo({
+                broadcaster: 'reverb',
+                key: reverbAppKey,
+                wsHost: reverbHost,
+                wsPort: reverbScheme === 'https' ? 443 : reverbPort,
+                wssPort: reverbScheme === 'https' ? 443 : reverbPort,
+                forceTLS: reverbScheme === 'https',
+                enabledTransports: ['ws', 'wss'],
+                disableStats: true,
+                authEndpoint: '/broadcasting/auth',
+                auth: {
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                },
+            });
+
+            console.log('✅ Echo initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize Echo:', error);
+            return;
+        }
+    }
+
+    const channelName = `payment.${advertiser.id}`;
+    console.log(`🔌 Subscribing to channel: ${channelName}`);
+    
+    const channel = window.Echo.private(channelName);
+    
+    // Log subscription success
+    channel.subscribed(() => {
+        console.log(`✅ Successfully subscribed to ${channelName}`);
+    });
+    
+    // Listen for the event
+    channel.listen('.payment.status.updated', (event: any) => {
+        console.log('💰 Payment status update received:', event);
+        console.log('📋 Comparing references:', {
+            received: event.reference,
+            expected: paymentReference,
+            match: event.reference === paymentReference
+        });
+        
+        // ✅ Check if we have a payment reference before comparing
+        if (!paymentReference) {
+            console.warn('⚠️ No payment reference yet - storing event for later');
+            // Event came but payment not initiated yet (shouldn't happen)
+            return;
+        }
+        
+        if (event.reference === paymentReference) {
+            console.log('✅ Reference matched! Processing payment status:', event.status);
+            
+            if (event.status === 'success') {
+                console.log('🎉 Setting payment to SUCCESS');
+                setPaymentStatus('success');
+                setShowPaymentNotification(true);
+                setPaymentError('');
+            } else if (event.status === 'failed') {
+                console.log('❌ Setting payment to FAILED');
+                setPaymentStatus('failed');
+                setPaymentError(event.message || 'Payment failed');
+                setShowPaymentNotification(true);
+            }
+        } else {
+            console.warn('⚠️ Reference mismatch - ignoring event', {
+                received: event.reference,
+                expected: paymentReference
+            });
+        }
+    });
+    
+    // Log errors
+    channel.error((error: any) => {
+        console.error('❌ Echo channel error:', error);
+    });
+
+    // Cleanup
+    return () => {
+        console.log(`🔌 Unsubscribing from ${channelName}`);
+        channel.stopListening('.payment.status.updated');
+        window.Echo.leave(channelName);
+    };
+}, [advertiser?.id, paymentReference]);
+
     useEffect(() => {
         if (activeStep === 4 && formData.helmet_count && duration && !costBreakdown && !loadingCosts) {
             calculateCosts();
@@ -234,7 +443,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         if (activeStep === 3) {
             calculateCosts();
         }
-        setActiveStep(current => Math.min(current + 1, 5));
+        setActiveStep(current => Math.min(current + 1, 6));
     }, [activeStep, calculateCosts]);
 
     const prevStep = useCallback(() => {
@@ -243,13 +452,16 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
     const handleSubmit = useCallback((e: React.FormEvent) => {
         e.preventDefault();
-        if (activeStep === 5) {
+
+        if (activeStep === 6 && paymentStatus === 'success') {
             setSubmitting(true);
 
             const submissionData = {
                 ...formData,
                 coverage_area_ids: formData.coverage_areas.map(id => parseInt(id)),
-                advertiser_id: formData.advertiser_id ? parseInt(formData.advertiser_id.toString()) : null
+                advertiser_id: formData.advertiser_id ? parseInt(formData.advertiser_id.toString()) : null,
+                payment_reference: paymentReference,
+                payment_status: 'paid'
             };
 
             router.post(route('my-campaigns.store'), submissionData, {
@@ -265,7 +477,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         } else {
             nextStep();
         }
-    }, [activeStep, formData, nextStep]);
+    }, [activeStep, formData, nextStep, paymentStatus, paymentReference]);
 
     const isStepValid = useMemo(() => {
         switch (activeStep) {
@@ -281,10 +493,12 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 return costBreakdown !== null;
             case 5:
                 return formData.agree_to_terms;
+            case 6:
+                return paymentStatus === 'success';
             default:
                 return true;
         }
-    }, [activeStep, formData, costBreakdown]);
+    }, [activeStep, formData, costBreakdown, paymentStatus]);
 
     const handleCreateCoverageArea = useCallback(() => {
         router.post(route('coverage-areas.store'), newCoverageArea, {
@@ -347,7 +561,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         }}
                     />
                 </Grid.Col>
-                
+
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select
                         label="Business Type"
@@ -365,7 +579,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         }}
                     />
                 </Grid.Col>
-                
+
                 <Grid.Col span={12}>
                     <Textarea
                         label="Campaign Description"
@@ -431,7 +645,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             }}
                         />
                     </Grid.Col>
-                    
+
                     {duration > 0 && (
                         <Grid.Col span={12}>
                             <Paper p="md" radius="md" className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
@@ -480,7 +694,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         </Button>
                     </Group>
                 </Grid.Col>
-                
+
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <NumberInput
                         label="Number of Helmets"
@@ -501,16 +715,16 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 </Grid.Col>
             </Grid>
 
-            <Divider 
+            <Divider
                 label={
                     <Group gap="xs">
                         <Users size={18} className="text-gray-500" />
                         <Text size="sm" fw={500}>Rider Demographics (Optional)</Text>
                     </Group>
-                } 
-                labelPosition="center" 
+                }
+                labelPosition="center"
             />
-            
+
             <Grid gutter="lg">
                 <Grid.Col span={{ base: 12, md: 4 }}>
                     <MultiSelect
@@ -745,7 +959,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                             </Text>
                                         </Table.Td>
                                     </Table.Tr>
-                                    
+
                                     {costBreakdown.design_cost > 0 && (
                                         <Table.Tr>
                                             <Table.Td>
@@ -759,7 +973,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                             </Table.Td>
                                         </Table.Tr>
                                     )}
-                                    
+
                                     <Table.Tr className="border-t-2">
                                         <Table.Td>
                                             <Text fw={600} size="md">Subtotal</Text>
@@ -770,7 +984,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                             </Text>
                                         </Table.Td>
                                     </Table.Tr>
-                                    
+
                                     <Table.Tr>
                                         <Table.Td>
                                             <Text fw={500} size="md">VAT (16%)</Text>
@@ -781,7 +995,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                             </Text>
                                         </Table.Td>
                                     </Table.Tr>
-                                    
+
                                     <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
                                         <Table.Td>
                                             <Text fw={700} size="xl" className="text-emerald-700 dark:text-emerald-400">
@@ -833,6 +1047,9 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         </Stack>
     ), [loadingCosts, costBreakdown, formData.helmet_count, duration, calculateCosts]);
 
+
+
+
     const StepFinalReview = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
@@ -857,9 +1074,9 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Campaign Name</Text>
                         <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">{formData.name}</Text>
                     </div>
-                    
+
                     <Divider />
-                    
+
                     <Grid>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Duration</Text>
@@ -871,7 +1088,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 {duration} days
                             </Badge>
                         </Grid.Col>
-                        
+
                         <Grid.Col span={{ base: 12, sm: 6 }}>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Helmets</Text>
                             <Group gap="xs">
@@ -879,7 +1096,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 <Text fw={500} size="lg">{formData.helmet_count}</Text>
                             </Group>
                         </Grid.Col>
-                        
+
                         <Grid.Col span={12}>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Coverage Areas</Text>
                             <Group gap="xs">
@@ -894,9 +1111,9 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             </Group>
                         </Grid.Col>
                     </Grid>
-                    
+
                     <Divider />
-                    
+
                     <div>
                         <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Total Cost</Text>
                         <Paper p="md" radius="md" className="bg-gradient-to-r from-emerald-500 to-green-600 text-white">
@@ -924,14 +1141,227 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         </Stack>
     ), [formData, costBreakdown, duration, coverageareas, updateFormData]);
 
+    const StepPayment = useMemo(() => (
+        <Stack gap="lg">
+            <div className="flex items-center gap-3 mb-2">
+                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
+                    <CreditCard size={24} />
+                </ThemeIcon>
+                <div>
+                    <Title order={3} className="text-gray-800 dark:text-gray-100">M-Pesa Payment</Title>
+                    <Text size="sm" c="dimmed">Complete your payment to submit campaign</Text>
+                </div>
+            </div>
+
+            {/* Payment Success Notification */}
+            {showPaymentNotification && paymentStatus === 'success' && (
+                <Notification
+                    icon={<CheckCircle size={20} />}
+                    color="green"
+                    title="Payment Successful!"
+                    onClose={() => setShowPaymentNotification(false)}
+                    radius="md"
+                    withCloseButton
+                >
+                    Your payment of KES {costBreakdown?.total_cost.toLocaleString()} has been received successfully.
+                    Reference: {paymentReference}
+                </Notification>
+            )}
+
+            {/* Payment Failed Notification */}
+            {showPaymentNotification && paymentStatus === 'failed' && (
+                <Notification
+                    icon={<XCircle size={20} />}
+                    color="red"
+                    title="Payment Failed"
+                    onClose={() => setShowPaymentNotification(false)}
+                    radius="md"
+                    withCloseButton
+                >
+                    {paymentError || 'Your payment could not be processed. Please try again.'}
+                </Notification>
+            )}
+
+            {/* Payment Amount Summary */}
+            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-200 dark:border-gray-700">
+                <Stack gap="md">
+                    <Group justify="space-between" align="center">
+                        <div>
+                            <Text size="sm" c="dimmed" fw={600}>Total Amount Due</Text>
+                            <Text fw={700} size="2.5rem" className="text-green-600 dark:text-green-400">
+                                KES {costBreakdown?.total_cost.toLocaleString()}
+                            </Text>
+                        </div>
+                        <ThemeIcon size={80} radius="xl" variant="light" color="green">
+                            <Smartphone size={40} />
+                        </ThemeIcon>
+                    </Group>
+                    <Divider />
+                    <Grid>
+                        <Grid.Col span={6}>
+                            <Text size="xs" c="dimmed">Campaign Duration</Text>
+                            <Text fw={600}>{costBreakdown?.duration_days} days</Text>
+                        </Grid.Col>
+                        <Grid.Col span={6}>
+                            <Text size="xs" c="dimmed">Helmets</Text>
+                            <Text fw={600}>{costBreakdown?.helmet_count}</Text>
+                        </Grid.Col>
+                    </Grid>
+                </Stack>
+            </Card>
+
+            {/* Payment Form - Idle State */}
+            {paymentStatus === 'idle' && (
+                <Card withBorder p="xl" radius="lg">
+                    <Stack gap="lg">
+                        <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
+                            <Text size="sm" fw={500}>
+                                Enter your M-Pesa registered phone number to receive a payment prompt on your phone.
+                            </Text>
+                        </Alert>
+
+                        <TextInput
+                            label="M-Pesa Phone Number"
+                            placeholder="e.g., 254712345678"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.currentTarget.value)}
+                            size="lg"
+                            radius="md"
+                            leftSection={<Smartphone size={20} />}
+                            description="Format: 254XXXXXXXXX"
+                            styles={{
+                                input: { borderWidth: 2, fontSize: '1.1rem', '&:focus': { borderColor: 'var(--mantine-color-green-6)' } }
+                            }}
+                        />
+
+                        <Button
+                            onClick={initiatePayment}
+                            disabled={!phoneNumber || phoneNumber.length < 12}
+                            size="xl"
+                            radius="md"
+                            leftSection={<CreditCard size={22} />}
+                            gradient={{ from: 'green', to: 'teal', deg: 45 }}
+                            variant="gradient"
+                            fullWidth
+                        >
+                            Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
+                        </Button>
+                    </Stack>
+                </Card>
+            )}
+
+            {/* Initiating Payment State */}
+            {paymentStatus === 'initiating' && (
+                <Card withBorder p="xl" radius="lg" className="text-center">
+                    <Stack gap="md" align="center">
+                        <Loader size="xl" type="dots" color="green" />
+                        <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">
+                            Initiating Payment...
+                        </Text>
+                        <Text size="sm" c="dimmed">Please wait while we process your request</Text>
+                    </Stack>
+                </Card>
+            )}
+
+            {/* Pending Payment State */}
+            {paymentStatus === 'pending' && (
+                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border-2 border-yellow-300 dark:border-gray-700">
+                    <Stack gap="md" align="center">
+                        <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
+                            <Clock size={40} />
+                        </ThemeIcon>
+                        <Text fw={700} size="xl" className="text-yellow-700 dark:text-yellow-400">
+                            Payment Prompt Sent!
+                        </Text>
+                        <Text size="md" ta="center" c="dimmed">
+                            Please check your phone <Text component="span" fw={700}>{phoneNumber}</Text> for the M-Pesa payment prompt.
+                        </Text>
+                        <Text size="sm" ta="center" c="dimmed">
+                            Reference: <Text component="span" fw={600}>{paymentReference}</Text>
+                        </Text>
+                        <Alert icon={<Info size={18} />} color="yellow" variant="light" radius="md" style={{ width: '100%' }}>
+                            <Text size="sm">
+                                Enter your M-Pesa PIN to complete the payment.
+                                You will be notified automatically once payment is confirmed.
+                            </Text>
+                        </Alert>
+                        <Loader size="md" type="dots" color="yellow" />
+                        <Text size="xs" c="dimmed">Waiting for payment confirmation...</Text>
+                    </Stack>
+                </Card>
+            )}
+
+            {/* Payment Success State */}
+            {paymentStatus === 'success' && (
+                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-300 dark:border-gray-700">
+                    <Stack gap="md" align="center">
+                        <ThemeIcon size={100} radius="xl" color="green" variant="light">
+                            <CheckCircle size={50} />
+                        </ThemeIcon>
+                        <Text fw={700} size="2rem" className="text-green-600 dark:text-green-400">
+                            Payment Successful!
+                        </Text>
+                        <Text size="lg" ta="center" c="dimmed">
+                            KES {costBreakdown?.total_cost.toLocaleString()} received successfully
+                        </Text>
+                        <Paper p="md" radius="md" className="bg-white dark:bg-gray-900" style={{ width: '100%' }}>
+                            <Group justify="space-between">
+                                <Text size="sm" c="dimmed">Transaction Reference</Text>
+                                <Badge size="lg" color="green" variant="light">{paymentReference}</Badge>
+                            </Group>
+                        </Paper>
+                        <Alert icon={<CheckCircle size={18} />} color="green" variant="light" radius="md" style={{ width: '100%' }}>
+                            <Text size="sm" fw={500}>
+                                Your payment has been confirmed. Click "Submit Campaign" to finalize your campaign creation.
+                            </Text>
+                        </Alert>
+                    </Stack>
+                </Card>
+            )}
+
+            {/* Payment Failed State */}
+            {paymentStatus === 'failed' && (
+                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-2 border-red-300 dark:border-gray-700">
+                    <Stack gap="md" align="center">
+                        <ThemeIcon size={80} radius="xl" color="red" variant="light">
+                            <AlertCircle size={40} />
+                        </ThemeIcon>
+                        <Text fw={700} size="xl" className="text-red-600 dark:text-red-400">
+                            Payment Failed
+                        </Text>
+                        <Text size="md" ta="center" c="dimmed">
+                            {paymentError || 'We could not process your payment. Please try again.'}
+                        </Text>
+                        <Button
+                            onClick={() => {
+                                setPaymentStatus('idle');
+                                setPaymentError('');
+                                setShowPaymentNotification(false);
+                            }}
+                            color="red"
+                            variant="light"
+                            size="lg"
+                            radius="md"
+                            leftSection={<CreditCard size={20} />}
+                        >
+                            Try Again
+                        </Button>
+                    </Stack>
+                </Card>
+            )}
+        </Stack>
+    ), [paymentStatus, phoneNumber, costBreakdown, paymentError, paymentReference, showPaymentNotification, initiatePayment]);
+
+
+
     return (
         <>
             <div className="w-full">
-                <Card 
-                    withBorder 
-                    shadow="xl" 
-                    radius="xl" 
-                    p={{ base: "lg", sm: "xl" }} 
+                <Card
+                    withBorder
+                    shadow="xl"
+                    radius="xl"
+                    p={{ base: "lg", sm: "xl" }}
                     className="w-full border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
                 >
                     <Stack gap="xl">
@@ -953,43 +1383,49 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                     }
                                 }}
                             >
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Basic Info</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Basic Info</Text>}
                                     description={<Text size="xs" c="dimmed">Campaign details</Text>}
-                                    icon={<FileText size={18} />} 
+                                    icon={<FileText size={18} />}
                                 />
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Setup</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Setup</Text>}
                                     description={<Text size="xs" c="dimmed">Dates & coverage</Text>}
-                                    icon={<MapPin size={18} />} 
+                                    icon={<MapPin size={18} />}
                                 />
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Design</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Design</Text>}
                                     description={<Text size="xs" c="dimmed">Visual requirements</Text>}
-                                    icon={<Palette size={18} />} 
+                                    icon={<Palette size={18} />}
                                 />
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Details</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Details</Text>}
                                     description={<Text size="xs" c="dimmed">VAT & instructions</Text>}
-                                    icon={<FileText size={18} />} 
+                                    icon={<FileText size={18} />}
                                 />
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Costs</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Costs</Text>}
                                     description={<Text size="xs" c="dimmed">Pricing breakdown</Text>}
-                                    icon={<Calculator size={18} />} 
+                                    icon={<Calculator size={18} />}
                                 />
-                                <Stepper.Step 
-                                    label={<Text size="sm" fw={500}>Submit</Text>} 
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Review</Text>}
                                     description={<Text size="xs" c="dimmed">Final review</Text>}
-                                    icon={<Flag size={18} />} 
+                                    icon={<Flag size={18} />}
                                 />
+                                <Stepper.Step
+                                    label={<Text size="sm" fw={500}>Payment</Text>}
+                                    description={<Text size="xs" c="dimmed">Make Payment and Submit</Text>}
+                                    icon={<CreditCard size={18} />}
+                                />
+
                             </Stepper>
                         </div>
 
                         {/* Progress Bar */}
                         <div>
                             <Progress
-                                value={(activeStep + 1) / 6 * 100}
+                                value={(activeStep + 1) / 7 * 100}
                                 size="lg"
                                 radius="xl"
                                 className="w-full"
@@ -998,7 +1434,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 }}
                             />
                             <Text size="xs" c="dimmed" ta="center" mt="xs">
-                                Step {activeStep + 1} of 6
+                                Step {activeStep + 1} of 7
                             </Text>
                         </div>
 
@@ -1011,6 +1447,9 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 {activeStep === 3 && StepAgreement}
                                 {activeStep === 4 && StepCostReview}
                                 {activeStep === 5 && StepFinalReview}
+                                {activeStep === 6 && StepPayment}
+
+
                             </div>
 
                             {/* Navigation Buttons */}
@@ -1030,13 +1469,13 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                     type="submit"
                                     loading={submitting || (activeStep === 4 && loadingCosts)}
                                     disabled={!isStepValid}
-                                    rightSection={activeStep === 5 ? <Flag size={18} /> : <ArrowRight size={18} />}
+                                    rightSection={activeStep === 6 ? <Flag size={18} /> : <ArrowRight size={18} />}
                                     size="lg"
                                     radius="md"
                                     gradient={{ from: 'blue', to: 'purple', deg: 45 }}
                                     variant="gradient"
                                 >
-                                    {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
+                                    {activeStep === 6 ? 'Submit Campaign' : 'Continue'}
                                 </Button>
                             </Group>
                         </form>
@@ -1117,9 +1556,9 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                     />
 
                     <Group justify="flex-end" mt="md">
-                        <Button 
-                            variant="light" 
-                            onClick={closeCoverageModal} 
+                        <Button
+                            variant="light"
+                            onClick={closeCoverageModal}
                             radius="md"
                             size="md"
                         >
