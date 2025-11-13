@@ -261,7 +261,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         setShowPaymentNotification(false);
 
         try {
-            // Use WEB route for Inertia apps (session authentication)
+
             const response = await fetch(route('payments.mpesa.initiate.stk-push'), {
                 method: 'POST',
                 headers: {
@@ -273,7 +273,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 body: JSON.stringify({
                     phone_number: phoneNumber,
                     amount: costBreakdown.total_cost,
-                    campaign_id: null, // Will be set after campaign creation
+                    campaign_id: null,
                     campaign_data: {
                         name: formData.name,
                         helmet_count: formData.helmet_count,
@@ -300,138 +300,136 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         }
     }, [phoneNumber, costBreakdown, formData, duration]);
 
- useEffect(() => {
-    console.log('🎯 Echo Effect Running', {
-        hasAdvertiser: !!advertiser?.id,
-        advertiserId: advertiser?.id,
-        paymentStatus,
-        paymentReference
-    });
-
-    if (!advertiser?.id) {
-        console.warn('⚠️ No advertiser ID');
-        return;
-    }
-
-    // ✅ REMOVED: Don't check payment status here - always initialize Echo
-    // This way Echo is ready BEFORE payment is initiated
-
-    // Get Reverb configuration
-    const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
-    const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
-    const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
-    const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
-
-    if (!reverbAppKey) {
-        console.error('❌ VITE_REVERB_APP_KEY is not defined');
-        return;
-    }
-
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found');
-        return;
-    }
-
-    console.log('✅ Initializing Echo with:', {
-        advertiserId: advertiser.id,
-        hasCSRF: !!csrfToken,
-        reverbHost,
-        reverbPort,
-        scheme: reverbScheme
-    });
-
-    // Initialize Echo if not already initialized
-    if (!window.Echo) {
-        window.Pusher = Pusher;
-        
-        try {
-            window.Echo = new Echo({
-                broadcaster: 'reverb',
-                key: reverbAppKey,
-                wsHost: reverbHost,
-                wsPort: reverbScheme === 'https' ? 443 : reverbPort,
-                wssPort: reverbScheme === 'https' ? 443 : reverbPort,
-                forceTLS: reverbScheme === 'https',
-                enabledTransports: ['ws', 'wss'],
-                disableStats: true,
-                authEndpoint: '/broadcasting/auth',
-                auth: {
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        'Accept': 'application/json',
-                    },
-                },
-            });
-
-            console.log('✅ Echo initialized successfully');
-        } catch (error) {
-            console.error('❌ Failed to initialize Echo:', error);
-            return;
-        }
-    }
-
-    const channelName = `payment.${advertiser.id}`;
-    console.log(`🔌 Subscribing to channel: ${channelName}`);
-    
-    const channel = window.Echo.private(channelName);
-    
-    // Log subscription success
-    channel.subscribed(() => {
-        console.log(`✅ Successfully subscribed to ${channelName}`);
-    });
-    
-    // Listen for the event
-    channel.listen('.payment.status.updated', (event: any) => {
-        console.log('💰 Payment status update received:', event);
-        console.log('📋 Comparing references:', {
-            received: event.reference,
-            expected: paymentReference,
-            match: event.reference === paymentReference
+    useEffect(() => {
+        console.log('🎯 Echo Effect Running', {
+            hasAdvertiser: !!advertiser?.id,
+            advertiserId: advertiser?.id,
+            paymentStatus,
+            paymentReference
         });
-        
-        // ✅ Check if we have a payment reference before comparing
-        if (!paymentReference) {
-            console.warn('⚠️ No payment reference yet - storing event for later');
-            // Event came but payment not initiated yet (shouldn't happen)
+
+        if (!advertiser?.id) {
+            console.warn('⚠️ No advertiser ID');
             return;
         }
-        
-        if (event.reference === paymentReference) {
-            console.log('✅ Reference matched! Processing payment status:', event.status);
-            
-            if (event.status === 'success') {
-                console.log('🎉 Setting payment to SUCCESS');
-                setPaymentStatus('success');
-                setShowPaymentNotification(true);
-                setPaymentError('');
-            } else if (event.status === 'failed') {
-                console.log('❌ Setting payment to FAILED');
-                setPaymentStatus('failed');
-                setPaymentError(event.message || 'Payment failed');
-                setShowPaymentNotification(true);
-            }
-        } else {
-            console.warn('⚠️ Reference mismatch - ignoring event', {
-                received: event.reference,
-                expected: paymentReference
-            });
-        }
-    });
-    
-    // Log errors
-    channel.error((error: any) => {
-        console.error('❌ Echo channel error:', error);
-    });
 
-    // Cleanup
-    return () => {
-        console.log(`🔌 Unsubscribing from ${channelName}`);
-        channel.stopListening('.payment.status.updated');
-        window.Echo.leave(channelName);
-    };
-}, [advertiser?.id, paymentReference]);
+
+
+        // Get Reverb configuration
+        const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
+        const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
+        const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
+        const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
+
+        if (!reverbAppKey) {
+            console.error('❌ VITE_REVERB_APP_KEY is not defined');
+            return;
+        }
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+        if (!csrfToken) {
+            console.error('❌ CSRF token not found');
+            return;
+        }
+
+        console.log('✅ Initializing Echo with:', {
+            advertiserId: advertiser.id,
+            hasCSRF: !!csrfToken,
+            reverbHost,
+            reverbPort,
+            scheme: reverbScheme
+        });
+
+        // Initialize Echo if not already initialized
+        if (!window.Echo) {
+            window.Pusher = Pusher;
+
+            try {
+                window.Echo = new Echo({
+                    broadcaster: 'reverb',
+                    key: reverbAppKey,
+                    wsHost: reverbHost,
+                    wsPort: reverbScheme === 'https' ? 443 : reverbPort,
+                    wssPort: reverbScheme === 'https' ? 443 : reverbPort,
+                    forceTLS: reverbScheme === 'https',
+                    enabledTransports: ['ws', 'wss'],
+                    disableStats: true,
+                    authEndpoint: '/broadcasting/auth',
+                    auth: {
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                    },
+                });
+
+                console.log('✅ Echo initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize Echo:', error);
+                return;
+            }
+        }
+
+        const channelName = `payment.${advertiser.id}`;
+
+        const channel = window.Echo.private(channelName);
+
+        // Log subscription success
+        channel.subscribed(() => {
+            console.log(`✅ Successfully subscribed to ${channelName}`);
+        });
+
+        // Listen for the event
+        channel.listen('.payment.status.updated', (event: any) => {
+            console.log('💰 Payment status update received:', event);
+            console.log('📋 Comparing references:', {
+                received: event.reference,
+                expected: paymentReference,
+                match: event.reference === paymentReference
+            });
+
+            // ✅ Check if we have a payment reference before comparing
+            if (!paymentReference) {
+                console.warn('⚠️ No payment reference yet - storing event for later');
+                // Event came but payment not initiated yet (shouldn't happen)
+                return;
+            }
+
+            if (event.reference === paymentReference) {
+                console.log('✅ Reference matched! Processing payment status:', event.status);
+
+                if (event.status === 'success') {
+                    console.log('🎉 Setting payment to SUCCESS');
+                    setPaymentStatus('success');
+                    setShowPaymentNotification(true);
+                    setPaymentError('');
+                } else if (event.status === 'failed') {
+                    console.log('❌ Setting payment to FAILED');
+                    setPaymentStatus('failed');
+                    setPaymentError(event.message || 'Payment failed');
+                    setShowPaymentNotification(true);
+                }
+            } else {
+                console.warn('⚠️ Reference mismatch - ignoring event', {
+                    received: event.reference,
+                    expected: paymentReference
+                });
+            }
+        });
+
+        // Log errors
+        channel.error((error: any) => {
+            console.error('❌ Echo channel error:', error);
+        });
+
+        // Cleanup
+        return () => {
+            console.log(`🔌 Unsubscribing from ${channelName}`);
+            channel.stopListening('.payment.status.updated');
+            window.Echo.leave(channelName);
+        };
+    }, [advertiser?.id, paymentReference]);
 
     useEffect(() => {
         if (activeStep === 4 && formData.helmet_count && duration && !costBreakdown && !loadingCosts) {
@@ -452,8 +450,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
     const handleSubmit = useCallback((e: React.FormEvent) => {
         e.preventDefault();
+        console.log();
 
         if (activeStep === 6 && paymentStatus === 'success') {
+
             setSubmitting(true);
 
             const submissionData = {
@@ -466,9 +466,13 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
             router.post(route('my-campaigns.store'), submissionData, {
                 onSuccess: () => {
+                                                    alert("Success " + activeStep);
+
                     setSubmitting(false);
                 },
                 onError: (errors: Record<string, string>) => {
+                                alert("Error " + activeStep);
+
                     setErrors(errors);
                     setSubmitting(false);
                 },
