@@ -159,6 +159,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
     const [paymentError, setPaymentError] = useState('');
     const [paymentReference, setPaymentReference] = useState('');
+    const [mpesa_receipt, setMpesaReceipt] = useState('');
+    const [payment_id,setPaymentId] = useState('');
     const [showPaymentNotification, setShowPaymentNotification] = useState(false);
 
 
@@ -287,6 +289,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
             if (response.ok && data.success) {
                 setPaymentReference(data.reference);
+                setMpesaReceipt(data.mpesa_receipt);
+                setPaymentId(data.payment_id);
                 setPaymentStatus('pending');
 
                 // Echo will automatically update status when callback is received
@@ -307,15 +311,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             paymentStatus,
             paymentReference
         });
-
         if (!advertiser?.id) {
             console.warn('⚠️ No advertiser ID');
             return;
         }
-
-
-
-        // Get Reverb configuration
         const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
         const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
         const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
@@ -341,7 +340,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             scheme: reverbScheme
         });
 
-        // Initialize Echo if not already initialized
         if (!window.Echo) {
             window.Pusher = Pusher;
 
@@ -460,19 +458,15 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 ...formData,
                 coverage_area_ids: formData.coverage_areas.map(id => parseInt(id)),
                 advertiser_id: formData.advertiser_id ? parseInt(formData.advertiser_id.toString()) : null,
-                payment_reference: paymentReference,
+                payment_id: payment_id,
                 payment_status: 'paid'
             };
 
             router.post(route('my-campaigns.store'), submissionData, {
                 onSuccess: () => {
-                                                    alert("Success " + activeStep);
-
                     setSubmitting(false);
                 },
                 onError: (errors: Record<string, string>) => {
-                                alert("Error " + activeStep);
-
                     setErrors(errors);
                     setSubmitting(false);
                 },
@@ -1168,7 +1162,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                     withCloseButton
                 >
                     Your payment of KES {costBreakdown?.total_cost.toLocaleString()} has been received successfully.
-                    Reference: {paymentReference}
+                    Code : {mpesa_receipt}
                 </Notification>
             )}
 
@@ -1444,7 +1438,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
                         {/* Form Content */}
                         <form onSubmit={handleSubmit}>
-                            <div className="min-h-[400px]">
+                            <div className="min-h-[300px]">
                                 {activeStep === 0 && StepBasicInfo}
                                 {activeStep === 1 && StepCampaignDetails}
                                 {activeStep === 2 && StepDesignRequirements}

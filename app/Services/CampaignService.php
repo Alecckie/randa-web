@@ -222,21 +222,35 @@ class CampaignService
                 'special_instructions' => $data['special_instructions'] ?? null,
             ]);
 
-            // Sync coverage areas using the new coverage_area_ids
+            $campaign_id= $campaign->id;
+
             if (isset($data['coverage_area_ids']) && is_array($data['coverage_area_ids'])) {
                 $campaign->coverageAreas()->sync($data['coverage_area_ids']);
             }
 
-            // Create rider demographics if provided
             if (isset($data['rider_demographics']) && is_array($data['rider_demographics'])) {
                 $this->createRiderDemographics($campaign, $data['rider_demographics']);
             }
 
-            // Calculate and store campaign costs
+            if(isset($data['payment_id']))
+            {
+                $this->updatePayment($data['payment_id'],$campaign_id);
+            }
+
             $this->calculateAndStoreCosts($campaign);
+            
 
             return $campaign->load(['coverageAreas', 'riderDemographics', 'currentCost']);
         });
+    }
+
+
+    /***update campaign id in payments */
+
+    public function updatePayment($id,$campaign_id)
+    {
+        $payment = Payment::findorFail($id);
+        return $payment->update(['campaign_id' => $campaign_id]);
     }
 
     /**

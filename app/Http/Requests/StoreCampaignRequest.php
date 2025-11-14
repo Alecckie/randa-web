@@ -26,6 +26,11 @@ class StoreCampaignRequest extends FormRequest
                 'integer',
                 'exists:advertisers,user_id'
             ],
+            'payment_id' => [
+                'required',
+                'integer',
+                'exists:payments,id'
+            ],
             'name' => [
                 'required',
                 'string',
@@ -46,7 +51,7 @@ class StoreCampaignRequest extends FormRequest
             'end_date' => [
                 'required',
                 'date',
-                'after:start_date'
+                'after_or_equal:start_date'
             ],
             'coverage_area_ids' => [
                 'required',
