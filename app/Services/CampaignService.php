@@ -204,7 +204,6 @@ class CampaignService
                 $designFilePath = $this->uploadDesignFile($designFile);
             }
 
-            // Create the campaign (without contact info and JSON fields)
             $campaign = Campaign::create([
                 'advertiser_id' => $data['advertiser_id'],
                 'name' => $data['name'],

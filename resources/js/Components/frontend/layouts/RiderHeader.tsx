@@ -30,16 +30,17 @@ const RiderHeader: React.FC<RiderHeaderProps> = ({ onMenuClick, rider }) => {
 
                     <div className="flex items-center space-x-3">
                         <Badge
-                            color={isApproved ? 'green' : isPending ? 'yellow' : 'gray'}
+                            color={isApproved ? 'green' : isPending ? 'orange' : 'gray'}
                             variant="light"
                             leftSection={isApproved ? <Check size={12} /> : <AlertCircle size={12} />}
                             className="hidden sm:flex"
-                        >
-                            {hasProfile && rider?.status
-                                ? rider.status.charAt(0).toUpperCase() + rider.status.slice(1)
-                                : 'Incomplete Profile'
-                            }
-                        </Badge>
+                            styles={isPending ? {
+                                root: {
+                                    backgroundColor: 'rgba(247, 145, 34, 0.1)',
+                                    color: '#f79122',
+                                },
+                            } : undefined}
+                        ></Badge>
                     </div>
                 </div>
             </div>

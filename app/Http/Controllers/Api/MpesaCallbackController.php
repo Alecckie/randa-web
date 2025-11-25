@@ -22,7 +22,7 @@ class MpesaCallbackController extends Controller
      */
     public function handleCallback(Request $request): JsonResponse
     {
-        // Log incoming callback
+
         Log::info('M-Pesa callback received', [
             'body' => $request->all(),
             'headers' => $request->headers->all()
@@ -65,8 +65,7 @@ class MpesaCallbackController extends Controller
             'body' => $request->all()
         ]);
 
-        // You can handle timeout logic here if needed
-        // For example, mark payment as timeout
+        
 
         return response()->json([
             'ResultCode' => 0,

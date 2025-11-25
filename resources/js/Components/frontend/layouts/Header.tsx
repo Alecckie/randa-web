@@ -54,7 +54,14 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
                                     <Button
                                         leftSection={<Plus size={18} />}
                                         rightSection={<ChevronDown size={16} />}
-                                        color="purple"
+                                        styles={{
+                                            root: {
+                                                backgroundColor: '#f79122',
+                                                '&:hover': {
+                                                    backgroundColor: '#e07d15',
+                                                },
+                                            },
+                                        }}
                                         variant="filled"
                                     >
                                         Create New
@@ -69,9 +76,9 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
                                     <Menu.Item leftSection={<ImageIcon size={16} />}>
                                         Upload Creative
                                     </Menu.Item>
-                                    
+
                                     <Menu.Divider />
-                                    
+
                                     <Menu.Label>Other Actions</Menu.Label>
                                     <Menu.Item leftSection={<Users size={16} />}>
                                         Connect Rider
@@ -89,7 +96,7 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
                         <Button variant="subtle" color="gray" className="hidden sm:flex">
                             <Bell size={18} />
                         </Button>
-                        
+
                         {/* Status Badge */}
                         <Badge
                             color={isApproved ? 'green' : isPending ? 'yellow' : isRejected ? 'red' : 'gray'}

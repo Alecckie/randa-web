@@ -61,7 +61,7 @@ export default function Sidebar({ user, activeNav, onNavClick }: SidebarProps) {
             {/* Sidebar Header */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <div className="w-10 h-10 bg-gradient-to-r from-orange-300 to-orange-400 rounded-xl flex items-center justify-center shadow-lg">
                         <span className="text-lg font-bold text-white">R</span>
                     </div>
                     <div>
@@ -84,11 +84,10 @@ export default function Sidebar({ user, activeNav, onNavClick }: SidebarProps) {
                                     key={item.key}
                                     href={item.href}
                                     onClick={() => onNavClick(item.key)}
-                                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors w-full text-left ${
-                                        activeNav === item.key
-                                            ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
-                                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                                    }`}
+                                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors w-full text-left ${activeNav === item.key
+                                        ? 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122] dark:text-orange-400'
+                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                        }`}
                                 >
                                     {item.icon}
                                     <span className="text-sm font-medium">{item.label}</span>
@@ -102,7 +101,11 @@ export default function Sidebar({ user, activeNav, onNavClick }: SidebarProps) {
             {/* User Profile at Bottom */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-3 mb-3">
-                    <Avatar size="md" color="purple">
+                    <Avatar size="md" styles={{
+                        root: {
+                            backgroundColor: '#f79122',
+                        },
+                    }}>
                         <Building2 size={20} />
                     </Avatar>
                     <div className="flex-1 min-w-0">

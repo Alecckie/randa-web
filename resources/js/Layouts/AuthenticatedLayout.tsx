@@ -14,7 +14,7 @@ import type {
 const ApplicationLogo: React.FC<ApplicationLogoProps> = ({ className }) => (
     <div className={className}>
         <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#f79122] rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">R</span>
             </div>
             <span className="font-bold text-xl text-gray-800 dark:text-white">RANDA</span>
@@ -162,7 +162,7 @@ export default function Authenticated({
                 {/* User Info */}
                 <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                     <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="w-10 h-10 bg-[#f79122] rounded-full flex items-center justify-center flex-shrink-0">
                             <span className="text-white font-semibold text-sm">
                                 {user.name?.charAt(0).toUpperCase()}
                             </span>
@@ -236,7 +236,7 @@ export default function Authenticated({
                                         <input
                                             type="text"
                                             placeholder="Search..."
-                                            className="w-48 lg:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                                            className="w-48 lg:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition-colors duration-200"
                                         />
                                         <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -273,7 +273,7 @@ export default function Authenticated({
                                         className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors duration-200"
                                         aria-label="Profile menu"
                                     >
-                                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <div className="w-8 h-8 bg-[#f79122] rounded-full flex items-center justify-center flex-shrink-0">
                                             <span className="text-white font-semibold text-xs">
                                                 {user.name?.charAt(0).toUpperCase()}
                                             </span>
@@ -292,7 +292,7 @@ export default function Authenticated({
                                                 >
                                                     Profile Settings
                                                 </Link>
-                                                
+
                                                 <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
                                                 <Link
                                                     href="/logout"
@@ -324,7 +324,7 @@ export default function Authenticated({
                                 © 2025 RANDA GPS Tracking System. All rights reserved.
                             </div>
                             <div className="flex flex-wrap justify-center space-x-4 md:space-x-6 text-sm text-gray-600 dark:text-gray-400">
-                               
+
                             </div>
                         </div>
                     </div>

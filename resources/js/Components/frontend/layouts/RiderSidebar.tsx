@@ -62,7 +62,7 @@ const RiderSidebar: React.FC<RiderSidebarProps> = ({ user, activeNav }) => {
         <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <div className="w-10 h-10 bg-[#f79122] rounded-xl flex items-center justify-center shadow-lg">
                         <span className="text-lg font-bold text-white">R</span>
                     </div>
                     <div>
@@ -84,8 +84,8 @@ const RiderSidebar: React.FC<RiderSidebarProps> = ({ user, activeNav }) => {
                                     key={item.key}
                                     href={item.href}
                                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors w-full text-left ${activeNav === item.key
-                                            ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                        ? 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122] dark:text-orange-400'
+                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                                         }`}
                                 >
                                     {item.icon}
@@ -99,8 +99,8 @@ const RiderSidebar: React.FC<RiderSidebarProps> = ({ user, activeNav }) => {
 
             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                        <Bike size={20} className="text-green-600 dark:text-green-400" />
+                    <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
+                        <Bike size={20} className="text-[#f79122] dark:text-orange-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                         <Text size="sm" fw={600} className="truncate text-gray-900 dark:text-white">

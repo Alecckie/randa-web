@@ -19,7 +19,7 @@ export default function Register() {
         phone: '',
         password: '',
         password_confirmation: '',
-        role: 'advertiser', 
+        role: 'advertiser',
     });
 
     const isMobile = useMediaQuery('(max-width: 768px)');
@@ -35,34 +35,34 @@ export default function Register() {
     return (
         <GuestLayout>
             <Head title="Register" />
-            
+
             <div className="min-h-screen flex bg-slate-50">
                 {/* Left Panel - Enhanced Branding */}
-                <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+                <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#3b3a3e] via-[#2a2929] to-[#3b3a3e] relative overflow-hidden">
                     {/* Subtle Pattern Overlay */}
                     <div className="absolute inset-0 opacity-5">
                         <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                                    <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor" strokeWidth="1"/>
+                                    <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor" strokeWidth="1" />
                                 </pattern>
                             </defs>
                             <rect width="100%" height="100%" fill="url(#grid)" />
                         </svg>
                     </div>
-                    
+
                     {/* Content */}
                     <div className="relative z-10 flex flex-col justify-center px-8 lg:px-12 xl:px-16">
                         <div className="max-w-lg">
                             {/* Logo/Brand Area */}
                             <div className="mb-12">
-                                <img src="/assets/randalogowhite_landscape680x420.png" alt="Randa Logo" className="h-20  w-auto" />
-                            
+                                <img src="/assets/randa_white_logo_landscape-01-01-01-01.png" alt="Randa Logo" className="h-20  w-auto" />
+
                                 <p className="text-slate-300 text-xl font-light leading-relaxed">
                                     Revolutionary motorbike helmet advertising platform connecting brands with riders
                                 </p>
                             </div>
-                            
+
                             {/* Enhanced Features */}
                             <div className="space-y-6 mb-12">
                                 {[
@@ -79,7 +79,7 @@ export default function Register() {
                                     </div>
                                 ))}
                             </div>
-                            
+
                             {/* Stats or Social Proof */}
                             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-slate-700">
                                 <div className="text-center">
@@ -114,7 +114,7 @@ export default function Register() {
                     <div className="w-full max-w-lg mx-auto">
                         {/* Mobile Logo */}
                         <div className="lg:hidden text-center mb-8">
-                            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/25">
+                            <div className="w-16 h-16 bg-[#f79122] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-orange-500/25">
                                 <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
@@ -142,8 +142,8 @@ export default function Register() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <label className={`
                                         flex items-center p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md
-                                        ${data.role === 'advertiser' 
-                                            ? 'border-blue-500 bg-blue-50 shadow-md' 
+                                        ${data.role === 'advertiser'
+                                            ? 'border-[#f79122] bg-orange-50 shadow-md'
                                             : 'border-slate-200 bg-white hover:border-slate-300'
                                         }
                                     `}>
@@ -154,11 +154,12 @@ export default function Register() {
                                             styles={{
                                                 radio: {
                                                     '&:checked': {
-                                                        backgroundColor: '#3b82f6',
-                                                        borderColor: '#3b82f6',
+                                                        backgroundColor: '#f79122',
+                                                        borderColor: '#f79122',
                                                     },
                                                 },
                                             }}
+
                                         />
                                         <div className="ml-4">
                                             <div className="font-semibold text-slate-900 text-lg">Advertiser</div>
@@ -167,11 +168,11 @@ export default function Register() {
                                             </div>
                                         </div>
                                     </label>
-                                    
+
                                     <label className={`
                                         flex items-center p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md
-                                        ${data.role === 'rider' 
-                                            ? 'border-violet-500 bg-violet-50 shadow-md' 
+                                        ${data.role === 'rider'
+                                            ? 'border-[#3b3a3e] bg-slate-50 shadow-md'
                                             : 'border-slate-200 bg-white hover:border-slate-300'
                                         }
                                     `}>
@@ -182,8 +183,8 @@ export default function Register() {
                                             styles={{
                                                 radio: {
                                                     '&:checked': {
-                                                        backgroundColor: '#8b5cf6',
-                                                        borderColor: '#8b5cf6',
+                                                        backgroundColor: '#3b3a3e',
+                                                        borderColor: '#3b3a3e',
                                                     },
                                                 },
                                             }}
@@ -202,11 +203,10 @@ export default function Register() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div className="sm:col-span-2">
                                     <label htmlFor="name" className="text-slate-800 font-semibold mb-3 block">
-                                        First Name
+                                        {data.role === 'advertiser' ? 'Company Name' : 'First Name'}
                                     </label>
                                     <TextInput
                                         id="name"
-                                        placeholder="Enter your first name"
                                         required
                                         value={data.first_name}
                                         onChange={(event) => setData('first_name', event.currentTarget.value)}
@@ -222,9 +222,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -234,13 +234,12 @@ export default function Register() {
                                     />
                                 </div>
 
-                                 <div className="sm:col-span-2">
+                                <div className="sm:col-span-2">
                                     <label htmlFor="name" className="text-slate-800 font-semibold mb-3 block">
-                                        Last Name
+                                        {data.role === 'advertiser' ? 'Contact Person' : 'Last Name'}
                                     </label>
                                     <TextInput
                                         id="name"
-                                        placeholder="Enter your full name"
                                         required
                                         value={data.last_name}
                                         onChange={(event) => setData('last_name', event.currentTarget.value)}
@@ -256,9 +255,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -291,9 +290,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -325,9 +324,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -359,9 +358,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -393,9 +392,9 @@ export default function Register() {
                                                 fontWeight: '500',
                                                 backgroundColor: '#fafafa',
                                                 '&:focus': {
-                                                    borderColor: data.role === 'rider' ? '#8b5cf6' : '#3b82f6',
+                                                    borderColor: data.role === 'rider' ? '#3b3a3e' : '#f79122',
                                                     backgroundColor: '#ffffff',
-                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)'}`,
+                                                    boxShadow: `0 0 0 3px ${data.role === 'rider' ? 'rgba(59, 58, 62, 0.1)' : 'rgba(247, 145, 34, 0.1)'}`,
                                                 },
                                                 '&::placeholder': {
                                                     color: '#94a3b8',
@@ -410,26 +409,26 @@ export default function Register() {
                             <div className="text-center sm:text-left">
                                 <p className="text-slate-600 leading-relaxed">
                                     By creating an account, you agree to our{' '}
-                                    <a href="#" className="text-blue-600 hover:text-blue-500 font-semibold underline decoration-2 underline-offset-2">
+                                    <a href="#" className="text-[#f79122] hover:text-[#e07d15] font-semibold underline decoration-2 underline-offset-2">
                                         Terms of Service
                                     </a>{' '}
                                     and{' '}
-                                    <a href="#" className="text-blue-600 hover:text-blue-500 font-semibold underline decoration-2 underline-offset-2">
+                                    <a href="#" className="text-[#f79122] hover:text-[#e07d15] font-semibold underline decoration-2 underline-offset-2">
                                         Privacy Policy
                                     </a>
                                 </p>
                             </div>
 
                             {/* Submit Button */}
-                            <Button 
+                            <Button
                                 type="submit"
                                 disabled={processing}
                                 size="xl"
                                 styles={{
                                     root: {
-                                        background: data.role === 'rider' 
-                                            ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' 
-                                            : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                        background: data.role === 'rider'
+                                            ? '#3b3a3e'
+                                            : '#f79122',
                                         border: 'none',
                                         borderRadius: '12px',
                                         padding: '16px 32px',
@@ -438,17 +437,17 @@ export default function Register() {
                                         height: '56px',
                                         width: '100%',
                                         boxShadow: data.role === 'rider'
-                                            ? '0 10px 25px -5px rgba(139, 92, 246, 0.3)'
-                                            : '0 10px 25px -5px rgba(59, 130, 246, 0.3)',
+                                            ? '0 10px 25px -5px rgba(59, 58, 62, 0.3)'
+                                            : '0 10px 25px -5px rgba(247, 145, 34, 0.3)',
                                         transition: 'all 0.2s ease-in-out',
                                         '&:hover:not(:disabled)': {
                                             background: data.role === 'rider'
-                                                ? 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)'
-                                                : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                                                ? '#2a2929'
+                                                : '#e07d15',
                                             transform: 'translateY(-2px)',
                                             boxShadow: data.role === 'rider'
-                                                ? '0 15px 35px -5px rgba(139, 92, 246, 0.4)'
-                                                : '0 15px 35px -5px rgba(59, 130, 246, 0.4)',
+                                                ? '0 15px 35px -5px rgba(59, 58, 62, 0.4)'
+                                                : '0 15px 35px -5px rgba(247, 145, 34, 0.4)',
                                         },
                                         '&:disabled': {
                                             opacity: 0.6,
@@ -478,7 +477,7 @@ export default function Register() {
                                 Already have an account?{' '}
                                 <Link
                                     href={route('login')}
-                                    className="text-blue-600 hover:text-blue-500 font-semibold underline decoration-2 underline-offset-2 transition-colors duration-200"
+                                    className="text-[#f79122] hover:text-[#e07d15] font-semibold underline decoration-2 underline-offset-2 transition-colors duration-200"
                                 >
                                     Sign in here
                                 </Link>

@@ -31,38 +31,38 @@ export default function Login({
   return (
     <GuestLayout>
       <Head title="Log in" />
-      
+
       <div className="min-h-screen flex">
         {/* Left Panel - Branding */}
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#3b3a3e] via-[#2a2929] to-[#3b3a3e] relative overflow-hidden">
           {/* Background Pattern */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute inset-0"></div>
           </div>
-          
+
           {/* Content */}
           <div className="relative z-10 flex flex-col justify-center px-8 lg:px-12 xl:px-16">
             <div className="max-w-md">
               {/* Logo/Brand Area */}
               <div className="mb-8">
-                <img src="/assets/randalogowhite_landscape680x420.png" alt="Randa Logo" className="h-20  w-auto" />
+                <img src="/assets/randa_white_logo_landscape-01-01-01-01.png" alt="Randa Logo" className="h-20  w-auto" />
                 <p className="text-slate-300 text-lg font-medium">
                   Motorbike Helmet Advertising Platform
                 </p>
               </div>
-              
+
               {/* Features */}
               <div className="space-y-4">
                 <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                  <div className="w-2 h-2 bg-[#f79122] rounded-full"></div>
                   <span className="text-slate-300">Targeted zone campaigns</span>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                  <div className="w-2 h-2 bg-[#f79122] rounded-full"></div>
                   <span className="text-slate-300">Premium helmet branding</span>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                  <div className="w-2 h-2 bg-[#f79122] rounded-full"></div>
                   <span className="text-slate-300">Real-time analytics</span>
                 </div>
               </div>
@@ -85,7 +85,7 @@ export default function Login({
           <div className="w-full max-w-md mx-auto">
             {/* Mobile Logo */}
             <div className="lg:hidden text-center mb-8">
-              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <div className="w-12 h-12 bg-[#f79122] rounded-xl flex items-center justify-center mx-auto mb-3 shadow-lg">
                 <span className="text-lg font-bold text-white">R</span>
               </div>
               <h2 className="text-2xl font-bold text-slate-900">Randa</h2>
@@ -117,7 +117,7 @@ export default function Login({
                   type="email"
                   name="email"
                   value={data.email}
-                  className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors duration-200"
+                  className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#f79122] focus:border-[#f79122] transition-colors duration-200"
                   autoComplete="username"
                   isFocused={true}
                   onChange={(e) => setData('email', e.target.value)}
@@ -132,7 +132,7 @@ export default function Login({
                   type="password"
                   name="password"
                   value={data.password}
-                  className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors duration-200"
+                  className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#f79122] focus:border-[#f79122] transition-colors duration-200"
                   autoComplete="current-password"
                   onChange={(e) => setData('password', e.target.value)}
                 />
@@ -156,14 +156,14 @@ export default function Login({
                 {canResetPassword && (
                   <Link
                     href={route('password.request')}
-                    className="rounded-md text-sm text-orange-600 underline hover:text-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                    className="rounded-md text-sm text-[#f79122] underline hover:text-[#e07d15] focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:ring-offset-2"
                   >
                     Forgot your password?
                   </Link>
                 )}
 
-                <PrimaryButton 
-                  className="ms-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700" 
+                <PrimaryButton
+                  className="ms-4 bg-[#f79122] hover:bg-[#e07d15]"
                   disabled={processing}
                 >
                   {processing ? 'Signing in...' : 'Log in'}
@@ -177,8 +177,7 @@ export default function Login({
                 Don't have an account?{' '}
                 <Link
                   href={route('register')}
-                  className="text-purple-600 hover:text-purple-500 font-medium transition-colors duration-200"
-                >
+                  className="text-[#f79122] hover:text-[#e07d15] font-medium transition-colors duration-200">
                   Sign up here
                 </Link>
               </p>
