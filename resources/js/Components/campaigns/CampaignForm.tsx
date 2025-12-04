@@ -160,8 +160,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const [paymentError, setPaymentError] = useState('');
     const [paymentReference, setPaymentReference] = useState('');
     const [mpesa_receipt, setMpesaReceipt] = useState('');
-    const [payment_id,setPaymentId] = useState('');
+    const [payment_id, setPaymentId] = useState('');
     const [showPaymentNotification, setShowPaymentNotification] = useState(false);
+    const [stkPushTimeout, setStkPushTimeout] = useState<NodeJS.Timeout | null>(null);
+    const [paymentTimeoutSeconds, setPaymentTimeoutSeconds] = useState(0);
 
 
 
@@ -236,7 +238,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             const baseCost = formData.helmet_count! * duration * 1;
             const designCost = formData.need_design ? 3000 : 0;
             const subtotal = baseCost + designCost;
-            const vatAmount =formData.require_vat_receipt ? (subtotal * 0.16) : 0;
+            const vatAmount = formData.require_vat_receipt ? (subtotal * 0.16) : 0;
             const totalCost = subtotal + vatAmount;
 
             setCostBreakdown({
@@ -252,182 +254,238 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             });
             setLoadingCosts(false);
         }, 1000);
-    }, [formData.helmet_count, duration, formData.need_design,formData.require_vat_receipt]);
+    }, [formData.helmet_count, duration, formData.need_design, formData.require_vat_receipt]);
 
 
     const initiatePayment = useCallback(async () => {
-        if (!phoneNumber || !costBreakdown) return;
+    if (!phoneNumber || !costBreakdown) return;
 
-        setPaymentStatus('initiating');
-        setPaymentError('');
-        setShowPaymentNotification(false);
+    setPaymentStatus('initiating');
+    setPaymentError('');
+    setShowPaymentNotification(false);
+    setPaymentTimeoutSeconds(0);
+
+    try {
+        const response = await fetch(route('payments.mpesa.initiate.stk-push'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                phone_number: phoneNumber,
+                amount: costBreakdown.total_cost,
+                campaign_id: null,
+                campaign_data: {
+                    name: formData.name,
+                    helmet_count: formData.helmet_count,
+                    duration: duration
+                },
+                description: `Payment for ${formData.name}`
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            setPaymentReference(data.reference);
+            setMpesaReceipt(data.mpesa_receipt);
+            setPaymentId(data.payment_id);
+            setPaymentStatus('pending');
+
+            // timeout for STK push (2 minutes)
+            let seconds = 120;
+            setPaymentTimeoutSeconds(seconds);
+            
+            const interval = setInterval(() => {
+                seconds--;
+                setPaymentTimeoutSeconds(seconds);
+                
+                if (seconds <= 0) {
+                    clearInterval(interval);
+                }
+            }, 1000);
+
+            // Auto-fail payment after 2 minutes if no response
+            const timeout = setTimeout(() => {
+                setPaymentStatus('timeout');
+                setPaymentError('Payment request timed out. You may not have received the STK push or took too long to complete payment.');
+                setShowPaymentNotification(true);
+                clearInterval(interval);
+            }, 120000); // 2 minutes
+
+            setStkPushTimeout(timeout);
+        } else {
+            throw new Error(data.message || 'Payment initiation failed');
+        }
+    } catch (error) {
+        setPaymentStatus('failed');
+        setPaymentError(error instanceof Error ? error.message : 'Failed to initiate payment');
+        setShowPaymentNotification(true);
+    }
+}, [phoneNumber, costBreakdown, formData, duration]);
+
+
+useEffect(() => {
+    return () => {
+        if (stkPushTimeout) {
+            clearTimeout(stkPushTimeout);
+        }
+    };
+}, [stkPushTimeout]);
+
+   useEffect(() => {
+    console.log(' Echo Effect Running', {
+        hasAdvertiser: !!advertiser?.id,
+        advertiserId: advertiser?.id,
+        paymentStatus,
+        paymentReference
+    });
+    
+    if (!advertiser?.id) {
+        console.warn(' No advertiser ID');
+        return;
+    }
+    
+    const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
+    const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
+    const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
+    const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
+
+    if (!reverbAppKey) {
+        console.error('VITE_REVERB_APP_KEY is not defined');
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!csrfToken) {
+        console.error(' CSRF token not found');
+        return;
+    }
+
+    console.log(' Initializing Echo with:', {
+        advertiserId: advertiser.id,
+        hasCSRF: !!csrfToken,
+        reverbHost,
+        reverbPort,
+        scheme: reverbScheme
+    });
+
+    if (!window.Echo) {
+        window.Pusher = Pusher;
 
         try {
-
-            const response = await fetch(route('payments.mpesa.initiate.stk-push'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            window.Echo = new Echo({
+                broadcaster: 'reverb',
+                key: reverbAppKey,
+                wsHost: reverbHost,
+                wsPort: reverbScheme === 'https' ? 443 : reverbPort,
+                wssPort: reverbScheme === 'https' ? 443 : reverbPort,
+                forceTLS: reverbScheme === 'https',
+                enabledTransports: ['ws', 'wss'],
+                disableStats: true,
+                authEndpoint: '/broadcasting/auth',
+                auth: {
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
                 },
-                credentials: 'include',
-                body: JSON.stringify({
-                    phone_number: phoneNumber,
-                    amount: costBreakdown.total_cost,
-                    campaign_id: null,
-                    campaign_data: {
-                        name: formData.name,
-                        helmet_count: formData.helmet_count,
-                        duration: duration
-                    },
-                    description: `Payment for ${formData.name}`
-                })
             });
 
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                setPaymentReference(data.reference);
-                setMpesaReceipt(data.mpesa_receipt);
-                setPaymentId(data.payment_id);
-                setPaymentStatus('pending');
-
-                // Echo will automatically update status when callback is received
-            } else {
-                throw new Error(data.message || 'Payment initiation failed');
-            }
+            console.log(' Echo initialized successfully');
         } catch (error) {
-            setPaymentStatus('failed');
-            setPaymentError(error instanceof Error ? error.message : 'Failed to initiate payment');
-            setShowPaymentNotification(true);
-        }
-    }, [phoneNumber, costBreakdown, formData, duration]);
-
-    useEffect(() => {
-        console.log('🎯 Echo Effect Running', {
-            hasAdvertiser: !!advertiser?.id,
-            advertiserId: advertiser?.id,
-            paymentStatus,
-            paymentReference
-        });
-        if (!advertiser?.id) {
-            console.warn('⚠️ No advertiser ID');
+            console.error(' Failed to initialize Echo:', error);
             return;
         }
-        const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
-        const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
-        const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
-        const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
+    }
 
-        if (!reverbAppKey) {
-            console.error('❌ VITE_REVERB_APP_KEY is not defined');
+    const channelName = `payment.${advertiser.id}`;
+    const channel = window.Echo.private(channelName);
+
+    channel.subscribed(() => {
+        console.log(` Successfully subscribed to ${channelName}`);
+    });
+
+    channel.listen('.payment.status.updated', (event: any) => {
+        console.log(' Payment status update received:', event);
+
+        if (!paymentReference) {
+            console.warn(' No payment reference yet - storing event for later');
             return;
         }
 
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (event.reference === paymentReference) {
+            console.log(' Reference matched! Processing payment status:', event.status);
 
-        if (!csrfToken) {
-            console.error('❌ CSRF token not found');
-            return;
+            // Clear timeout when we receive a response
+            if (stkPushTimeout) {
+                clearTimeout(stkPushTimeout);
+                setStkPushTimeout(null);
+            }
+
+            if (event.status === 'success') {
+                console.log('🎉 Setting payment to SUCCESS');
+                setPaymentStatus('success');
+                setShowPaymentNotification(true);
+                setPaymentError('');
+                setPaymentTimeoutSeconds(0);
+            } else if (event.status === 'failed') {
+                console.log(' Setting payment to FAILED');
+                setPaymentStatus('failed');
+                setPaymentError(event.message || 'Payment failed');
+                setShowPaymentNotification(true);
+                setPaymentTimeoutSeconds(0);
+            }
+        } else {
+            console.warn(' Reference mismatch - ignoring event');
         }
+    });
 
-        console.log('✅ Initializing Echo with:', {
-            advertiserId: advertiser.id,
-            hasCSRF: !!csrfToken,
-            reverbHost,
-            reverbPort,
-            scheme: reverbScheme
-        });
+    channel.error((error: any) => {
+        console.error(' Echo channel error:', error);
+    });
 
-        if (!window.Echo) {
-            window.Pusher = Pusher;
+    return () => {
+        console.log(` Unsubscribing from ${channelName}`);
+        channel.stopListening('.payment.status.updated');
+        window.Echo.leave(channelName);
+    };
+}, [advertiser?.id, paymentReference, stkPushTimeout]);
 
-            try {
-                window.Echo = new Echo({
-                    broadcaster: 'reverb',
-                    key: reverbAppKey,
-                    wsHost: reverbHost,
-                    wsPort: reverbScheme === 'https' ? 443 : reverbPort,
-                    wssPort: reverbScheme === 'https' ? 443 : reverbPort,
-                    forceTLS: reverbScheme === 'https',
-                    enabledTransports: ['ws', 'wss'],
-                    disableStats: true,
-                    authEndpoint: '/broadcasting/auth',
-                    auth: {
-                        headers: {
-                            'X-CSRF-TOKEN': csrfToken,
-                            'Accept': 'application/json',
-                        },
-                    },
-                });
+const handleRetryPayment = useCallback(() => {
+    setPaymentStatus('idle');
+    setPaymentError('');
+    setPaymentReference('');
+    setMpesaReceipt('');
+    setPaymentId('');
+    setShowPaymentNotification(false);
+    setPaymentTimeoutSeconds(0);
+    
+    if (stkPushTimeout) {
+        clearTimeout(stkPushTimeout);
+        setStkPushTimeout(null);
+    }
+}, [stkPushTimeout]);
 
-                console.log('✅ Echo initialized successfully');
-            } catch (error) {
-                console.error('❌ Failed to initialize Echo:', error);
-                return;
-            }
-        }
-
-        const channelName = `payment.${advertiser.id}`;
-
-        const channel = window.Echo.private(channelName);
-
-        // Log subscription success
-        channel.subscribed(() => {
-            console.log(`✅ Successfully subscribed to ${channelName}`);
-        });
-
-        // Listen for the event
-        channel.listen('.payment.status.updated', (event: any) => {
-            console.log('💰 Payment status update received:', event);
-            console.log('📋 Comparing references:', {
-                received: event.reference,
-                expected: paymentReference,
-                match: event.reference === paymentReference
-            });
-
-            // ✅ Check if we have a payment reference before comparing
-            if (!paymentReference) {
-                console.warn('⚠️ No payment reference yet - storing event for later');
-                // Event came but payment not initiated yet (shouldn't happen)
-                return;
-            }
-
-            if (event.reference === paymentReference) {
-                console.log('✅ Reference matched! Processing payment status:', event.status);
-
-                if (event.status === 'success') {
-                    console.log('🎉 Setting payment to SUCCESS');
-                    setPaymentStatus('success');
-                    setShowPaymentNotification(true);
-                    setPaymentError('');
-                } else if (event.status === 'failed') {
-                    console.log('❌ Setting payment to FAILED');
-                    setPaymentStatus('failed');
-                    setPaymentError(event.message || 'Payment failed');
-                    setShowPaymentNotification(true);
-                }
-            } else {
-                console.warn('⚠️ Reference mismatch - ignoring event', {
-                    received: event.reference,
-                    expected: paymentReference
-                });
-            }
-        });
-
-        // Log errors
-        channel.error((error: any) => {
-            console.error('❌ Echo channel error:', error);
-        });
-
-        // Cleanup
-        return () => {
-            console.log(`🔌 Unsubscribing from ${channelName}`);
-            channel.stopListening('.payment.status.updated');
-            window.Echo.leave(channelName);
-        };
-    }, [advertiser?.id, paymentReference]);
+const handleChangePhoneNumber = useCallback(() => {
+    setPhoneNumber('');
+    setPaymentStatus('idle');
+    setPaymentError('');
+    setPaymentReference('');
+    setMpesaReceipt('');
+    setPaymentId('');
+    setShowPaymentNotification(false);
+    setPaymentTimeoutSeconds(0);
+    
+    if (stkPushTimeout) {
+        clearTimeout(stkPushTimeout);
+        setStkPushTimeout(null);
+    }
+}, [stkPushTimeout]);
 
     useEffect(() => {
         if (activeStep === 4 && formData.helmet_count && duration && !costBreakdown && !loadingCosts) {
@@ -987,15 +1045,15 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
                                     {formData?.require_vat_receipt && (
                                         <Table.Tr>
-                                        <Table.Td>
-                                            <Text fw={500} size="md">VAT (16%)</Text>
-                                        </Table.Td>
-                                        <Table.Td className="text-right">
-                                            <Text fw={600} size="lg">
-                                                KES {costBreakdown.vat_amount.toLocaleString()}
-                                            </Text>
-                                        </Table.Td>
-                                    </Table.Tr>
+                                            <Table.Td>
+                                                <Text fw={500} size="md">VAT (16%)</Text>
+                                            </Table.Td>
+                                            <Table.Td className="text-right">
+                                                <Text fw={600} size="lg">
+                                                    KES {costBreakdown.vat_amount.toLocaleString()}
+                                                </Text>
+                                            </Table.Td>
+                                        </Table.Tr>
                                     )}
 
                                     <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
@@ -1143,216 +1201,305 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         </Stack>
     ), [formData, costBreakdown, duration, coverageareas, updateFormData]);
 
-    const StepPayment = useMemo(() => (
-        <Stack gap="lg">
-            <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
-                    <CreditCard size={24} />
-                </ThemeIcon>
-                <div>
-                    <Title order={3} className="text-gray-800 dark:text-gray-100">M-Pesa Payment</Title>
-                    <Text size="sm" c="dimmed">Complete your payment to submit campaign</Text>
-                </div>
+   const StepPayment = useMemo(() => (
+    <Stack gap="lg">
+        <div className="flex items-center gap-3 mb-2">
+            <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
+                <CreditCard size={24} />
+            </ThemeIcon>
+            <div>
+                <Title order={3} className="text-gray-800 dark:text-gray-100">M-Pesa Payment</Title>
+                <Text size="sm" c="dimmed">Complete your payment to submit campaign</Text>
             </div>
+        </div>
 
-            {/* Payment Success Notification */}
-            {showPaymentNotification && paymentStatus === 'success' && (
-                <Notification
-                    icon={<CheckCircle size={20} />}
-                    color="green"
-                    title="Payment Successful!"
-                    onClose={() => setShowPaymentNotification(false)}
-                    radius="md"
-                    withCloseButton
-                >
-                    Your payment of KES {costBreakdown?.total_cost.toLocaleString()} has been received successfully.
-                    Code : {mpesa_receipt}
-                </Notification>
-            )}
+        {/* Payment Success Notification */}
+        {showPaymentNotification && paymentStatus === 'success' && (
+            <Notification
+                icon={<CheckCircle size={20} />}
+                color="green"
+                title="Payment Successful!"
+                onClose={() => setShowPaymentNotification(false)}
+                radius="md"
+                withCloseButton
+            >
+                Your payment of KES {costBreakdown?.total_cost.toLocaleString()} has been received successfully.
+                Code : {mpesa_receipt}
+            </Notification>
+        )}
 
-            {/* Payment Failed Notification */}
-            {showPaymentNotification && paymentStatus === 'failed' && (
-                <Notification
-                    icon={<XCircle size={20} />}
-                    color="red"
-                    title="Payment Failed"
-                    onClose={() => setShowPaymentNotification(false)}
-                    radius="md"
-                    withCloseButton
-                >
-                    {paymentError || 'Your payment could not be processed. Please try again.'}
-                </Notification>
-            )}
+        {/* Payment Failed Notification */}
+        {showPaymentNotification && (paymentStatus === 'failed' || paymentStatus === 'timeout') && (
+            <Notification
+                icon={<XCircle size={20} />}
+                color="red"
+                title={paymentStatus === 'timeout' ? 'Payment Timed Out' : 'Payment Failed'}
+                onClose={() => setShowPaymentNotification(false)}
+                radius="md"
+                withCloseButton
+            >
+                {paymentError || 'Your payment could not be processed. Please try again.'}
+            </Notification>
+        )}
 
-            {/* Payment Amount Summary */}
-            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-200 dark:border-gray-700">
-                <Stack gap="md">
-                    <Group justify="space-between" align="center">
-                        <div>
-                            <Text size="sm" c="dimmed" fw={600}>Total Amount Due</Text>
-                            <Text fw={700} size="2.5rem" className="text-green-600 dark:text-green-400">
-                                KES {costBreakdown?.total_cost.toLocaleString()}
-                            </Text>
-                        </div>
-                        <ThemeIcon size={80} radius="xl" variant="light" color="green">
-                            <Smartphone size={40} />
-                        </ThemeIcon>
-                    </Group>
-                    <Divider />
-                    <Grid>
-                        <Grid.Col span={6}>
-                            <Text size="xs" c="dimmed">Campaign Duration</Text>
-                            <Text fw={600}>{costBreakdown?.duration_days} days</Text>
-                        </Grid.Col>
-                        <Grid.Col span={6}>
-                            <Text size="xs" c="dimmed">Helmets</Text>
-                            <Text fw={600}>{costBreakdown?.helmet_count}</Text>
-                        </Grid.Col>
-                    </Grid>
+        {/* Payment Amount Summary */}
+        <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-200 dark:border-gray-700">
+            <Stack gap="md">
+                <Group justify="space-between" align="center">
+                    <div>
+                        <Text size="sm" c="dimmed" fw={600}>Total Amount Due</Text>
+                        <Text fw={700} size="2.5rem" className="text-green-600 dark:text-green-400">
+                            KES {costBreakdown?.total_cost.toLocaleString()}
+                        </Text>
+                    </div>
+                    <ThemeIcon size={80} radius="xl" variant="light" color="green">
+                        <Smartphone size={40} />
+                    </ThemeIcon>
+                </Group>
+                <Divider />
+                <Grid>
+                    <Grid.Col span={6}>
+                        <Text size="xs" c="dimmed">Campaign Duration</Text>
+                        <Text fw={600}>{costBreakdown?.duration_days} days</Text>
+                    </Grid.Col>
+                    <Grid.Col span={6}>
+                        <Text size="xs" c="dimmed">Helmets</Text>
+                        <Text fw={600}>{costBreakdown?.helmet_count}</Text>
+                    </Grid.Col>
+                </Grid>
+            </Stack>
+        </Card>
+
+        {/* Payment Form - Idle State */}
+        {paymentStatus === 'idle' && (
+            <Card withBorder p="xl" radius="lg">
+                <Stack gap="lg">
+                    <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
+                        <Text size="sm" fw={500}>
+                            Enter your M-Pesa registered phone number to receive a payment prompt on your phone.
+                        </Text>
+                    </Alert>
+
+                    <TextInput
+                        label="M-Pesa Phone Number"
+                        placeholder="e.g., 254712345678"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.currentTarget.value)}
+                        size="lg"
+                        radius="md"
+                        leftSection={<Smartphone size={20} />}
+                        description="Format: 254XXXXXXXXX"
+                        styles={{
+                            input: { borderWidth: 2, fontSize: '1.1rem', '&:focus': { borderColor: 'var(--mantine-color-green-6)' } }
+                        }}
+                    />
+
+                    <Button
+                        onClick={initiatePayment}
+                        disabled={!phoneNumber || phoneNumber.length < 12}
+                        size="xl"
+                        radius="md"
+                        leftSection={<CreditCard size={22} />}
+                        gradient={{ from: 'green', to: 'teal', deg: 45 }}
+                        variant="gradient"
+                        fullWidth
+                    >
+                        Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
+                    </Button>
                 </Stack>
             </Card>
+        )}
 
-            {/* Payment Form - Idle State */}
-            {paymentStatus === 'idle' && (
-                <Card withBorder p="xl" radius="lg">
-                    <Stack gap="lg">
-                        <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
-                            <Text size="sm" fw={500}>
-                                Enter your M-Pesa registered phone number to receive a payment prompt on your phone.
+        {/* Initiating Payment State */}
+        {paymentStatus === 'initiating' && (
+            <Card withBorder p="xl" radius="lg" className="text-center">
+                <Stack gap="md" align="center">
+                    <Loader size="xl" type="dots" color="green" />
+                    <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">
+                        Initiating Payment...
+                    </Text>
+                    <Text size="sm" c="dimmed">Please wait while we process your request</Text>
+                </Stack>
+            </Card>
+        )}
+
+        {/* Pending Payment State */}
+        {paymentStatus === 'pending' && (
+            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border-2 border-yellow-300 dark:border-gray-700">
+                <Stack gap="md" align="center">
+                    <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
+                        <Clock size={40} />
+                    </ThemeIcon>
+                    <Text fw={700} size="xl" className="text-yellow-700 dark:text-yellow-400">
+                        Payment Prompt Sent!
+                    </Text>
+                    <Text size="md" ta="center" c="dimmed">
+                        Please check your phone <Text component="span" fw={700}>{phoneNumber}</Text> for the M-Pesa payment prompt.
+                    </Text>
+                    <Text size="sm" ta="center" c="dimmed">
+                        Reference: <Text component="span" fw={600}>{paymentReference}</Text>
+                    </Text>
+                    
+                    {paymentTimeoutSeconds > 0 && (
+                        <Paper p="sm" radius="md" className="bg-white dark:bg-gray-900">
+                            <Text size="sm" c="dimmed">
+                                Time remaining: <Text component="span" fw={700} c="yellow.7">
+                                    {Math.floor(paymentTimeoutSeconds / 60)}:{(paymentTimeoutSeconds % 60).toString().padStart(2, '0')}
+                                </Text>
                             </Text>
-                        </Alert>
+                        </Paper>
+                    )}
 
-                        <TextInput
-                            label="M-Pesa Phone Number"
-                            placeholder="e.g., 254712345678"
-                            value={phoneNumber}
-                            onChange={(e) => setPhoneNumber(e.currentTarget.value)}
-                            size="lg"
-                            radius="md"
-                            leftSection={<Smartphone size={20} />}
-                            description="Format: 254XXXXXXXXX"
-                            styles={{
-                                input: { borderWidth: 2, fontSize: '1.1rem', '&:focus': { borderColor: 'var(--mantine-color-green-6)' } }
-                            }}
-                        />
+                    <Alert icon={<Info size={18} />} color="yellow" variant="light" radius="md" style={{ width: '100%' }}>
+                        <Text size="sm">
+                            Enter your M-Pesa PIN to complete the payment.
+                            You will be notified automatically once payment is confirmed.
+                        </Text>
+                    </Alert>
+                    <Loader size="md" type="dots" color="yellow" />
+                    <Text size="xs" c="dimmed">Waiting for payment confirmation...</Text>
 
+                    <Divider label="Didn't receive the prompt?" labelPosition="center" style={{ width: '100%' }} />
+
+                    <Group gap="md" style={{ width: '100%' }}>
                         <Button
-                            onClick={initiatePayment}
-                            disabled={!phoneNumber || phoneNumber.length < 12}
-                            size="xl"
+                            onClick={handleRetryPayment}
+                            variant="light"
+                            color="yellow"
+                            size="md"
                             radius="md"
-                            leftSection={<CreditCard size={22} />}
-                            gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                            variant="gradient"
                             fullWidth
+                            leftSection={<AlertCircle size={18} />}
                         >
-                            Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
+                            Resend STK Push
                         </Button>
-                    </Stack>
-                </Card>
-            )}
+                        <Button
+                            onClick={handleChangePhoneNumber}
+                            variant="outline"
+                            color="yellow"
+                            size="md"
+                            radius="md"
+                            fullWidth
+                            leftSection={<Smartphone size={18} />}
+                        >
+                            Change Number
+                        </Button>
+                    </Group>
+                </Stack>
+            </Card>
+        )}
 
-            {/* Initiating Payment State */}
-            {paymentStatus === 'initiating' && (
-                <Card withBorder p="xl" radius="lg" className="text-center">
-                    <Stack gap="md" align="center">
-                        <Loader size="xl" type="dots" color="green" />
-                        <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">
-                            Initiating Payment...
-                        </Text>
-                        <Text size="sm" c="dimmed">Please wait while we process your request</Text>
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Pending Payment State */}
-            {paymentStatus === 'pending' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border-2 border-yellow-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
-                            <Clock size={40} />
-                        </ThemeIcon>
-                        <Text fw={700} size="xl" className="text-yellow-700 dark:text-yellow-400">
-                            Payment Prompt Sent!
-                        </Text>
-                        <Text size="md" ta="center" c="dimmed">
-                            Please check your phone <Text component="span" fw={700}>{phoneNumber}</Text> for the M-Pesa payment prompt.
-                        </Text>
-                        <Text size="sm" ta="center" c="dimmed">
-                            Reference: <Text component="span" fw={600}>{paymentReference}</Text>
-                        </Text>
-                        <Alert icon={<Info size={18} />} color="yellow" variant="light" radius="md" style={{ width: '100%' }}>
-                            <Text size="sm">
-                                Enter your M-Pesa PIN to complete the payment.
-                                You will be notified automatically once payment is confirmed.
-                            </Text>
-                        </Alert>
-                        <Loader size="md" type="dots" color="yellow" />
-                        <Text size="xs" c="dimmed">Waiting for payment confirmation...</Text>
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Payment Success State */}
-            {paymentStatus === 'success' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={100} radius="xl" color="green" variant="light">
-                            <CheckCircle size={50} />
-                        </ThemeIcon>
-                        <Text fw={700} size="2rem" className="text-green-600 dark:text-green-400">
-                            Payment Successful!
-                        </Text>
-                        <Text size="lg" ta="center" c="dimmed">
-                            KES {costBreakdown?.total_cost.toLocaleString()} received successfully
-                        </Text>
-                        <Paper p="md" radius="md" className="bg-white dark:bg-gray-900" style={{ width: '100%' }}>
+        {/* Payment Success State */}
+        {paymentStatus === 'success' && (
+            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-300 dark:border-gray-700">
+                <Stack gap="md" align="center">
+                    <ThemeIcon size={100} radius="xl" color="green" variant="light">
+                        <CheckCircle size={50} />
+                    </ThemeIcon>
+                    <Text fw={700} size="2rem" className="text-green-600 dark:text-green-400">
+                        Payment Successful!
+                    </Text>
+                    <Text size="lg" ta="center" c="dimmed">
+                        KES {costBreakdown?.total_cost.toLocaleString()} received successfully
+                    </Text>
+                    <Paper p="md" radius="md" className="bg-white dark:bg-gray-900" style={{ width: '100%' }}>
+                        <Stack gap="sm">
                             <Group justify="space-between">
                                 <Text size="sm" c="dimmed">Transaction Reference</Text>
                                 <Badge size="lg" color="green" variant="light">{paymentReference}</Badge>
                             </Group>
-                        </Paper>
-                        <Alert icon={<CheckCircle size={18} />} color="green" variant="light" radius="md" style={{ width: '100%' }}>
-                            <Text size="sm" fw={500}>
-                                Your payment has been confirmed. Click "Submit Campaign" to finalize your campaign creation.
-                            </Text>
-                        </Alert>
-                    </Stack>
-                </Card>
-            )}
+                            {mpesa_receipt && (
+                                <Group justify="space-between">
+                                    <Text size="sm" c="dimmed">M-Pesa Receipt</Text>
+                                    <Badge size="lg" color="green" variant="light">{mpesa_receipt}</Badge>
+                                </Group>
+                            )}
+                        </Stack>
+                    </Paper>
+                    <Alert icon={<CheckCircle size={18} />} color="green" variant="light" radius="md" style={{ width: '100%' }}>
+                        <Text size="sm" fw={500}>
+                            Your payment has been confirmed. Click "Submit Campaign" to finalize your campaign creation.
+                        </Text>
+                    </Alert>
+                </Stack>
+            </Card>
+        )}
 
-            {/* Payment Failed State */}
-            {paymentStatus === 'failed' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-2 border-red-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={80} radius="xl" color="red" variant="light">
-                            <AlertCircle size={40} />
-                        </ThemeIcon>
-                        <Text fw={700} size="xl" className="text-red-600 dark:text-red-400">
-                            Payment Failed
-                        </Text>
-                        <Text size="md" ta="center" c="dimmed">
-                            {paymentError || 'We could not process your payment. Please try again.'}
-                        </Text>
+        {/* Payment Failed or Timeout State */}
+        {(paymentStatus === 'failed' || paymentStatus === 'timeout') && (
+            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-2 border-red-300 dark:border-gray-700">
+                <Stack gap="md" align="center">
+                    <ThemeIcon size={80} radius="xl" color="red" variant="light">
+                        <AlertCircle size={40} />
+                    </ThemeIcon>
+                    <Text fw={700} size="xl" className="text-red-600 dark:text-red-400">
+                        {paymentStatus === 'timeout' ? 'Payment Timed Out' : 'Payment Failed'}
+                    </Text>
+                    <Text size="md" ta="center" c="dimmed">
+                        {paymentError || 'We could not process your payment. Please try again.'}
+                    </Text>
+
+                    {paymentStatus === 'timeout' && (
+                        <Alert icon={<Info size={18} />} color="orange" variant="light" radius="md" style={{ width: '100%' }}>
+                            <Text size="sm">
+                                The payment request timed out. This could mean:
+                            </Text>
+                            <ul className="mt-2 ml-4 space-y-1">
+                                <li><Text size="sm">You didn't receive the STK push prompt</Text></li>
+                                <li><Text size="sm">You cancelled the prompt</Text></li>
+                                <li><Text size="sm">The transaction took too long to complete</Text></li>
+                            </ul>
+                        </Alert>
+                    )}
+
+                    <Divider label="What would you like to do?" labelPosition="center" style={{ width: '100%' }} />
+
+                    <Stack gap="md" style={{ width: '100%' }}>
                         <Button
-                            onClick={() => {
-                                setPaymentStatus('idle');
-                                setPaymentError('');
-                                setShowPaymentNotification(false);
-                            }}
+                            onClick={handleRetryPayment}
                             color="red"
-                            variant="light"
+                            variant="gradient"
+                            gradient={{ from: 'red', to: 'pink', deg: 45 }}
                             size="lg"
                             radius="md"
                             leftSection={<CreditCard size={20} />}
+                            fullWidth
                         >
-                            Try Again
+                            Retry Payment
+                        </Button>
+                        <Button
+                            onClick={handleChangePhoneNumber}
+                            variant="light"
+                            color="gray"
+                            size="md"
+                            radius="md"
+                            leftSection={<Smartphone size={18} />}
+                            fullWidth
+                        >
+                            Use Different Number
                         </Button>
                     </Stack>
-                </Card>
-            )}
-        </Stack>
-    ), [paymentStatus, phoneNumber, costBreakdown, paymentError, paymentReference, showPaymentNotification, initiatePayment]);
+
+                    <Text size="xs" c="dimmed" ta="center">
+                        Need help? Contact our support team for assistance.
+                    </Text>
+                </Stack>
+            </Card>
+        )}
+    </Stack>
+), [
+    paymentStatus, 
+    phoneNumber, 
+    costBreakdown, 
+    paymentError, 
+    paymentReference, 
+    mpesa_receipt,
+    showPaymentNotification, 
+    paymentTimeoutSeconds,
+    initiatePayment,
+    handleRetryPayment,
+    handleChangePhoneNumber
+])
 
 
 
