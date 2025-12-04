@@ -90,9 +90,21 @@ class Payment extends Model
 
    
     public function getMpesaReceiptAttribute(): ?string
-    {
-        return $this->payment_details['mpesa_receipt'] ?? 
-               $this->payment_details['callback']['Body']['stkCallback']['CallbackMetadata']['Item'][0]['Value'] ?? 
-               null;
+{
+    // First try to get from the direct field we store
+    if (!empty($this->payment_details['mpesa_receipt'])) {
+        return $this->payment_details['mpesa_receipt'];
     }
+    
+    // Fallback: Extract from callback metadata if available
+    $callbackMetadata = $this->payment_details['callback']['Body']['stkCallback']['CallbackMetadata']['Item'] ?? [];
+    
+    foreach ($callbackMetadata as $item) {
+        if (isset($item['Name']) && $item['Name'] === 'MpesaReceiptNumber') {
+            return $item['Value'] ?? null;
+        }
+    }
+    
+    return null;
+}
 }

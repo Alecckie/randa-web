@@ -71,7 +71,7 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
             'currency' => $this->payment->currency,
             'status' => $this->status,
             'message' => $this->getStatusMessage(),
-            'mpesa_receipt' => $this->payment->payment_details['mpesa_receipt'] ?? null,
+            'mpesa_receipt' => $this->payment->mpesa_receipt ?? null,
             'timestamp' => now()->toIso8601String()
         ];
     }
