@@ -236,7 +236,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             const baseCost = formData.helmet_count! * duration * 1;
             const designCost = formData.need_design ? 3000 : 0;
             const subtotal = baseCost + designCost;
-            const vatAmount = subtotal * 0.16;
+            const vatAmount =formData.require_vat_receipt ? (subtotal * 0.16) : 0;
             const totalCost = subtotal + vatAmount;
 
             setCostBreakdown({
@@ -252,7 +252,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             });
             setLoadingCosts(false);
         }, 1000);
-    }, [formData.helmet_count, duration, formData.need_design]);
+    }, [formData.helmet_count, duration, formData.need_design,formData.require_vat_receipt]);
 
 
     const initiatePayment = useCallback(async () => {
@@ -983,7 +983,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                         </Table.Td>
                                     </Table.Tr>
 
-                                    <Table.Tr>
+                                    {formData?.require_vat_receipt}
+
+                                    {formData?.require_vat_receipt && (
+                                        <Table.Tr>
                                         <Table.Td>
                                             <Text fw={500} size="md">VAT (16%)</Text>
                                         </Table.Td>
@@ -993,6 +996,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                             </Text>
                                         </Table.Td>
                                     </Table.Tr>
+                                    )}
 
                                     <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
                                         <Table.Td>

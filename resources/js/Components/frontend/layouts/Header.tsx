@@ -73,9 +73,9 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
                                     <Menu.Item leftSection={<Target size={16} />}>
                                         New Campaign
                                     </Menu.Item>
-                                    <Menu.Item leftSection={<ImageIcon size={16} />}>
+                                    {/* <Menu.Item leftSection={<ImageIcon size={16} />}>
                                         Upload Creative
-                                    </Menu.Item>
+                                    </Menu.Item> */}
 
                                     <Menu.Divider />
 
