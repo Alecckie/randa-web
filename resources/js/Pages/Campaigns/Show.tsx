@@ -108,6 +108,7 @@ interface CampaignShowProps {
             id: number;
             amount: number;
             payment_method: string;
+            mpesa_receipt: string;
             status: string;
             created_at: string;
         }>;
@@ -710,6 +711,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 <Table.Th>Date</Table.Th>
                                                 <Table.Th>Amount</Table.Th>
                                                 <Table.Th>Method</Table.Th>
+                                                <Table.Th>Reference Code</Table.Th>
                                                 <Table.Th>Status</Table.Th>
                                             </Table.Tr>
                                         </Table.Thead>
@@ -720,6 +722,9 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                     <Table.Td>{formatCurrency(payment.amount)}</Table.Td>
                                                     <Table.Td>
                                                         <Badge variant="outline">{payment.payment_method}</Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Badge variant="outline">{payment.mpesa_receipt}</Badge>
                                                     </Table.Td>
                                                     <Table.Td>
                                                         <Badge color={payment.status === 'completed' ? 'green' : 'yellow'}>

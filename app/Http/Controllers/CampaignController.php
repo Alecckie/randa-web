@@ -100,7 +100,7 @@ class CampaignController extends Controller
         $availableHelmets = $this->assignmentService->getAvailableHelmets();
 
         $assignmentStats = $this->assignmentService->getAssignmentStats($campaign);
-
+        
         return Inertia::render('Campaigns/Show', [
             'campaign' => $campaign,
             'availableRiders' => $availableRiders,

@@ -40,6 +40,10 @@ class Payment extends Model
         'failed_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'mpesa_receipt'
+    ];
+
     
     public function campaign(): BelongsTo
     {
