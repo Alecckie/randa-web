@@ -382,6 +382,119 @@ class MpesaService
         return null;
     }
 
+    public function verifyManualReceipt(array $data): array
+{
+    try {
+        Log::info('Manual receipt verification initiated', [
+            'receipt_number' => $data['receipt_number'],
+            'amount' => $data['amount'],
+            'phone_number' => $data['phone_number']
+        ]);
+
+        // Check if this receipt number has already been used
+        $existingPayment = Payment::where('payment_details->mpesa_receipt', $data['receipt_number'])
+            ->first();
+
+        if ($existingPayment) {
+            Log::warning('Duplicate receipt number attempted', [
+                'receipt_number' => $data['receipt_number'],
+                'existing_payment_id' => $existingPayment->id
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'This receipt number has already been used for another payment.'
+            ];
+        }
+
+        // Generate unique payment reference
+        $paymentReference = $this->generatePaymentReference();
+
+        // Create payment record with manual verification
+        $payment = Payment::create([
+            'campaign_id' => $data['campaign_id'] ?? null,
+            'advertiser_id' => $data['advertiser_id'],
+            'payment_reference' => $paymentReference,
+            'amount' => $data['amount'],
+            'currency' => 'KES',
+            'payment_method' => 'mpesa',
+            'payment_gateway' => 'safaricom_mpesa',
+            'status' => 'pending_verification',
+            'status_message' => 'Manual receipt submitted - pending verification',
+            'initiated_at' => now(),
+            'metadata' => [
+                'phone_number' => $data['phone_number'],
+                'campaign_data' => $data['campaign_data'] ?? null,
+                'verification_method' => 'manual_receipt'
+            ],
+            'payment_details' => [
+                'mpesa_receipt' => $data['receipt_number'],
+                'manual_verification' => true,
+                'submitted_at' => now()->toIso8601String()
+            ]
+        ]);
+
+        // Validate receipt format
+        if ($this->isValidReceiptFormat($data['receipt_number'])) {
+            $payment->update([
+                'status' => 'completed',
+                'status_message' => 'Payment verified via manual receipt',
+                'completed_at' => now(),
+                'processed_at' => now()
+            ]);
+
+            Log::info('Manual receipt verified successfully', [
+                'payment_id' => $payment->id,
+                'receipt_number' => $data['receipt_number']
+            ]);
+
+            // Broadcast payment success event
+            broadcast(new PaymentStatusUpdated($payment, 'success'))->toOthers();
+
+            return [
+                'success' => true,
+                'message' => 'Payment verified successfully',
+                'reference' => $paymentReference,
+                'payment_id' => $payment->id,
+                'receipt_number' => $data['receipt_number']
+            ];
+        }
+
+        // Receipt format validation failed
+        $payment->update([
+            'status' => 'failed',
+            'status_message' => 'Invalid receipt format',
+            'failed_at' => now()
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'Invalid M-Pesa receipt format. Please check and try again.'
+        ];
+
+    } catch (Exception $e) {
+        Log::error('Manual receipt verification error', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'receipt_number' => $data['receipt_number'] ?? 'N/A'
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'An error occurred while verifying the receipt: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Validate M-Pesa receipt number format
+ */
+protected function isValidReceiptFormat(string $receiptNumber): bool
+{
+    // M-Pesa receipt format: 2 letters followed by alphanumeric (8-20 chars total)
+    return preg_match('/^[A-Z]{2}[A-Z0-9]{6,18}$/i', $receiptNumber) === 1;
+}
+
     /**
      * Query payment status from M-Pesa
      */

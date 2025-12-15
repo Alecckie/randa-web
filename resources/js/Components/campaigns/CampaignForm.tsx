@@ -51,7 +51,9 @@ import {
     AlertCircle,
     Smartphone,
     XCircle,
-    Clock
+    Clock,
+    RefreshCw,
+    Receipt
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -160,9 +162,14 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const [paymentError, setPaymentError] = useState('');
     const [paymentReference, setPaymentReference] = useState('');
     const [mpesa_receipt, setMpesaReceipt] = useState('');
-    const [payment_id,setPaymentId] = useState('');
+    const [payment_id, setPaymentId] = useState('');
     const [showPaymentNotification, setShowPaymentNotification] = useState(false);
-    
+
+    const [showManualConfirmation, setShowManualConfirmation] = useState(false);
+    const [manualReceiptNumber, setManualReceiptNumber] = useState('');
+    const [isVerifyingReceipt, setIsVerifyingReceipt] = useState(false);
+    const [manualConfirmationError, setManualConfirmationError] = useState('');
+
 
 
 
@@ -237,7 +244,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             const baseCost = formData.helmet_count! * duration * 1;
             const designCost = formData.need_design ? 3000 : 0;
             const subtotal = baseCost + designCost;
-            const vatAmount =formData.require_vat_receipt ? (subtotal * 0.16) : 0;
+            const vatAmount = formData.require_vat_receipt ? (subtotal * 0.16) : 0;
             const totalCost = subtotal + vatAmount;
 
             setCostBreakdown({
@@ -253,7 +260,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             });
             setLoadingCosts(false);
         }, 1000);
-    }, [formData.helmet_count, duration, formData.need_design,formData.require_vat_receipt]);
+    }, [formData.helmet_count, duration, formData.need_design, formData.require_vat_receipt]);
 
 
     const initiatePayment = useCallback(async () => {
@@ -431,6 +438,98 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             window.Echo.leave(channelName);
         };
     }, [advertiser?.id, paymentReference]);
+
+
+    /**
+ * Auto-timeout payment after 40 seconds if no success
+ */
+useEffect(() => {
+    if (paymentStatus === 'pending') {
+        console.log('⏱️ Starting 40-second payment timeout');
+        
+        const timeoutId = setTimeout(() => {
+            console.log('⏱️ Payment timeout reached (40 seconds)');
+            setPaymentStatus('failed');
+            setPaymentError('Payment request timed out. Please try again or enter your M-Pesa receipt if you completed the payment.');
+            setShowPaymentNotification(true);
+        }, 40000); // 40 seconds
+
+        return () => {
+            console.log('🧹 Clearing payment timeout');
+            clearTimeout(timeoutId);
+        };
+    }
+}, [paymentStatus]);
+
+
+    // Reset payment to allow retry
+    const handleRetryPayment = useCallback(() => {
+        setPaymentStatus('idle');
+        setPaymentError('');
+        setPaymentReference('');
+        setMpesaReceipt('');
+        setPaymentId('');
+        setShowPaymentNotification(false);
+        setPhoneNumber(''); // Clear phone number to allow user to re-enter
+    }, []);
+
+    // Show manual confirmation form
+    const handleShowManualConfirmation = useCallback(() => {
+        setShowManualConfirmation(true);
+        setManualConfirmationError('');
+    }, []);
+
+    // Verify manual receipt number
+    const handleVerifyReceipt = useCallback(async () => {
+        if (!manualReceiptNumber.trim()) {
+            setManualConfirmationError('Please enter a valid M-Pesa receipt number');
+            return;
+        }
+
+        setIsVerifyingReceipt(true);
+        setManualConfirmationError('');
+
+        try {
+            const response = await fetch(route('payments.mpesa.verify-receipt'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    receipt_number: manualReceiptNumber.trim(),
+                    amount: costBreakdown?.total_cost,
+                    phone_number: phoneNumber,
+                    campaign_data: {
+                        name: formData.name,
+                        helmet_count: formData.helmet_count,
+                        duration: duration
+                    }
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Payment verified successfully
+                setPaymentStatus('success');
+                setPaymentReference(data.reference);
+                setMpesaReceipt(data.receipt_number);
+                setPaymentId(data.payment_id);
+                setShowManualConfirmation(false);
+                setShowPaymentNotification(true);
+                setPaymentError('');
+            } else {
+                setManualConfirmationError(data.message || 'Receipt verification failed. Please check the receipt number and try again.');
+            }
+        } catch (error) {
+            setManualConfirmationError(error instanceof Error ? error.message : 'Failed to verify receipt');
+        } finally {
+            setIsVerifyingReceipt(false);
+        }
+    }, [manualReceiptNumber, costBreakdown, phoneNumber, formData, duration]);
 
     useEffect(() => {
         if (activeStep === 4 && formData.helmet_count && duration && !costBreakdown && !loadingCosts) {
@@ -990,15 +1089,15 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
                                     {formData?.require_vat_receipt && (
                                         <Table.Tr>
-                                        <Table.Td>
-                                            <Text fw={500} size="md">VAT (16%)</Text>
-                                        </Table.Td>
-                                        <Table.Td className="text-right">
-                                            <Text fw={600} size="lg">
-                                                KES {costBreakdown.vat_amount.toLocaleString()}
-                                            </Text>
-                                        </Table.Td>
-                                    </Table.Tr>
+                                            <Table.Td>
+                                                <Text fw={500} size="md">VAT (16%)</Text>
+                                            </Table.Td>
+                                            <Table.Td className="text-right">
+                                                <Text fw={600} size="lg">
+                                                    KES {costBreakdown.vat_amount.toLocaleString()}
+                                                </Text>
+                                            </Table.Td>
+                                        </Table.Tr>
                                     )}
 
                                     <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
@@ -1251,6 +1350,18 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         >
                             Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
                         </Button>
+                        {/* <Divider label="OR" labelPosition="center" />
+
+                        <Button
+                            onClick={handleShowManualConfirmation}
+                            variant="light"
+                            size="lg"
+                            radius="md"
+                            leftSection={<Receipt size={20} />}
+                            fullWidth
+                        >
+                            Already Paid? Enter M-Pesa Receipt Number
+                        </Button> */}
                     </Stack>
                 </Card>
             )}
@@ -1292,6 +1403,20 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         </Alert>
                         <Loader size="md" type="dots" color="yellow" />
                         <Text size="xs" c="dimmed">Waiting for payment confirmation...</Text>
+
+                        <Divider style={{ width: '100%' }} my="md" />
+
+                        {/* <Group justify="center" gap="md" style={{ width: '100%' }}>
+                            <Button
+                                onClick={handleShowManualConfirmation}
+                                variant="light"
+                                size="md"
+                                radius="md"
+                                leftSection={<Receipt size={18} />}
+                            >
+                                Enter Receipt Manually
+                            </Button>
+                        </Group> */}
                     </Stack>
                 </Card>
             )}
@@ -1337,25 +1462,121 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         <Text size="md" ta="center" c="dimmed">
                             {paymentError || 'We could not process your payment. Please try again.'}
                         </Text>
-                        <Button
-                            onClick={() => {
-                                setPaymentStatus('idle');
-                                setPaymentError('');
-                                setShowPaymentNotification(false);
-                            }}
-                            color="red"
-                            variant="light"
+                        <Group gap="md" style={{ width: '100%' }}>
+                            <Button
+                                onClick={handleRetryPayment}
+                                color="blue"
+                                variant="filled"
+                                size="lg"
+                                radius="md"
+                                leftSection={<RefreshCw size={20} />}
+                                style={{ flex: 1 }}
+                            >
+                                Retry with New Number
+                            </Button>
+                            <Button
+                                onClick={handleShowManualConfirmation}
+                                variant="light"
+                                size="lg"
+                                radius="md"
+                                leftSection={<Receipt size={20} />}
+                                style={{ flex: 1 }}
+                            >
+                                Enter Receipt Number
+                            </Button>
+                        </Group>
+                    </Stack>
+                </Card>
+            )}
+
+
+            {showManualConfirmation && paymentStatus !== 'success' && (
+                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 border-2 border-blue-300 dark:border-gray-700">
+                    <Stack gap="lg">
+                        <div className="flex items-center gap-3">
+                            <ThemeIcon size="lg" radius="xl" color="blue" variant="light">
+                                <Receipt size={24} />
+                            </ThemeIcon>
+                            <div>
+                                <Text fw={700} size="lg">Manual Payment Confirmation</Text>
+                                <Text size="sm" c="dimmed">Enter your M-Pesa transaction receipt number</Text>
+                            </div>
+                        </div>
+
+                        <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
+                            <Text size="sm">
+                                If you've already completed the payment but haven't received automatic confirmation,
+                                enter your M-Pesa receipt number (e.g., SH123ABC45) to verify your payment.
+                            </Text>
+                        </Alert>
+
+                        <TextInput
+                            label="M-Pesa Receipt Number"
+                            placeholder="e.g., SH123ABC45"
+                            value={manualReceiptNumber}
+                            onChange={(e) => setManualReceiptNumber(e.currentTarget.value.toUpperCase())}
                             size="lg"
                             radius="md"
-                            leftSection={<CreditCard size={20} />}
-                        >
-                            Try Again
-                        </Button>
+                            leftSection={<Receipt size={20} />}
+                            error={manualConfirmationError}
+                            disabled={isVerifyingReceipt}
+                            styles={{
+                                input: { borderWidth: 2, fontSize: '1.1rem', fontWeight: 600, letterSpacing: '0.05em' }
+                            }}
+                        />
+
+                        {phoneNumber && (
+                            <Paper p="md" radius="md" className="bg-white dark:bg-gray-900">
+                                <Group justify="space-between">
+                                    <Text size="sm" c="dimmed">Phone Number</Text>
+                                    <Text fw={600}>{phoneNumber}</Text>
+                                </Group>
+                                <Group justify="space-between" mt="xs">
+                                    <Text size="sm" c="dimmed">Amount</Text>
+                                    <Text fw={600}>KES {costBreakdown?.total_cost.toLocaleString()}</Text>
+                                </Group>
+                            </Paper>
+                        )}
+
+                        <Group gap="md">
+                            <Button
+                                onClick={() => setShowManualConfirmation(false)}
+                                variant="light"
+                                size="lg"
+                                radius="md"
+                                style={{ flex: 1 }}
+                                disabled={isVerifyingReceipt}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleVerifyReceipt}
+                                loading={isVerifyingReceipt}
+                                disabled={!manualReceiptNumber.trim() || manualReceiptNumber.length < 6}
+                                size="lg"
+                                radius="md"
+                                leftSection={<CheckCircle size={20} />}
+                                gradient={{ from: 'blue', to: 'indigo', deg: 45 }}
+                                variant="gradient"
+                                style={{ flex: 1 }}
+                            >
+                                Verify Payment
+                            </Button>
+                        </Group>
                     </Stack>
                 </Card>
             )}
         </Stack>
-    ), [paymentStatus, phoneNumber, costBreakdown, paymentError, paymentReference, showPaymentNotification, initiatePayment]);
+    ), [paymentStatus, phoneNumber, costBreakdown, paymentError, paymentReference, showPaymentNotification, initiatePayment,
+        handleRetryPayment,
+        handleShowManualConfirmation,
+        showManualConfirmation,
+        manualReceiptNumber,
+        manualConfirmationError,
+        isVerifyingReceipt,
+        handleVerifyReceipt,
+        mpesa_receipt
+    ]);
 
 
 

@@ -5,14 +5,16 @@ namespace App\Http\Controllers\Payment;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payment\WebInitiatePaymentRequest;
 use App\Http\Requests\Payment\QueryPaymentStatusRequest;
+use App\Http\Requests\VerifyManualReceiptRequest;
 use App\Services\Payments\MpesaService;
 use App\Traits\HandlesPayment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
-     use HandlesPayment;
+    use HandlesPayment;
 
     protected MpesaService $mpesaService;
 
@@ -52,6 +54,39 @@ class PaymentController extends Controller
             $paymentReference,
             $request->user()->advertiser->id
         );
+    }
+
+
+    public function verifyManualReceipt(VerifyManualReceiptRequest $request): JsonResponse
+    {
+        try {
+            Log::info('Manual receipt verification request', [
+                'advertiser_id' => $request->getAdvertiserId(),
+                'receipt_number' => $request->validated('receipt_number')
+            ]);
+
+            $result = $this->mpesaService->verifyManualReceipt([
+                'advertiser_id' => $request->getAdvertiserId(),
+                'receipt_number' => $request->validated('receipt_number'),
+                'amount' => $request->validated('amount'),
+                'phone_number' => $request->validated('phone_number'),
+                'campaign_data' => $request->validated('campaign_data'),
+            ]);
+
+            $statusCode = $result['success'] ? 200 : 422;
+
+            return response()->json($result, $statusCode);
+        } catch (\Exception $e) {
+            Log::error('Manual receipt verification controller error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while processing your request'
+            ], 500);
+        }
     }
 
     /**

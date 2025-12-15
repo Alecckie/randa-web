@@ -1,11 +1,295 @@
 import React, { useState } from 'react';
 import { Link } from '@inertiajs/react';
+import {
+    Button,
+    Text,
+    Title,
+    Divider,
+    Stack,
+    Modal,
+    ScrollArea
+} from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
+
+
+
+// Terms of Service Content Component
+const TermsContent = () => (
+    <Stack gap="lg" p={24}>
+        <Text size="sm" c="dimmed" fw={500}>Last Updated: November 2025</Text>
+        <Text size="sm" lh={1.7}>
+            These Terms of Service ("Terms") govern your access to and use of the RANDA platform,
+            mobile applications, website and related services (collectively, the "Services"). By accessing or
+            using RANDA, you agree to be bound by these Terms.
+        </Text>
+        <Text size="sm" fw={600} c="red.7">
+            If you do not agree with these Terms, do not use RANDA.
+        </Text>
+        <Divider my="xs" />
+
+        {[
+            {
+                title: "1. About RANDA",
+                content: "RANDA is a digital advertising and monetization platform that connects advertisers with motorbike riders. Riders earn income by displaying advertisement branding on helmets. Advertisers gain high-impact real-world visibility."
+            },
+            {
+                title: "2. User Eligibility",
+                content: "You must be at least 18 years old and legally able to enter into binding contracts in Kenya. You agree to provide accurate information and maintain updated profile details."
+            },
+            {
+                title: "3. Account Registration",
+                content: "Users must create an account to use RANDA Services. You are responsible for securing your account credentials and all activities under your account. RANDA may suspend or terminate accounts that violate these Terms or applicable laws."
+            },
+            {
+                title: "4. Platform Roles",
+                list: ["Riders earn income for participating in campaigns.", "Advertisers create and pay for advertising campaigns.", "RANDA is a neutral platform that facilitates these interactions."]
+            },
+            {
+                title: "5. Fees, Payments & Earnings",
+                list: [
+                    "Riders will receive daily earnings based on approved participation and compliance.",
+                    "Advertisers shall pay campaign fees as invoiced or as specified within the platform.",
+                    "RANDA may deduct commissions, taxes, VAT, or fees prior to payout.",
+                    "All financial transactions may be processed through third-party payment providers.",
+                    "RANDA reserves the right to modify pricing or payout models."
+                ]
+            },
+            {
+                title: "6. Compliance & Conduct",
+                content: "Users agree not to: misuse or interfere with platform operations, engage in fraud or misrepresentation, violate advertising, road safety, or intellectual property laws. Riders acknowledge full responsibility for safe riding practices and helmet usage."
+            },
+            {
+                title: "7. Campaign Content",
+                content: "Advertisers are responsible for the legality and accuracy of any promotional material submitted. RANDA may reject or remove content that is: unlawful, defamatory, hateful, sexually explicit, violent or extremist, politically sensitive or manipulative."
+            },
+            {
+                title: "8. Intellectual Property",
+                content: "All platform content, branding, and code belong to RANDA unless otherwise stated. Users retain ownership of content they upload but grant RANDA a license to display, use and distribute such content for campaign execution."
+            },
+            {
+                title: "9. Data Usage",
+                content: "Use of personal data is governed by the RANDA Privacy Policy."
+            },
+            {
+                title: "10. Termination",
+                content: "RANDA may suspend access or terminate accounts at any time for breach of these Terms or misuse of the platform. Users may delete their account at any time. Termination does not affect earned obligations, unpaid invoices, or legal rights."
+            },
+            {
+                title: "11. Disclaimer",
+                content: "RANDA provides its Services on an \"as is\" and \"as available\" basis. RANDA is not liable for losses resulting from downtime, rider incidents, campaign outcomes, or third-party service failures."
+            },
+            {
+                title: "12. Limitation of Liability",
+                content: "To the maximum extent permitted by law, RANDA shall not be liable for indirect, special, consequential, punitive, or incidental damages."
+            },
+            {
+                title: "13. Modification of Terms",
+                content: "RANDA may update these Terms occasionally. Updated versions will be posted on the website. Continued use after updates constitutes acceptance."
+            },
+            {
+                title: "14. Governing Law",
+                content: "These Terms shall be governed by the laws of Kenya."
+            }
+        ].map((section, idx) => (
+            <div key={idx}>
+                <Title order={4} size="h5" fw={700} mb="sm">{section.title}</Title>
+                {section.content && <Text size="sm" lh={1.7}>{section.content}</Text>}
+                {section.list && (
+                    <Text size="sm" lh={1.7} component="ul" pl="md">
+                        {section.list.map((item, i) => <li key={i}>{item}</li>)}
+                    </Text>
+                )}
+            </div>
+        ))}
+
+        <div>
+            <Title order={4} size="h5" fw={700} mb="sm">15. Contact</Title>
+            <Text size="sm" lh={1.7}>
+                For questions regarding these Terms, contact:{' '}
+                <Text component="a" href="mailto:info@randamedia.co.ke" c="#f79122" fw={600}>
+                    info@randamedia.co.ke
+                </Text>
+            </Text>
+        </div>
+    </Stack>
+);
+
+const PrivacyContent = () => (
+    <Stack gap="lg" p={24}>
+        <Text size="sm" c="dimmed" fw={500}>Last Updated: November 2025</Text>
+        <Text size="sm" lh={1.7}>
+            This Privacy Policy explains how RANDA collects, uses, stores, and protects personal
+            information when you access or use our platform, website, applications, or related services ("Services").
+        </Text>
+        <Text size="sm" fw={600} c="blue.7">
+            By using RANDA, you consent to the practices described in this Privacy Policy.
+        </Text>
+        <Divider my="xs" />
+
+        {[
+            {
+                title: "1. Data We Collect",
+                intro: "We may collect:",
+                list: [
+                    "account information (name, phone number, email, rider/advertiser details)",
+                    "payment details required for payouts or billing",
+                    "advertising campaign materials supplied by advertisers",
+                    "usage data and device information",
+                    "location signals from riders for verification and campaign reporting"
+                ]
+            },
+            {
+                title: "2. How We Use Your Data",
+                intro: "We may use collected information to:",
+                list: [
+                    "verify rider participation in campaigns",
+                    "calculate earnings and payout amounts",
+                    "operate campaign reporting and performance dashboards for advertisers",
+                    "maintain secure platform access",
+                    "process payments",
+                    "communicate with users and provide support",
+                    "improve platform features and performance"
+                ]
+            },
+            {
+                title: "3. Location Data Use (Riders)",
+                intro: "RANDA may collect limited location signals during active campaign periods to:",
+                list: [
+                    "confirm that branded helmets are being used during normal routes",
+                    "generate aggregated campaign exposure reporting for advertisers"
+                ],
+                footer: "We do not store precise real-time tracking for public identification. Location data is retained for a short limited period and then securely deleted."
+            },
+            {
+                title: "4. Sharing of Data",
+                intro: "We may share data with:",
+                list: [
+                    "payment processors",
+                    "identity verification providers",
+                    "advertisers (aggregated campaign performance only)",
+                    "government authorities if required by law"
+                ],
+                footer: "We do not sell personal data to third parties."
+            },
+            {
+                title: "5. Security Measures",
+                content: "We implement reasonable physical, technical, and administrative safeguards to protect personal information from unauthorized access or misuse."
+            },
+            {
+                title: "6. Data Retention",
+                content: "Personal data is retained only as necessary for platform operation, legal compliance, and campaign settlement. Campaign location signals are retained for a limited short period."
+            },
+            {
+                title: "7. User Rights",
+                intro: "Depending on applicable law, you may request to:",
+                list: [
+                    "access personal data",
+                    "correct inaccurate information",
+                    "delete your account",
+                    "object to specific processing"
+                ]
+            },
+            {
+                title: "8. Minors",
+                content: "RANDA does not knowingly allow minors under 18 to register or participate in Services."
+            },
+            {
+                title: "9. Changes to This Policy",
+                content: "RANDA may update this Privacy Policy periodically. Updated versions will be posted on the website. Continued use of the Services after updates indicates acceptance of the revised version."
+            }
+        ].map((section, idx) => (
+            <div key={idx}>
+                <Title order={4} size="h5" fw={700} mb="sm">{section.title}</Title>
+                {section.content && <Text size="sm" lh={1.7}>{section.content}</Text>}
+                {section.intro && <Text size="sm" lh={1.7}>{section.intro}</Text>}
+                {section.list && (
+                    <Text size="sm" lh={1.7} component="ul" pl="md">
+                        {section.list.map((item, i) => <li key={i}>{item}</li>)}
+                    </Text>
+                )}
+                {section.footer && <Text size="sm" lh={1.7} mt="xs" fw={600}>{section.footer}</Text>}
+            </div>
+        ))}
+
+        <div>
+            <Title order={4} size="h5" fw={700} mb="sm">10. Contact</Title>
+            <Text size="sm" lh={1.7}>
+                For questions or concerns regarding privacy:{' '}
+                <Text component="a" href="mailto:info@randamedia.co.ke" c="#f79122" fw={600}>
+                    info@randamedia.co.ke
+                </Text>
+            </Text>
+        </div>
+    </Stack>
+);
 
 export default function Homepage() {
+
+    const isMobile = useMediaQuery('(max-width: 768px)');
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [termsOpened, setTermsOpened] = useState(false);
+    const [privacyOpened, setPrivacyOpened] = useState(false);
+    const [termsAccepted, setTermsAccepted] = useState(false);
+
+    const modalStyles = {
+        content: { borderRadius: '16px' },
+        header: { padding: '24px 24px 16px 24px', borderBottom: '2px solid #e2e8f0' },
+        body: { padding: 0 },
+    };
+
+    const modalFooter = (onClose: () => void) => (
+        <div style={{ padding: '16px 24px 24px 24px', borderTop: '2px solid #e2e8f0', marginTop: '8px' }}>
+            <Button
+                fullWidth
+                size="md"
+                onClick={onClose}
+                styles={{
+                    root: {
+                        background: '#f79122',
+                        borderRadius: '10px',
+                        fontWeight: 600,
+                        '&:hover': { background: '#e07d15' },
+                    },
+                }}
+            >
+                Close
+            </Button>
+        </div>
+    );
+
 
     return (
         <div className="min-h-screen bg-white">
+
+            <Modal
+                opened={termsOpened}
+                onClose={() => setTermsOpened(false)}
+                title={<Title order={2} size="h3" fw={700} c="slate.9">Terms of Service</Title>}
+                size="xl"
+                centered
+                overlayProps={{ opacity: 0.55, blur: 3 }}
+                styles={modalStyles}
+            >
+                <ScrollArea h={isMobile ? 400 : 500} type="auto" offsetScrollbars>
+                    <TermsContent />
+                </ScrollArea>
+                {modalFooter(() => setTermsOpened(false))}
+            </Modal>
+
+            <Modal
+                opened={privacyOpened}
+                onClose={() => setPrivacyOpened(false)}
+                title={<Title order={2} size="h3" fw={700} c="slate.9">Privacy Policy</Title>}
+                size="xl"
+                centered
+                overlayProps={{ opacity: 0.55, blur: 3 }}
+                styles={modalStyles}
+            >
+                <ScrollArea h={isMobile ? 400 : 500} type="auto" offsetScrollbars>
+                    <PrivacyContent />
+                </ScrollArea>
+                {modalFooter(() => setPrivacyOpened(false))}
+            </Modal>
             {/* Navigation */}
             <nav className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -19,7 +303,11 @@ export default function Homepage() {
                             <a href="#contact" className="text-slate-600 hover:text-slate-900 transition-colors duration-200">
                                 Contact Us
                             </a>
-                            <a href="#terms" className="text-slate-600 hover:text-slate-900 transition-colors duration-200">
+                            <a href="#terms" onClick={(e) => {
+                                e.preventDefault();
+                                setTermsOpened(true);
+                            }}
+                                className="text-slate-600 hover:text-slate-900 transition-colors duration-200">
                                 Terms & Conditions
                             </a>
                             <div className="flex items-center space-x-4">
@@ -429,10 +717,21 @@ export default function Homepage() {
                         <div>
                             <h4 className="text-lg font-semibold mb-4">Support</h4>
                             <ul className="space-y-2 text-slate-400">
-                                <li><a href="#contact" className="hover:text-white transition-colors duration-200">Contact Us</a></li>
-                                <li><a href="#" className="hover:text-white transition-colors duration-200">Help Center</a></li>
-                                <li><a href="#terms" className="hover:text-white transition-colors duration-200">Terms & Conditions</a></li>
-                                <li><a href="#" className="hover:text-white transition-colors duration-200">Privacy Policy</a></li>
+                                {/* <li><a href="#contact" className="hover:text-white transition-colors duration-200">Contact Us</a></li> */}
+                                {/* <li><a href="#" className="hover:text-white transition-colors duration-200">Help Center</a></li> */}
+                                <li><a
+                                    href="#terms"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        setTermsOpened(true);
+                                    }} className="hover:text-white transition-colors duration-200">Terms & Conditions</a></li>
+                                <li><a
+                                    href="#privacy"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        setPrivacyOpened(true);
+                                    }}
+                                    className="hover:text-white transition-colors duration-200">Privacy Policy</a></li>
                             </ul>
                         </div>
                     </div>
