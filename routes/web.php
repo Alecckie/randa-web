@@ -65,7 +65,7 @@ Route::middleware('auth')->group(function () {
      
    Route::prefix('payments')->name('payments.')->group(function () {
     
-    Route::post('/mpesa/initiate/stk-push', [PaymentController::class, 'initiateMpesaPayment'])
+    Route::post('/mpesa/initiate/stk-push', [PaymentController::class, 'initiateStkPush'])
         ->name('mpesa.initiate.stk-push');
     
     Route::post('/mpesa/query', [PaymentController::class, 'queryPaymentStatus'])

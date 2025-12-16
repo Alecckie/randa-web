@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 
-use App\Services\Payment\MpesaService;
 use App\Http\Requests\Payment\ApiInitiatePaymentRequest;
 use App\Http\Requests\Payment\QueryPaymentStatusRequest;
+use App\Services\Payments\MpesaService;
 use App\Traits\HandlesPayment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

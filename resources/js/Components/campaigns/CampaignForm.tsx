@@ -262,56 +262,74 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         }, 1000);
     }, [formData.helmet_count, duration, formData.need_design, formData.require_vat_receipt]);
 
-
     const initiatePayment = useCallback(async () => {
-        if (!phoneNumber || !costBreakdown) return;
+    if (!phoneNumber || !costBreakdown) return;
 
-        setPaymentStatus('initiating');
-        setPaymentError('');
-        setShowPaymentNotification(false);
+    setPaymentStatus('initiating');
+    setPaymentError('');
+    setShowPaymentNotification(false);
 
-        try {
+    router.post(route('payments.mpesa.initiate.stk-push'), {
+        advertiser_id: formData.advertiser_id,
+        phone_number: phoneNumber,
+        amount: costBreakdown.total_cost,
+        campaign_id: null,
+        campaign_data: {
+            name: formData.name,
+            helmet_count: formData.helmet_count,
+            duration: duration
+        },
+        description: `Payment for ${formData.name}`
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        only: ['flash'], // Only reload flash data
+        onSuccess: (page) => {
+            console.log('✅ Payment response received');
+            console.log('📦 Full page.props:', page.props);
+            
+            // Access flash data from page props
+            const flashData = page.props.flash as any;
+            
+            console.log('🔍 Flash data:', flashData);
+            console.log('✔️ Success flag:', flashData?.success);
 
-            const response = await fetch(route('payments.mpesa.initiate.stk-push'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    phone_number: phoneNumber,
-                    amount: costBreakdown.total_cost,
-                    campaign_id: null,
-                    campaign_data: {
-                        name: formData.name,
-                        helmet_count: formData.helmet_count,
-                        duration: duration
-                    },
-                    description: `Payment for ${formData.name}`
-                })
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                console.log(data);
-                setPaymentReference(data.reference);
-                setMpesaReceipt(data.mpesa_receipt);
-                setPaymentId(data.payment_id);
+            // Check if payment initiation was successful
+            if (flashData?.success === true) {
+                console.log('🎉 Payment initiated successfully');
+                setPaymentReference(flashData.reference || '');
+                setMpesaReceipt(flashData.mpesa_receipt || '');
+                setPaymentId(flashData.payment_id || '');
                 setPaymentStatus('pending');
-
-                // Echo will automatically update status when callback is received
+                setPaymentError('');
             } else {
-                throw new Error(data.message || 'Payment initiation failed');
+                // Payment initiation failed
+                console.error('❌ Payment failed:', flashData?.message);
+                setPaymentStatus('failed');
+                setPaymentError(flashData?.message || 'Payment initiation failed');
+                setShowPaymentNotification(true);
             }
-        } catch (error) {
+        },
+        onError: (errors) => {
+            console.error('❌ Validation errors:', errors);
             setPaymentStatus('failed');
-            setPaymentError(error instanceof Error ? error.message : 'Failed to initiate payment');
+            const errorMessage = Object.values(errors)[0] as string || 'Failed to initiate payment';
+            setPaymentError(errorMessage);
             setShowPaymentNotification(true);
+        },
+        onFinish: () => {
+            console.log('🏁 Request finished');
         }
-    }, [phoneNumber, costBreakdown, formData, duration]);
+    });
+}, [phoneNumber, costBreakdown, formData, duration]);
+
+    
+
+
+
+
+    
+    
 
     useEffect(() => {
         console.log('🎯 Echo Effect Running', {
@@ -479,8 +497,7 @@ useEffect(() => {
         setManualConfirmationError('');
     }, []);
 
-    // Verify manual receipt number
-    const handleVerifyReceipt = useCallback(async () => {
+   const handleVerifyReceipt = useCallback(async () => {
         if (!manualReceiptNumber.trim()) {
             setManualConfirmationError('Please enter a valid M-Pesa receipt number');
             return;
@@ -489,46 +506,39 @@ useEffect(() => {
         setIsVerifyingReceipt(true);
         setManualConfirmationError('');
 
-        try {
-            const response = await fetch(route('payments.mpesa.verify-receipt'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    receipt_number: manualReceiptNumber.trim(),
-                    amount: costBreakdown?.total_cost,
-                    phone_number: phoneNumber,
-                    campaign_data: {
-                        name: formData.name,
-                        helmet_count: formData.helmet_count,
-                        duration: duration
-                    }
-                })
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                // Payment verified successfully
-                setPaymentStatus('success');
-                setPaymentReference(data.reference);
-                setMpesaReceipt(data.receipt_number);
-                setPaymentId(data.payment_id);
-                setShowManualConfirmation(false);
-                setShowPaymentNotification(true);
-                setPaymentError('');
-            } else {
-                setManualConfirmationError(data.message || 'Receipt verification failed. Please check the receipt number and try again.');
+        router.post(route('payments.mpesa.verify-receipt'), {
+            advertiser_id: formData.advertiser_id,
+            receipt_number: manualReceiptNumber.trim(),
+            amount: costBreakdown?.total_cost,
+            phone_number: phoneNumber,
+            campaign_data: {
+                name: formData.name,
+                helmet_count: formData.helmet_count,
+                duration: duration
             }
-        } catch (error) {
-            setManualConfirmationError(error instanceof Error ? error.message : 'Failed to verify receipt');
-        } finally {
-            setIsVerifyingReceipt(false);
-        }
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const data = page.props.flash as any;
+                if (data?.success) {
+                    setPaymentStatus('success');
+                    setPaymentReference(data.reference);
+                    setMpesaReceipt(data.receipt_number);
+                    setPaymentId(data.payment_id);
+                    setShowManualConfirmation(false);
+                    setShowPaymentNotification(true);
+                    setPaymentError('');
+                } else {
+                    setManualConfirmationError(data?.message || 'Receipt verification failed. Please check the receipt number and try again.');
+                }
+                setIsVerifyingReceipt(false);
+            },
+            onError: (errors) => {
+                setManualConfirmationError(Object.values(errors)[0] as string || 'Failed to verify receipt');
+                setIsVerifyingReceipt(false);
+            }
+        });
     }, [manualReceiptNumber, costBreakdown, phoneNumber, formData, duration]);
 
     useEffect(() => {

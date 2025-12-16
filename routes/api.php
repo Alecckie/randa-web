@@ -91,6 +91,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/mpesa/{paymentReference}', [PaymentController::class, 'getPaymentDetails'])
                 ->name('mpesa.details');
 
+            Route::post('/mpesa/verify-receipt', [PaymentController::class, 'verifyManualReceipt'])
+                ->name('payments.mpesa.verify-receipt');
+
             Route::get('/list', [PaymentController::class, 'listPayments'])
                 ->name('list');
 
