@@ -198,7 +198,7 @@ class CampaignCost extends Model
         $helmetCount = $campaign->helmet_count;
         $durationDays = $campaign->duration_days;
         $needsDesign = $campaign->need_design;
-        $dailyRate = 200.00;
+        $dailyRate = 1.00;
         $designRate = 3000.00;
         $vatRate = 16.00;
 
@@ -235,7 +235,7 @@ class CampaignCost extends Model
         $helmetCount = $campaign->helmet_count;
         $durationDays = $campaign->duration_days;
         $needsDesign = $campaign->need_design;
-        $dailyRate = 200.00;
+        $dailyRate = 1.00;
         $designRate = 3000.00;
         $vatRate = 16.00;
 

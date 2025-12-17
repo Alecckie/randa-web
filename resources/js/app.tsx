@@ -12,6 +12,7 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import { configureEcho } from '@laravel/echo-react';
+import './utils/echo';
 
 
 

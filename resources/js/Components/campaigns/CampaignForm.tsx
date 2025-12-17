@@ -65,7 +65,7 @@ import Pusher from 'pusher-js';
 declare global {
     interface Window {
         Pusher: typeof Pusher;
-        Echo: Echo<'reverb'>;
+        Echo: Echo<any>;
     }
 }
 
@@ -324,13 +324,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 }, [phoneNumber, costBreakdown, formData, duration]);
 
     
-
-
-
-
-    
-    
-
     useEffect(() => {
         console.log('🎯 Echo Effect Running', {
             hasAdvertiser: !!advertiser?.id,
@@ -338,66 +331,22 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             paymentStatus,
             paymentReference
         });
+
         if (!advertiser?.id) {
             console.warn('⚠️ No advertiser ID');
             return;
         }
-        const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
-        const reverbHost = import.meta.env.VITE_REVERB_HOST || 'localhost';
-        const reverbPort = import.meta.env.VITE_REVERB_PORT || 8080;
-        const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
-
-        if (!reverbAppKey) {
-            console.error('❌ VITE_REVERB_APP_KEY is not defined');
-            return;
-        }
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-        if (!csrfToken) {
-            console.error('❌ CSRF token not found');
-            return;
-        }
-
-        console.log('✅ Initializing Echo with:', {
-            advertiserId: advertiser.id,
-            hasCSRF: !!csrfToken,
-            reverbHost,
-            reverbPort,
-            scheme: reverbScheme
-        });
 
         if (!window.Echo) {
-            window.Pusher = Pusher;
-
-            try {
-                window.Echo = new Echo({
-                    broadcaster: 'reverb',
-                    key: reverbAppKey,
-                    wsHost: reverbHost,
-                    wsPort: reverbScheme === 'https' ? 443 : reverbPort,
-                    wssPort: reverbScheme === 'https' ? 443 : reverbPort,
-                    forceTLS: reverbScheme === 'https',
-                    enabledTransports: ['ws', 'wss'],
-                    disableStats: true,
-                    authEndpoint: '/broadcasting/auth',
-                    auth: {
-                        headers: {
-                            'X-CSRF-TOKEN': csrfToken,
-                            'Accept': 'application/json',
-                        },
-                    },
-                });
-
-                console.log('✅ Echo initialized successfully');
-            } catch (error) {
-                console.error('❌ Failed to initialize Echo:', error);
-                return;
-            }
+            console.error('❌ Laravel Echo is not initialized. Make sure to import ./echo in your app.tsx');
+            return;
         }
+
+        console.log('✅ Echo available, subscribing to payment channel');
 
         const channelName = `payment.${advertiser.id}`;
 
+        // Subscribe to private channel
         const channel = window.Echo.private(channelName);
 
         // Log subscription success
@@ -405,7 +354,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             console.log(`✅ Successfully subscribed to ${channelName}`);
         });
 
-        // Listen for the event
+        // Listen for payment status updates
         channel.listen('.payment.status.updated', (event: any) => {
             console.log('💰 Payment status update received:', event);
             console.log('📋 Comparing references:', {
@@ -414,10 +363,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 match: event.reference === paymentReference
             });
 
-            // ✅ Check if we have a payment reference before comparing
             if (!paymentReference) {
-                console.warn('⚠️ No payment reference yet - storing event for later');
-                // Event came but payment not initiated yet (shouldn't happen)
+                console.warn('⚠️ No payment reference yet - event arrived before payment initiated');
                 return;
             }
 
@@ -444,12 +391,12 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             }
         });
 
-        // Log errors
+        // Handle subscription errors
         channel.error((error: any) => {
             console.error('❌ Echo channel error:', error);
         });
 
-        // Cleanup
+        // Cleanup on unmount or when dependencies change
         return () => {
             console.log(`🔌 Unsubscribing from ${channelName}`);
             channel.stopListening('.payment.status.updated');
