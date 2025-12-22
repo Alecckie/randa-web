@@ -26,11 +26,11 @@ class StoreCampaignRequest extends FormRequest
                 'integer',
                 'exists:advertisers,user_id'
             ],
-            // 'payment_id' => [
-            //     'required',
-            //     'integer',
-            //     'exists:payments,id'
-            // ],
+            'payment_id' => [
+                'nullable',
+                'integer',
+                'exists:payments,id'
+            ],
             'name' => [
                 'required',
                 'string',

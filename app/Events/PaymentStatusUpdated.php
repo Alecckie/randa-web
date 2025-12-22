@@ -79,6 +79,7 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
         return [
             'payment_id' => $this->payment->id,
             'reference' => $this->payment->payment_reference,
+            'campaign_id' => $this->payment->campaign_id, 
             'amount' => $this->payment->amount,
             'currency' => $this->payment->currency,
             'status' => $this->status,

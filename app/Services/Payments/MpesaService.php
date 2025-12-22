@@ -87,6 +87,38 @@ class MpesaService
     }
 
     /**
+     * Broadcast payment status update safely (async, with error handling)
+     */
+    protected function safeBroadcast(Payment $payment, string $status, ?string $message = null): void
+    {
+        try {
+            // Dispatch to queue if queues are configured, otherwise broadcast immediately
+            if (config('queue.default') !== 'sync') {
+                dispatch(function () use ($payment, $status, $message) {
+                    broadcast(new PaymentStatusUpdated($payment, $status, $message))->toOthers();
+                })->afterResponse();
+            } else {
+                // Broadcast without blocking the response
+                broadcast(new PaymentStatusUpdated($payment, $status, $message))->toOthers();
+            }
+
+            Log::info('Payment status broadcast queued', [
+                'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
+                'status' => $status
+            ]);
+        } catch (Exception $e) {
+            // Log the broadcast error but don't fail the payment processing
+            Log::error('Failed to broadcast payment status (non-critical)', [
+                'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Initiate STK Push payment
      */
     public function initiateStkPush(array $data): array
@@ -134,12 +166,13 @@ class MpesaService
                 'PartyB' => $this->businessShortCode,
                 'PhoneNumber' => $phoneNumber,
                 'CallBackURL' => $this->callbackUrl,
-                'AccountReference' => $phoneNumber, // Use phone number as account reference
+                'AccountReference' => $phoneNumber,
                 'TransactionDesc' => $data['description'] ?? 'Campaign Payment'
             ];
 
             Log::info('Initiating M-Pesa STK Push', [
                 'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
                 'reference' => $paymentReference,
                 'phone_number' => $phoneNumber,
                 'amount' => $data['amount']
@@ -160,6 +193,7 @@ class MpesaService
                 
                 Log::info('STK Push initiated successfully', [
                     'payment_id' => $payment->id,
+                    'campaign_id' => $payment->campaign_id,
                     'checkout_request_id' => $responseData['CheckoutRequestID'] ?? null
                 ]);
 
@@ -168,13 +202,14 @@ class MpesaService
                     'message' => 'Payment request sent successfully',
                     'reference' => $paymentReference,
                     'payment_id' => $payment->id,
+                    'campaign_id' => $payment->campaign_id,
                     'checkout_request_id' => $responseData['CheckoutRequestID'] ?? null,
                     'phone_number' => $phoneNumber,
-                    'paybill_details' => $payment->getPaybillDetails(), // Include paybill option
+                    'paybill_details' => $payment->getPaybillDetails(),
                 ];
             }
 
-            // STK Push failed - provide paybill fallback
+            // STK Push failed
             $errorMessage = $responseData['errorMessage'] ?? $responseData['ResponseDescription'] ?? 'Payment initiation failed';
             
             $payment->update([
@@ -185,6 +220,7 @@ class MpesaService
 
             Log::error('STK Push initiation failed', [
                 'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
                 'response' => $responseData
             ]);
 
@@ -192,8 +228,9 @@ class MpesaService
                 'success' => false,
                 'message' => $errorMessage,
                 'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
                 'reference' => $paymentReference,
-                'paybill_details' => $payment->getPaybillDetails(), // Provide paybill fallback
+                'paybill_details' => $payment->getPaybillDetails(),
             ];
 
         } catch (Exception $e) {
@@ -234,6 +271,7 @@ class MpesaService
 
             Log::info('Querying M-Pesa payment status', [
                 'payment_id' => $paymentId,
+                'campaign_id' => $payment->campaign_id,
                 'checkout_request_id' => $checkoutRequestId
             ]);
 
@@ -262,12 +300,22 @@ class MpesaService
                         ])
                     ]);
 
-                    broadcast(new PaymentStatusUpdated($payment, 'success'))->toOthers();
+                    // Update campaign status if linked
+                    if ($payment->campaign) {
+                        $payment->campaign->update([
+                            'status' => 'paid',
+                            'payment_verification_status' => 'verified'
+                        ]);
+                    }
+
+                    // Safe broadcast (won't block)
+                    $this->safeBroadcast($payment, 'success', 'Payment verified via query');
 
                     return [
                         'success' => true,
                         'status' => 'completed',
                         'message' => 'Payment confirmed',
+                        'campaign_id' => $payment->campaign_id,
                         'data' => $responseData
                     ];
                 } else {
@@ -278,6 +326,7 @@ class MpesaService
                         'success' => false,
                         'status' => 'pending',
                         'message' => $resultDesc,
+                        'campaign_id' => $payment->campaign_id,
                         'data' => $responseData
                     ];
                 }
@@ -286,6 +335,7 @@ class MpesaService
             return [
                 'success' => false,
                 'message' => 'Failed to query payment status',
+                'campaign_id' => $payment->campaign_id,
                 'data' => $responseData
             ];
 
@@ -315,9 +365,9 @@ class MpesaService
             'currency' => 'KES',
             'payment_method' => 'mpesa',
             'payment_gateway' => 'safaricom_mpesa',
-            'verification_method' => 'auto_callback', // Default, may change later
+            'verification_method' => 'auto_callback',
             'phone_number' => $data['phone_number'],
-            'paybill_account_number' => $data['phone_number'], // Phone as account number
+            'paybill_account_number' => $data['phone_number'],
             'status' => 'pending',
             'initiated_at' => now(),
             'metadata' => [
@@ -391,11 +441,13 @@ class MpesaService
 
                 Log::info('Payment completed successfully', [
                     'payment_id' => $payment->id,
+                    'campaign_id' => $payment->campaign_id,
                     'reference' => $payment->payment_reference,
                     'mpesa_receipt' => $metadata['mpesa_receipt_number'] ?? null
                 ]);
 
-                broadcast(new PaymentStatusUpdated($payment, 'success'))->toOthers();
+                // Safe broadcast (won't block callback processing)
+                $this->safeBroadcast($payment, 'success');
 
             } else {
                 // Payment failed
@@ -412,12 +464,14 @@ class MpesaService
 
                 Log::warning('Payment failed', [
                     'payment_id' => $payment->id,
+                    'campaign_id' => $payment->campaign_id,
                     'reference' => $payment->payment_reference,
                     'result_code' => $resultCode,
                     'result_desc' => $resultDesc
                 ]);
 
-                broadcast(new PaymentStatusUpdated($payment, 'failed'))->toOthers();
+                // Safe broadcast (won't block callback processing)
+                $this->safeBroadcast($payment, 'failed', $resultDesc);
             }
 
             return true;
@@ -440,7 +494,8 @@ class MpesaService
             Log::info('Manual receipt verification initiated', [
                 'receipt_number' => $data['receipt_number'],
                 'amount' => $data['amount'],
-                'phone_number' => $data['phone_number']
+                'phone_number' => $data['phone_number'],
+                'campaign_id' => $data['campaign_id'] ?? null
             ]);
 
             // Check if receipt already used
@@ -497,7 +552,6 @@ class MpesaService
                 $campaign = \App\Models\Campaign::find($data['campaign_id']);
                 if ($campaign) {
                     $campaign->update([
-                        'payment_id' => $payment->id,
                         'payment_verification_status' => 'awaiting_admin'
                     ]);
                 }
@@ -505,6 +559,7 @@ class MpesaService
 
             Log::info('Manual receipt submitted for verification', [
                 'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
                 'receipt_number' => $data['receipt_number']
             ]);
 
@@ -513,6 +568,7 @@ class MpesaService
                 'message' => 'Receipt submitted successfully. Your payment is pending admin verification.',
                 'reference' => $paymentReference,
                 'payment_id' => $payment->id,
+                'campaign_id' => $payment->campaign_id,
                 'receipt_number' => $data['receipt_number'],
                 'requires_approval' => true,
                 'status' => 'pending_verification'

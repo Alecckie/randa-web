@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import type { PaymentStatus } from '@/types/campaign';
 import Echo from 'laravel-echo';
+
 import Pusher from 'pusher-js';
 
 
@@ -65,6 +66,7 @@ interface PaymentModalProps {
     onClose: () => void;
     costBreakdown: CostBreakdown;
     advertiserId: number;
+    campaignId?: number | null; // Add campaign_id prop
     campaignData: {
         name: string;
         helmet_count: number | null;
@@ -82,6 +84,7 @@ export default function MpesaPaymentModal({
     onClose,
     costBreakdown,
     advertiserId,
+    campaignId = null, 
     campaignData,
     onPaymentSuccess,
 }: PaymentModalProps) {
@@ -123,7 +126,7 @@ export default function MpesaPaymentModal({
             advertiser_id: advertiserId,
             phone_number: phoneNumber,
             amount: costBreakdown.total_cost,
-            campaign_id: null,
+            campaign_id: campaignId, 
             campaign_data: campaignData,
             description: `Payment for ${campaignData.name}`
         }, {
@@ -163,7 +166,7 @@ export default function MpesaPaymentModal({
                 setShowFallbackOptions(true);
             },
         });
-    }, [phoneNumber, costBreakdown, advertiserId, campaignData]);
+    }, [phoneNumber, costBreakdown, advertiserId, campaignId, campaignData]);
 
     const queryPaymentStatus = useCallback(async () => {
         if (!payment_id || !checkout_request_id) return;
@@ -259,6 +262,7 @@ export default function MpesaPaymentModal({
             receipt_number: manualReceiptNumber.trim().toUpperCase(),
             amount: costBreakdown?.total_cost,
             phone_number: phoneNumber,
+            campaign_id: campaignId, // Include campaign_id
             campaign_data: campaignData
         }, {
             preserveState: true,
@@ -303,7 +307,7 @@ export default function MpesaPaymentModal({
                 setIsVerifyingReceipt(false);
             }
         });
-    }, [manualReceiptNumber, costBreakdown, phoneNumber, advertiserId, campaignData, closeManualReceiptModal, onPaymentSuccess]);
+    }, [manualReceiptNumber, costBreakdown, phoneNumber, advertiserId, campaignId, campaignData, closeManualReceiptModal, onPaymentSuccess]);
 
     // Echo WebSocket listener
     useEffect(() => {

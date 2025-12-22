@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import {
     Button,
@@ -135,6 +135,44 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
     // Payment modal state
     const [paymentModalOpened, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
 
+    // Listen for payment updates via Echo
+    useEffect(() => {
+        if (!advertiser?.id || !campaign?.id) {
+            return;
+        }
+
+        if (!window.Echo) {
+            console.error('❌ Laravel Echo is not initialized');
+            return;
+        }
+
+        const channelName = `payment.${advertiser.id}`;
+        const channel = window.Echo.private(channelName);
+
+        channel.subscribed(() => {
+            console.log(`✅ Successfully subscribed to ${channelName} for campaign updates`);
+        });
+
+        channel.listen('.payment.status.updated', (event: any) => {
+            console.log('💰 Payment status update received on campaign page:', event);
+
+            // Reload campaign data when payment is successful
+            if (event.status === 'success' && event.campaign_id === campaign.id) {
+                console.log('🔄 Reloading campaign data after successful payment');
+                router.reload({ only: ['campaign'] });
+            }
+        });
+
+        channel.error((error: any) => {
+            console.error('❌ Echo channel error:', error);
+        });
+
+        return () => {
+            channel.stopListening('.payment.status.updated');
+            window.Echo.leave(channelName);
+        };
+    }, [advertiser?.id, campaign?.id]);
+
     const getStatusColor = (status: string): string => {
         const colors: Record<string, string> = {
             draft: 'yellow',
@@ -252,7 +290,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                 >
                                     {campaign?.status?.toUpperCase()?.replace('_', ' ')}
                                 </Badge>
-                                {campaign?.status === 'draft' && (
+                                {campaign.status === 'draft' && (
                                     <Button
                                         component={Link}
                                         href={route('my-campaigns.edit', campaign.id)}
@@ -840,10 +878,11 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                         design_cost: campaign.current_cost.design_cost,
                         subtotal: campaign.current_cost.subtotal,
                         vat_amount: campaign.current_cost.vat_amount,
-                        total_cost: calculateBalance(), // Pay only the balance
+                        total_cost: calculateBalance(), 
                         currency: 'KES'
                     }}
                     advertiserId={advertiser.id}
+                    campaignId={campaign.id}
                     campaignData={{
                         name: campaign.name,
                         helmet_count: campaign.helmet_count,
