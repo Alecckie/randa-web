@@ -32,7 +32,8 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
             'payment_id' => $payment->id,
             'advertiser_id' => $payment->advertiser_id,
             'status' => $status,
-            'reference' => $payment->payment_reference
+            'reference' => $payment->payment_reference,
+            'mpesa_receipt' => $payment->getMpesaReceipt()
         ]);
     }
 
@@ -45,7 +46,8 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
         $channel = new PrivateChannel('payment.' . $this->payment->advertiser_id);
 
         Log::info('Broadcasting on channel', [
-            'channel' => "payment.{$this->payment->advertiser_id}"
+            'channel' => "payment.{$this->payment->advertiser_id}",
+            'mpesa_receipt' => $this->payment->getMpesaReceipt()
         ]);
 
         return $channel;
@@ -64,6 +66,16 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
+        $mpesaReceipt = $this->payment->getMpesaReceipt();
+
+        Log::info('Broadcasting payment data', [
+            'payment_id' => $this->payment->id,
+            'reference' => $this->payment->payment_reference,
+            'mpesa_receipt' => $mpesaReceipt,
+            'mpesa_receipt_number_column' => $this->payment->mpesa_receipt_number,
+            'status' => $this->status
+        ]);
+
         return [
             'payment_id' => $this->payment->id,
             'reference' => $this->payment->payment_reference,
@@ -71,8 +83,11 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
             'currency' => $this->payment->currency,
             'status' => $this->status,
             'message' => $this->getStatusMessage(),
-            'mpesa_receipt' => $this->payment->mpesa_receipt ?? null,
-            'timestamp' => now()->toIso8601String()
+            'mpesa_receipt' => $mpesaReceipt,
+            'timestamp' => now()->toIso8601String(),
+            'show_fallback_options' => $this->status === 'failed',
+            'can_retry_stk' => $this->payment->can_retry_stk,
+            'paybill_details' => $this->status === 'failed' ? $this->payment->getPaybillDetails() : null,
         ];
     }
 

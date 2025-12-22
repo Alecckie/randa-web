@@ -11,7 +11,7 @@ export type CampaignStatus =
     | 'completed'
     | 'cancelled';
 
-export type PaymentStatus = 'idle' | 'initiating' | 'pending' | 'success' | 'failed' | 'timeout';
+export type PaymentStatus = 'idle' | 'initiating' | 'pending' | 'success' | 'failed' | 'timeout' | 'pending_verification';
 
 export interface Campaign {
     id: number;

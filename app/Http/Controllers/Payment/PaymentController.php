@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Payment;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payment\WebInitiatePaymentRequest;
 use App\Services\Payments\MpesaService;
+use App\Models\Payment;
 use App\Traits\HandlesPayment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +24,6 @@ class PaymentController extends Controller
 
     /**
      * Initiate M-Pesa STK Push payment
-     * FIXED: Return response that works with Inertia
      */
     public function initiateStkPush(WebInitiatePaymentRequest $request)
     {
@@ -47,27 +47,16 @@ class PaymentController extends Controller
 
             Log::info('📦 M-Pesa service result', [
                 'success' => $result['success'] ?? false,
-                'message' => $result['message'] ?? 'No message',
-                'reference' => $result['reference'] ?? 'No reference',
-                'full_result' => $result
+                'message' => $result['message'] ?? 'No message'
             ]);
 
-            // For Inertia requests - share data in flash
+            // ✨ FIX: For Inertia requests - spread the result directly into flash
             if ($request->header('X-Inertia')) {
-                return back()->with([
-                    'flash' => [
-                        'success' => $result['success'],
-                        'message' => $result['message'],
-                        'reference' => $result['reference'] ?? null,
-                        'payment_id' => $result['payment_id'] ?? null,
-                        'checkout_request_id' => $result['checkout_request_id'] ?? null,
-                        'mpesa_receipt' => $result['mpesa_receipt'] ?? null,
-                    ]
-                ]);
+                return back()->with($result); // ✅ CHANGED: Spread result directly, not nested in 'flash'
             }
 
-            // For API requests
             return response()->json($result, $result['success'] ? 200 : 400);
+            
         } catch (\Exception $e) {
             Log::error('❌ Payment initiation exception', [
                 'error' => $e->getMessage(),
@@ -75,11 +64,10 @@ class PaymentController extends Controller
             ]);
 
             if ($request->header('X-Inertia')) {
+                // ✨ FIX: Return error data directly
                 return back()->with([
-                    'flash' => [
-                        'success' => false,
-                        'message' => 'An error occurred while processing your payment request.'
-                    ]
+                    'success' => false,
+                    'message' => 'An error occurred while processing your payment request.'
                 ]);
             }
 
@@ -91,8 +79,159 @@ class PaymentController extends Controller
     }
 
     /**
-     * Verify manual M-Pesa receipt
-     * FIXED: Return response that works with Inertia
+     * Query payment status via M-Pesa Query API
+     */
+    public function queryPaymentStatus(Request $request)
+    {
+        $request->validate([
+            'payment_id' => 'required|integer|exists:payments,id',
+            'checkout_request_id' => 'required|string'
+        ]);
+
+        try {
+            $payment = Payment::find($request->input('payment_id'));
+            
+            // Verify user owns this payment
+            if ($payment->advertiser_id !== $request->getAdvertiserId()) {
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'success' => false,
+                        'message' => 'Unauthorized'
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            // Check rate limiting
+            if (!$payment->can_query_status) {
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'success' => false,
+                        'message' => 'Please wait 30 seconds before querying again'
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please wait 30 seconds before querying again'
+                ], 429);
+            }
+
+            $result = $this->mpesaService->queryPaymentStatus(
+                $request->input('checkout_request_id'),
+                $request->input('payment_id')
+            );
+
+            // ✨ FIX: Spread result directly
+            if ($request->header('X-Inertia')) {
+                return back()->with($result);
+            }
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Query payment status error', [
+                'error' => $e->getMessage()
+            ]);
+
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => false,
+                    'message' => 'Error querying payment status'
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error querying payment status'
+            ], 500);
+        }
+    }
+
+    /**
+     * Retry STK Push
+     */
+    public function retryStkPush(Request $request)
+    {
+        $request->validate([
+            'payment_id' => 'required|integer|exists:payments,id'
+        ]);
+
+        try {
+            $payment = Payment::find($request->input('payment_id'));
+            
+            // Verify ownership
+            if ($payment->advertiser_id !== $request->getAdvertiserId()) {
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'success' => false,
+                        'message' => 'Unauthorized'
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            // Check if retry is allowed
+            if (!$payment->can_retry_stk) {
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'success' => false,
+                        'message' => 'Cannot retry STK push. Maximum attempts reached or retry too soon.'
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot retry STK push. Maximum attempts reached or retry too soon.'
+                ], 400);
+            }
+
+            // Initiate new STK push with same details
+            $result = $this->mpesaService->initiateStkPush([
+                'phone_number' => $payment->phone_number,
+                'amount' => $payment->amount,
+                'advertiser_id' => $payment->advertiser_id,
+                'campaign_id' => $payment->campaign_id,
+                'campaign_data' => $payment->metadata['campaign_data'] ?? null,
+                'description' => 'Campaign Payment (Retry)'
+            ]);
+
+            // ✨ FIX: Spread result directly
+            if ($request->header('X-Inertia')) {
+                return back()->with($result);
+            }
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Retry STK push error', [
+                'error' => $e->getMessage()
+            ]);
+
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => false,
+                    'message' => 'Error retrying payment'
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrying payment'
+            ], 500);
+        }
+    }
+
+    /**
+     * Verify manual M-Pesa receipt - requires admin approval
      */
     public function verifyReceipt(Request $request)
     {
@@ -108,7 +247,7 @@ class PaymentController extends Controller
             $advertiserId = $request->input('advertiser_id');
 
             $result = $this->mpesaService->verifyManualReceipt([
-                'receipt_number' => $request->input('receipt_number'),
+                'receipt_number' => strtoupper($request->input('receipt_number')),
                 'amount' => $request->input('amount'),
                 'phone_number' => $request->input('phone_number'),
                 'advertiser_id' => $advertiserId,
@@ -116,29 +255,21 @@ class PaymentController extends Controller
                 'campaign_data' => $request->input('campaign_data')
             ]);
 
-            // For Inertia requests, use redirect with flash data
             if ($request->header('X-Inertia')) {
-                return redirect()->back()->with([
-                    'flash' => $result,
-                    'success' => $result['success'],
-                    'message' => $result['message'],
-                    'reference' => $result['reference'] ?? null,
-                    'payment_id' => $result['payment_id'] ?? null,
-                    'receipt_number' => $result['receipt_number'] ?? null,
-                ]);
+                return back()->with($result);
             }
 
-            // For API requests, return JSON
             return response()->json($result, $result['success'] ? 200 : 400);
+            
         } catch (\Exception $e) {
-            Log::error('Receipt verification error in controller', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            Log::error('Receipt verification error', [
+                'error' => $e->getMessage()
             ]);
 
             if ($request->header('X-Inertia')) {
-                return redirect()->back()->withErrors([
-                    'receipt' => 'An error occurred while verifying your receipt.'
+                return back()->with([
+                    'success' => false,
+                    'message' => 'An error occurred while verifying your receipt.'
                 ]);
             }
 
@@ -150,20 +281,58 @@ class PaymentController extends Controller
     }
 
     /**
-     * Query payment status
+     * Get paybill payment instructions
      */
-    public function queryPaymentStatus(Request $request, string $checkoutRequestId)
+    public function getPaybillInstructions(Request $request)
     {
-        $advertiserId = $request->user()->advertiser->id ?? null;
+        $request->validate([
+            'payment_id' => 'required|integer|exists:payments,id'
+        ]);
 
-        if (!$advertiserId) {
+        try {
+            $payment = Payment::find($request->input('payment_id'));
+            
+            // Verify ownership
+            if ($payment->advertiser_id !== $request->getAdvertiserId()) {
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'success' => false,
+                        'message' => 'Unauthorized'
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $result = $this->mpesaService->generatePaybillInstructions($request->input('payment_id'));
+
+            // ✨ FIX: For Inertia requests
+            if ($request->header('X-Inertia')) {
+                return back()->with($result);
+            }
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Get paybill instructions error', [
+                'error' => $e->getMessage()
+            ]);
+
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => false,
+                    'message' => 'Error generating instructions'
+                ]);
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized'
-            ], 403);
+                'message' => 'Error generating instructions'
+            ], 500);
         }
-
-        return $this->queryPayment($checkoutRequestId, $advertiserId);
     }
 
     /**
@@ -171,58 +340,64 @@ class PaymentController extends Controller
      */
     public function getPaymentDetails(Request $request, string $paymentReference)
     {
-        $advertiserId = $request->user()->advertiser->id ?? null;
+        $advertiserId = $request->getAdvertiserId();
 
         if (!$advertiserId) {
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ]);
+            }
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized'
             ], 403);
         }
 
-        return $this->getPayment($paymentReference, $advertiserId);
-    }
+        $payment = Payment::where('payment_reference', $paymentReference)
+                         ->where('advertiser_id', $advertiserId)
+                         ->first();
 
-    /**
-     * List all payments
-     */
-    public function listPayments(Request $request)
-    {
-        $advertiserId = $request->user()->advertiser->id ?? null;
-
-        if (!$advertiserId) {
+        if (!$payment) {
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => false,
+                    'message' => 'Payment not found'
+                ]);
+            }
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized'
-            ], 403);
+                'message' => 'Payment not found'
+            ], 404);
         }
 
-        $filters = $request->only([
-            'status',
-            'payment_method',
-            'from_date',
-            'to_date',
-            'campaign_id',
-            'per_page'
-        ]);
+        $result = [
+            'success' => true,
+            'payment' => [
+                'id' => $payment->id,
+                'reference' => $payment->payment_reference,
+                'amount' => $payment->amount,
+                'status' => $payment->status,
+                'mpesa_receipt' => $payment->getMpesaReceipt(),
+                'phone_number' => $payment->phone_number,
+                'requires_approval' => $payment->requires_admin_approval,
+                'is_awaiting_approval' => $payment->is_awaiting_approval,
+                'can_retry_stk' => $payment->can_retry_stk,
+                'can_query_status' => $payment->can_query_status,
+                'verification_method' => $payment->verification_method,
+                'paybill_details' => $payment->getPaybillDetails(),
+                'created_at' => $payment->created_at,
+                'completed_at' => $payment->completed_at,
+            ]
+        ];
 
-        return $this->listPayments($advertiserId, $filters);
-    }
-
-    /**
-     * Get payment statistics
-     */
-    public function getPaymentStats(Request $request)
-    {
-        $advertiserId = $request->user()->advertiser->id ?? null;
-
-        if (!$advertiserId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized'
-            ], 403);
+        if ($request->header('X-Inertia')) {
+            return back()->with($result);
         }
 
-        return $this->getPaymentStats($advertiserId);
+        return response()->json($result);
     }
 }

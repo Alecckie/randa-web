@@ -217,7 +217,7 @@ class CampaignService
                 'business_type' => $data['business_type'] ?? null,
                 'require_vat_receipt' => $data['require_vat_receipt'] ?? false,
                 'agree_to_terms' => $data['agree_to_terms'] ?? false,
-                'status' => 'paid',
+                'status' => $data['payment'] ?? 'draft',
                 'special_instructions' => $data['special_instructions'] ?? null,
             ]);
 
@@ -358,8 +358,8 @@ class CampaignService
         $helmetCount = $campaign->helmet_count;
         $durationDays = $campaign->duration_days;
         $needsDesign = $campaign->need_design;
-        $dailyRate = 200.00; // Fixed rate per helmet per day
-        $designRate = 3000.00; // Fixed design cost
+        $dailyRate = 1; // Fixed rate per helmet per day
+        $designRate = 1; // Fixed design cost
         $vatRate = 16.00; // 16% VAT
 
         // Calculate costs
@@ -586,7 +586,7 @@ class CampaignService
         return [
             'helmet_count' => $helmetCount,
             'duration_days' => $durationDays,
-            'daily_rate' => 200.00,
+            'daily_rate' => 1.00,
             'base_cost' => $baseCost,
             'includes_design' => $needsDesign,
             'design_cost' => $designCost,

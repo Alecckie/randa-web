@@ -39,7 +39,16 @@ class HandleInertiaRequests extends Middleware
                 ...(new Ziggy)->toArray(),
                 'location' => $request->url(),
             ],
-            'flash' => fn() => $request->session()->get('flash') ?? [],
+            'flash' => [
+                'success' => fn() => $request->session()->get('success'),
+                'message' => fn() => $request->session()->get('message'),
+                'reference' => fn() => $request->session()->get('reference'),
+                'payment_id' => fn() => $request->session()->get('payment_id'),
+                'checkout_request_id' => fn() => $request->session()->get('checkout_request_id'),
+                'paybill_details' => fn() => $request->session()->get('paybill_details'),
+                'receipt_number' => fn() => $request->session()->get('receipt_number'),
+                'requires_approval' => fn() => $request->session()->get('requires_approval'),
+            ],
 
             'errors' => fn() => $request->session()->get('errors')
                 ? $request->session()->get('errors')->getBag('default')->getMessages()

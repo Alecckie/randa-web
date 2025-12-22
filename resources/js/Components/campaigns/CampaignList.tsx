@@ -349,10 +349,10 @@ export default function CampaignList({
                                     </div>
                                 </div>
                                 
-                                <div className="flex items-center justify-between">
+                                {/* <div className="flex items-center justify-between">
                                     <Text size="xs" c="dimmed">Helmets:</Text>
                                     <Text size="xs" fw={500}>{campaign.helmet_count || 0}</Text>
-                                </div>
+                                </div> */}
                                 
                                 <div>
                                     <Text size="xs" c="dimmed" className="mb-1">Coverage:</Text>
@@ -385,9 +385,9 @@ export default function CampaignList({
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                                     Coverage Areas
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                {/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                                     Helmets
-                                </th>
+                                </th> */}
                                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                                     Actions
                                 </th>
@@ -434,9 +434,9 @@ export default function CampaignList({
                                     <td className="px-6 py-4">
                                         {renderCoverageAreas(campaign.coverage_areas)}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                         {campaign.helmet_count || 0}
-                                    </td>
+                                    </td> */}
                                     <td className="px-6 py-4 whitespace-nowrap text-right">
                                         <Menu shadow="md" width={200}>
                                             <Menu.Target>
@@ -445,14 +445,17 @@ export default function CampaignList({
                                                 </ActionIcon>
                                             </Menu.Target>
                                             <Menu.Dropdown>
-                                                <Menu.Item leftSection={<EyeIcon size={14} />} component={Link}>
+                                                <Menu.Item leftSection={<EyeIcon size={14} />} 
+                                                component={Link}
+                                                 href={route('my-campaigns.show', campaign.id)}
+                                                >
                                                     View Details
                                                 </Menu.Item>
-                                                {(campaign.status === 'draft' || campaign.status === 'pending_payment') && (
+                                                {/* {(campaign.status === 'draft' || campaign.status === 'pending_payment') && (
                                                     <Menu.Item leftSection={<PencilIcon size={14} />} component={Link}>
                                                         Edit
                                                     </Menu.Item>
-                                                )}
+                                                )} */}
                                             </Menu.Dropdown>
                                         </Menu>
                                     </td>

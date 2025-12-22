@@ -24,10 +24,9 @@ import {
     Progress,
     Modal,
     Box,
-    Notification,
     Badge,
     ThemeIcon,
-
+    ActionIcon,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -48,26 +47,11 @@ import {
     Calendar,
     Target,
     CreditCard,
-    AlertCircle,
-    Smartphone,
-    XCircle,
-    Clock,
-    RefreshCw,
-    Receipt
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Advertiser } from '@/types/advertiser';
-import { PaymentStatus } from '@/types/campaign';
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
-
-declare global {
-    interface Window {
-        Pusher: typeof Pusher;
-        Echo: Echo<any>;
-    }
-}
+import MpesaPaymentModal from '../payments/MpesaPaymentModal';
 
 interface CoverageArea {
     id: number;
@@ -156,25 +140,13 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         description: ''
     });
 
-
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
-    const [paymentError, setPaymentError] = useState('');
-    const [paymentReference, setPaymentReference] = useState('');
-    const [mpesa_receipt, setMpesaReceipt] = useState('');
-    const [payment_id, setPaymentId] = useState('');
-    const [showPaymentNotification, setShowPaymentNotification] = useState(false);
-
-    const [showManualConfirmation, setShowManualConfirmation] = useState(false);
-    const [manualReceiptNumber, setManualReceiptNumber] = useState('');
-    const [isVerifyingReceipt, setIsVerifyingReceipt] = useState(false);
-    const [manualConfirmationError, setManualConfirmationError] = useState('');
-
-
-
-
-
-
+    // Payment modal state
+    const [paymentModalOpened, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
+    const [paymentData, setPaymentData] = useState<{
+        payment_id: string;
+        reference: string;
+        mpesa_receipt: string;
+    } | null>(null);
 
     // Memoize options
     const advertiserOptions = useMemo(() =>
@@ -262,232 +234,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         }, 1000);
     }, [formData.helmet_count, duration, formData.need_design, formData.require_vat_receipt]);
 
-    const initiatePayment = useCallback(async () => {
-    if (!phoneNumber || !costBreakdown) return;
-
-    setPaymentStatus('initiating');
-    setPaymentError('');
-    setShowPaymentNotification(false);
-
-    router.post(route('payments.mpesa.initiate.stk-push'), {
-        advertiser_id: formData.advertiser_id,
-        phone_number: phoneNumber,
-        amount: costBreakdown.total_cost,
-        campaign_id: null,
-        campaign_data: {
-            name: formData.name,
-            helmet_count: formData.helmet_count,
-            duration: duration
-        },
-        description: `Payment for ${formData.name}`
-    }, {
-        preserveState: true,
-        preserveScroll: true,
-        only: ['flash'], // Only reload flash data
-        onSuccess: (page) => {
-            console.log('✅ Payment response received');
-            console.log('📦 Full page.props:', page.props);
-            
-            // Access flash data from page props
-            const flashData = page.props.flash as any;
-            
-            console.log('🔍 Flash data:', flashData);
-            console.log('✔️ Success flag:', flashData?.success);
-
-            // Check if payment initiation was successful
-            if (flashData?.success === true) {
-                console.log('🎉 Payment initiated successfully');
-                setPaymentReference(flashData.reference || '');
-                setMpesaReceipt(flashData.mpesa_receipt || '');
-                setPaymentId(flashData.payment_id || '');
-                setPaymentStatus('pending');
-                setPaymentError('');
-            } else {
-                // Payment initiation failed
-                console.error('❌ Payment failed:', flashData?.message);
-                setPaymentStatus('failed');
-                setPaymentError(flashData?.message || 'Payment initiation failed');
-                setShowPaymentNotification(true);
-            }
-        },
-        onError: (errors) => {
-            console.error('❌ Validation errors:', errors);
-            setPaymentStatus('failed');
-            const errorMessage = Object.values(errors)[0] as string || 'Failed to initiate payment';
-            setPaymentError(errorMessage);
-            setShowPaymentNotification(true);
-        },
-        onFinish: () => {
-            console.log('🏁 Request finished');
-        }
-    });
-}, [phoneNumber, costBreakdown, formData, duration]);
-
-    
-    useEffect(() => {
-        console.log('🎯 Echo Effect Running', {
-            hasAdvertiser: !!advertiser?.id,
-            advertiserId: advertiser?.id,
-            paymentStatus,
-            paymentReference
-        });
-
-        if (!advertiser?.id) {
-            console.warn('⚠️ No advertiser ID');
-            return;
-        }
-
-        if (!window.Echo) {
-            console.error('❌ Laravel Echo is not initialized. Make sure to import ./echo in your app.tsx');
-            return;
-        }
-
-        console.log('✅ Echo available, subscribing to payment channel');
-
-        const channelName = `payment.${advertiser.id}`;
-
-        // Subscribe to private channel
-        const channel = window.Echo.private(channelName);
-
-        // Log subscription success
-        channel.subscribed(() => {
-            console.log(`✅ Successfully subscribed to ${channelName}`);
-        });
-
-        // Listen for payment status updates
-        channel.listen('.payment.status.updated', (event: any) => {
-            console.log('💰 Payment status update received:', event);
-            console.log('📋 Comparing references:', {
-                received: event.reference,
-                expected: paymentReference,
-                match: event.reference === paymentReference
-            });
-
-            if (!paymentReference) {
-                console.warn('⚠️ No payment reference yet - event arrived before payment initiated');
-                return;
-            }
-
-            if (event.reference === paymentReference) {
-                console.log('✅ Reference matched! Processing payment status:', event.status);
-
-                if (event.status === 'success') {
-                    console.log('🎉 Setting payment to SUCCESS');
-                    setPaymentStatus('success');
-                    setShowPaymentNotification(true);
-                    setMpesaReceipt(event.mpesa_receipt || '');
-                    setPaymentError('');
-                } else if (event.status === 'failed') {
-                    console.log('❌ Setting payment to FAILED');
-                    setPaymentStatus('failed');
-                    setPaymentError(event.message || 'Payment failed');
-                    setShowPaymentNotification(true);
-                }
-            } else {
-                console.warn('⚠️ Reference mismatch - ignoring event', {
-                    received: event.reference,
-                    expected: paymentReference
-                });
-            }
-        });
-
-        // Handle subscription errors
-        channel.error((error: any) => {
-            console.error('❌ Echo channel error:', error);
-        });
-
-        // Cleanup on unmount or when dependencies change
-        return () => {
-            console.log(`🔌 Unsubscribing from ${channelName}`);
-            channel.stopListening('.payment.status.updated');
-            window.Echo.leave(channelName);
-        };
-    }, [advertiser?.id, paymentReference]);
-
-
-    /**
- * Auto-timeout payment after 40 seconds if no success
- */
-useEffect(() => {
-    if (paymentStatus === 'pending') {
-        console.log('⏱️ Starting 40-second payment timeout');
-        
-        const timeoutId = setTimeout(() => {
-            console.log('⏱️ Payment timeout reached (40 seconds)');
-            setPaymentStatus('failed');
-            setPaymentError('Payment request timed out. Please try again or enter your M-Pesa receipt if you completed the payment.');
-            setShowPaymentNotification(true);
-        }, 40000); // 40 seconds
-
-        return () => {
-            console.log('🧹 Clearing payment timeout');
-            clearTimeout(timeoutId);
-        };
-    }
-}, [paymentStatus]);
-
-
-    // Reset payment to allow retry
-    const handleRetryPayment = useCallback(() => {
-        setPaymentStatus('idle');
-        setPaymentError('');
-        setPaymentReference('');
-        setMpesaReceipt('');
-        setPaymentId('');
-        setShowPaymentNotification(false);
-        setPhoneNumber(''); // Clear phone number to allow user to re-enter
-    }, []);
-
-    // Show manual confirmation form
-    const handleShowManualConfirmation = useCallback(() => {
-        setShowManualConfirmation(true);
-        setManualConfirmationError('');
-    }, []);
-
-   const handleVerifyReceipt = useCallback(async () => {
-        if (!manualReceiptNumber.trim()) {
-            setManualConfirmationError('Please enter a valid M-Pesa receipt number');
-            return;
-        }
-
-        setIsVerifyingReceipt(true);
-        setManualConfirmationError('');
-
-        router.post(route('payments.mpesa.verify-receipt'), {
-            advertiser_id: formData.advertiser_id,
-            receipt_number: manualReceiptNumber.trim(),
-            amount: costBreakdown?.total_cost,
-            phone_number: phoneNumber,
-            campaign_data: {
-                name: formData.name,
-                helmet_count: formData.helmet_count,
-                duration: duration
-            }
-        }, {
-            preserveState: true,
-            preserveScroll: true,
-            onSuccess: (page) => {
-                const data = page.props.flash as any;
-                if (data?.success) {
-                    setPaymentStatus('success');
-                    setPaymentReference(data.reference);
-                    setMpesaReceipt(data.receipt_number);
-                    setPaymentId(data.payment_id);
-                    setShowManualConfirmation(false);
-                    setShowPaymentNotification(true);
-                    setPaymentError('');
-                } else {
-                    setManualConfirmationError(data?.message || 'Receipt verification failed. Please check the receipt number and try again.');
-                }
-                setIsVerifyingReceipt(false);
-            },
-            onError: (errors) => {
-                setManualConfirmationError(Object.values(errors)[0] as string || 'Failed to verify receipt');
-                setIsVerifyingReceipt(false);
-            }
-        });
-    }, [manualReceiptNumber, costBreakdown, phoneNumber, formData, duration]);
-
     useEffect(() => {
         if (activeStep === 4 && formData.helmet_count && duration && !costBreakdown && !loadingCosts) {
             calculateCosts();
@@ -498,27 +244,34 @@ useEffect(() => {
         if (activeStep === 3) {
             calculateCosts();
         }
-        setActiveStep(current => Math.min(current + 1, 6));
+        setActiveStep(current => Math.min(current + 1, 5));
     }, [activeStep, calculateCosts]);
 
     const prevStep = useCallback(() => {
         setActiveStep(current => Math.max(current - 1, 0));
     }, []);
 
+    const handlePaymentSuccess = useCallback((paymentInfo: {
+        payment_id: string;
+        reference: string;
+        mpesa_receipt: string;
+    }) => {
+        setPaymentData(paymentInfo);
+        closePaymentModal();
+    }, [closePaymentModal]);
+
     const handleSubmit = useCallback((e: React.FormEvent) => {
         e.preventDefault();
-        console.log();
 
-        if (activeStep === 6 && paymentStatus === 'success') {
-
+        if (activeStep === 5) {
             setSubmitting(true);
 
             const submissionData = {
                 ...formData,
                 coverage_area_ids: formData.coverage_areas.map(id => parseInt(id)),
                 advertiser_id: formData.advertiser_id ? parseInt(formData.advertiser_id.toString()) : null,
-                payment_id: payment_id,
-                payment_status: 'paid'
+                payment_id: paymentData?.payment_id || null,
+                payment_status: paymentData ? 'paid' : 'pending'
             };
 
             router.post(route('my-campaigns.store'), submissionData, {
@@ -534,7 +287,7 @@ useEffect(() => {
         } else {
             nextStep();
         }
-    }, [activeStep, formData, nextStep, paymentStatus, paymentReference]);
+    }, [activeStep, formData, nextStep, paymentData]);
 
     const isStepValid = useMemo(() => {
         switch (activeStep) {
@@ -550,12 +303,10 @@ useEffect(() => {
                 return costBreakdown !== null;
             case 5:
                 return formData.agree_to_terms;
-            case 6:
-                return paymentStatus === 'success';
             default:
                 return true;
         }
-    }, [activeStep, formData, costBreakdown, paymentStatus]);
+    }, [activeStep, formData, costBreakdown]);
 
     const handleCreateCoverageArea = useCallback(() => {
         router.post(route('coverage-areas.store'), newCoverageArea, {
@@ -1042,8 +793,6 @@ useEffect(() => {
                                         </Table.Td>
                                     </Table.Tr>
 
-                                    {formData?.require_vat_receipt}
-
                                     {formData?.require_vat_receipt && (
                                         <Table.Tr>
                                             <Table.Td>
@@ -1108,9 +857,6 @@ useEffect(() => {
         </Stack>
     ), [loadingCosts, costBreakdown, formData.helmet_count, duration, calculateCosts]);
 
-
-
-
     const StepFinalReview = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
@@ -1126,6 +872,7 @@ useEffect(() => {
             <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
                 <Text size="sm" fw={500}>
                     Please review all details carefully before submitting your campaign.
+                    You can pay now or later.
                 </Text>
             </Alert>
 
@@ -1186,6 +933,19 @@ useEffect(() => {
                             </Group>
                         </Paper>
                     </div>
+
+                    {/* Payment Status */}
+                    {paymentData && (
+                        <Alert icon={<CheckCircle size={18} />} color="green" variant="filled" radius="md">
+                            <Stack gap="xs">
+                                <Text fw={700}>Payment Completed</Text>
+                                <Group gap="xs">
+                                    <Badge color="white" variant="outline">Receipt: {paymentData.mpesa_receipt}</Badge>
+                                    <Badge color="white" variant="outline">Ref: {paymentData.reference}</Badge>
+                                </Group>
+                            </Stack>
+                        </Alert>
+                    )}
                 </Stack>
             </Card>
 
@@ -1199,343 +959,23 @@ useEffect(() => {
                     required
                 />
             </Card>
-        </Stack>
-    ), [formData, costBreakdown, duration, coverageareas, updateFormData]);
 
-    const StepPayment = useMemo(() => (
-        <Stack gap="lg">
-            <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
-                    <CreditCard size={24} />
-                </ThemeIcon>
-                <div>
-                    <Title order={3} className="text-gray-800 dark:text-gray-100">M-Pesa Payment</Title>
-                    <Text size="sm" c="dimmed">Complete your payment to submit campaign</Text>
-                </div>
-            </div>
-
-            {/* Payment Success Notification */}
-            {showPaymentNotification && paymentStatus === 'success' && (
-                <Notification
-                    icon={<CheckCircle size={20} />}
-                    color="green"
-                    title="Payment Successful!"
-                    onClose={() => setShowPaymentNotification(false)}
+            {/* Pay Now Button */}
+            {!paymentData && costBreakdown && (
+                <Button
+                    onClick={openPaymentModal}
+                    size="xl"
                     radius="md"
-                    withCloseButton
+                    leftSection={<CreditCard size={22} />}
+                    gradient={{ from: 'green', to: 'teal', deg: 45 }}
+                    variant="gradient"
+                    fullWidth
                 >
-                    Your payment of KES {costBreakdown?.total_cost.toLocaleString()} has been received successfully.
-                    Code : {mpesa_receipt}
-                </Notification>
-            )}
-
-            {/* Payment Failed Notification */}
-            {showPaymentNotification && paymentStatus === 'failed' && (
-                <Notification
-                    icon={<XCircle size={20} />}
-                    color="red"
-                    title="Payment Failed"
-                    onClose={() => setShowPaymentNotification(false)}
-                    radius="md"
-                    withCloseButton
-                >
-                    {paymentError || 'Your payment could not be processed. Please try again.'}
-                </Notification>
-            )}
-
-            {/* Payment Amount Summary */}
-            <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-200 dark:border-gray-700">
-                <Stack gap="md">
-                    <Group justify="space-between" align="center">
-                        <div>
-                            <Text size="sm" c="dimmed" fw={600}>Total Amount Due</Text>
-                            <Text fw={700} size="2.5rem" className="text-green-600 dark:text-green-400">
-                                KES {costBreakdown?.total_cost.toLocaleString()}
-                            </Text>
-                        </div>
-                        <ThemeIcon size={80} radius="xl" variant="light" color="green">
-                            <Smartphone size={40} />
-                        </ThemeIcon>
-                    </Group>
-                    <Divider />
-                    <Grid>
-                        <Grid.Col span={6}>
-                            <Text size="xs" c="dimmed">Campaign Duration</Text>
-                            <Text fw={600}>{costBreakdown?.duration_days} days</Text>
-                        </Grid.Col>
-                        <Grid.Col span={6}>
-                            <Text size="xs" c="dimmed">Helmets</Text>
-                            <Text fw={600}>{costBreakdown?.helmet_count}</Text>
-                        </Grid.Col>
-                    </Grid>
-                </Stack>
-            </Card>
-
-            {/* Payment Form - Idle State */}
-            {paymentStatus === 'idle' && (
-                <Card withBorder p="xl" radius="lg">
-                    <Stack gap="lg">
-                        <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
-                            <Text size="sm" fw={500}>
-                                Enter your M-Pesa registered phone number to receive a payment prompt on your phone.
-                            </Text>
-                        </Alert>
-
-                        <TextInput
-                            label="M-Pesa Phone Number"
-                            placeholder="e.g., 254712345678"
-                            value={phoneNumber}
-                            onChange={(e) => setPhoneNumber(e.currentTarget.value)}
-                            size="lg"
-                            radius="md"
-                            leftSection={<Smartphone size={20} />}
-                            description="Format: 254XXXXXXXXX"
-                            styles={{
-                                input: { borderWidth: 2, fontSize: '1.1rem', '&:focus': { borderColor: 'var(--mantine-color-green-6)' } }
-                            }}
-                        />
-
-                        <Button
-                            onClick={initiatePayment}
-                            disabled={!phoneNumber || phoneNumber.length < 12}
-                            size="xl"
-                            radius="md"
-                            leftSection={<CreditCard size={22} />}
-                            gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                            variant="gradient"
-                            fullWidth
-                        >
-                            Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
-                        </Button>
-                        {/* <Divider label="OR" labelPosition="center" />
-
-                        <Button
-                            onClick={handleShowManualConfirmation}
-                            variant="light"
-                            size="lg"
-                            radius="md"
-                            leftSection={<Receipt size={20} />}
-                            fullWidth
-                        >
-                            Already Paid? Enter M-Pesa Receipt Number
-                        </Button> */}
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Initiating Payment State */}
-            {paymentStatus === 'initiating' && (
-                <Card withBorder p="xl" radius="lg" className="text-center">
-                    <Stack gap="md" align="center">
-                        <Loader size="xl" type="dots" color="green" />
-                        <Text fw={600} size="lg" className="text-gray-800 dark:text-gray-100">
-                            Initiating Payment...
-                        </Text>
-                        <Text size="sm" c="dimmed">Please wait while we process your request</Text>
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Pending Payment State */}
-            {paymentStatus === 'pending' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border-2 border-yellow-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
-                            <Clock size={40} />
-                        </ThemeIcon>
-                        <Text fw={700} size="xl" className="text-yellow-700 dark:text-yellow-400">
-                            Payment Prompt Sent!
-                        </Text>
-                        <Text size="md" ta="center" c="dimmed">
-                            Please check your phone <Text component="span" fw={700}>{phoneNumber}</Text> for the M-Pesa payment prompt.
-                        </Text>
-                        <Text size="sm" ta="center" c="dimmed">
-                            Reference: <Text component="span" fw={600}>{paymentReference}</Text>
-                        </Text>
-                        <Alert icon={<Info size={18} />} color="yellow" variant="light" radius="md" style={{ width: '100%' }}>
-                            <Text size="sm">
-                                Enter your M-Pesa PIN to complete the payment.
-                                You will be notified automatically once payment is confirmed.
-                            </Text>
-                        </Alert>
-                        <Loader size="md" type="dots" color="yellow" />
-                        <Text size="xs" c="dimmed">Waiting for payment confirmation...</Text>
-
-                        <Divider style={{ width: '100%' }} my="md" />
-
-                        {/* <Group justify="center" gap="md" style={{ width: '100%' }}>
-                            <Button
-                                onClick={handleShowManualConfirmation}
-                                variant="light"
-                                size="md"
-                                radius="md"
-                                leftSection={<Receipt size={18} />}
-                            >
-                                Enter Receipt Manually
-                            </Button>
-                        </Group> */}
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Payment Success State */}
-            {paymentStatus === 'success' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={100} radius="xl" color="green" variant="light">
-                            <CheckCircle size={50} />
-                        </ThemeIcon>
-                        <Text fw={700} size="2rem" className="text-green-600 dark:text-green-400">
-                            Payment Successful!
-                        </Text>
-                        <Text size="lg" ta="center" c="dimmed">
-                            KES {costBreakdown?.total_cost.toLocaleString()} received successfully
-                        </Text>
-                        <Paper p="md" radius="md" className="bg-white dark:bg-gray-900" style={{ width: '100%' }}>
-                            <Group justify="space-between">
-                                <Text size="sm" c="dimmed">Transaction Code</Text>
-                                <Badge size="lg" color="green" variant="light">{mpesa_receipt}</Badge>
-                            </Group>
-                        </Paper>
-                        <Alert icon={<CheckCircle size={18} />} color="green" variant="light" radius="md" style={{ width: '100%' }}>
-                            <Text size="sm" fw={500}>
-                                Your payment has been confirmed. Click "Submit Campaign" to finalize your campaign creation.
-                            </Text>
-                        </Alert>
-                    </Stack>
-                </Card>
-            )}
-
-            {/* Payment Failed State */}
-            {paymentStatus === 'failed' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-2 border-red-300 dark:border-gray-700">
-                    <Stack gap="md" align="center">
-                        <ThemeIcon size={80} radius="xl" color="red" variant="light">
-                            <AlertCircle size={40} />
-                        </ThemeIcon>
-                        <Text fw={700} size="xl" className="text-red-600 dark:text-red-400">
-                            Payment Failed
-                        </Text>
-                        <Text size="md" ta="center" c="dimmed">
-                            {paymentError || 'We could not process your payment. Please try again.'}
-                        </Text>
-                        <Group gap="md" style={{ width: '100%' }}>
-                            <Button
-                                onClick={handleRetryPayment}
-                                color="blue"
-                                variant="filled"
-                                size="lg"
-                                radius="md"
-                                leftSection={<RefreshCw size={20} />}
-                                style={{ flex: 1 }}
-                            >
-                                Retry with New Number
-                            </Button>
-                            <Button
-                                onClick={handleShowManualConfirmation}
-                                variant="light"
-                                size="lg"
-                                radius="md"
-                                leftSection={<Receipt size={20} />}
-                                style={{ flex: 1 }}
-                            >
-                                Enter Receipt Number
-                            </Button>
-                        </Group>
-                    </Stack>
-                </Card>
-            )}
-
-
-            {showManualConfirmation && paymentStatus !== 'success' && (
-                <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 border-2 border-blue-300 dark:border-gray-700">
-                    <Stack gap="lg">
-                        <div className="flex items-center gap-3">
-                            <ThemeIcon size="lg" radius="xl" color="blue" variant="light">
-                                <Receipt size={24} />
-                            </ThemeIcon>
-                            <div>
-                                <Text fw={700} size="lg">Manual Payment Confirmation</Text>
-                                <Text size="sm" c="dimmed">Enter your M-Pesa transaction receipt number</Text>
-                            </div>
-                        </div>
-
-                        <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
-                            <Text size="sm">
-                                If you've already completed the payment but haven't received automatic confirmation,
-                                enter your M-Pesa receipt number (e.g., SH123ABC45) to verify your payment.
-                            </Text>
-                        </Alert>
-
-                        <TextInput
-                            label="M-Pesa Receipt Number"
-                            placeholder="e.g., SH123ABC45"
-                            value={manualReceiptNumber}
-                            onChange={(e) => setManualReceiptNumber(e.currentTarget.value.toUpperCase())}
-                            size="lg"
-                            radius="md"
-                            leftSection={<Receipt size={20} />}
-                            error={manualConfirmationError}
-                            disabled={isVerifyingReceipt}
-                            styles={{
-                                input: { borderWidth: 2, fontSize: '1.1rem', fontWeight: 600, letterSpacing: '0.05em' }
-                            }}
-                        />
-
-                        {phoneNumber && (
-                            <Paper p="md" radius="md" className="bg-white dark:bg-gray-900">
-                                <Group justify="space-between">
-                                    <Text size="sm" c="dimmed">Phone Number</Text>
-                                    <Text fw={600}>{phoneNumber}</Text>
-                                </Group>
-                                <Group justify="space-between" mt="xs">
-                                    <Text size="sm" c="dimmed">Amount</Text>
-                                    <Text fw={600}>KES {costBreakdown?.total_cost.toLocaleString()}</Text>
-                                </Group>
-                            </Paper>
-                        )}
-
-                        <Group gap="md">
-                            <Button
-                                onClick={() => setShowManualConfirmation(false)}
-                                variant="light"
-                                size="lg"
-                                radius="md"
-                                style={{ flex: 1 }}
-                                disabled={isVerifyingReceipt}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleVerifyReceipt}
-                                loading={isVerifyingReceipt}
-                                disabled={!manualReceiptNumber.trim() || manualReceiptNumber.length < 6}
-                                size="lg"
-                                radius="md"
-                                leftSection={<CheckCircle size={20} />}
-                                gradient={{ from: 'blue', to: 'indigo', deg: 45 }}
-                                variant="gradient"
-                                style={{ flex: 1 }}
-                            >
-                                Verify Payment
-                            </Button>
-                        </Group>
-                    </Stack>
-                </Card>
+                    Pay Now - KES {costBreakdown.total_cost.toLocaleString()}
+                </Button>
             )}
         </Stack>
-    ), [paymentStatus, phoneNumber, costBreakdown, paymentError, paymentReference, showPaymentNotification, initiatePayment,
-        handleRetryPayment,
-        handleShowManualConfirmation,
-        showManualConfirmation,
-        manualReceiptNumber,
-        manualConfirmationError,
-        isVerifyingReceipt,
-        handleVerifyReceipt,
-        mpesa_receipt
-    ]);
-
-
+    ), [formData, costBreakdown, duration, coverageareas, updateFormData, paymentData, openPaymentModal]);
 
     return (
         <>
@@ -1596,19 +1036,13 @@ useEffect(() => {
                                     description={<Text size="xs" c="dimmed">Final review</Text>}
                                     icon={<Flag size={18} />}
                                 />
-                                <Stepper.Step
-                                    label={<Text size="sm" fw={500}>Payment</Text>}
-                                    description={<Text size="xs" c="dimmed">Make Payment and Submit</Text>}
-                                    icon={<CreditCard size={18} />}
-                                />
-
                             </Stepper>
                         </div>
 
                         {/* Progress Bar */}
                         <div>
                             <Progress
-                                value={(activeStep + 1) / 7 * 100}
+                                value={(activeStep + 1) / 6 * 100}
                                 size="lg"
                                 radius="xl"
                                 className="w-full"
@@ -1617,7 +1051,7 @@ useEffect(() => {
                                 }}
                             />
                             <Text size="xs" c="dimmed" ta="center" mt="xs">
-                                Step {activeStep + 1} of 7
+                                Step {activeStep + 1} of 6
                             </Text>
                         </div>
 
@@ -1630,9 +1064,6 @@ useEffect(() => {
                                 {activeStep === 3 && StepAgreement}
                                 {activeStep === 4 && StepCostReview}
                                 {activeStep === 5 && StepFinalReview}
-                                {activeStep === 6 && StepPayment}
-
-
                             </div>
 
                             {/* Navigation Buttons */}
@@ -1652,13 +1083,13 @@ useEffect(() => {
                                     type="submit"
                                     loading={submitting || (activeStep === 4 && loadingCosts)}
                                     disabled={!isStepValid}
-                                    rightSection={activeStep === 6 ? <Flag size={18} /> : <ArrowRight size={18} />}
+                                    rightSection={activeStep === 5 ? <Flag size={18} /> : <ArrowRight size={18} />}
                                     size="lg"
                                     radius="md"
                                     gradient={{ from: 'blue', to: 'purple', deg: 45 }}
                                     variant="gradient"
                                 >
-                                    {activeStep === 6 ? 'Submit Campaign' : 'Continue'}
+                                    {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
                                 </Button>
                             </Group>
                         </form>
@@ -1761,6 +1192,22 @@ useEffect(() => {
                     </Group>
                 </Stack>
             </Modal>
+
+            {/* Payment Modal */}
+            {costBreakdown && formData.advertiser_id && (
+                <MpesaPaymentModal
+                    opened={paymentModalOpened}
+                    onClose={closePaymentModal}
+                    costBreakdown={costBreakdown}
+                    advertiserId={formData.advertiser_id}
+                    campaignData={{
+                        name: formData.name,
+                        helmet_count: formData.helmet_count,
+                        duration: duration
+                    }}
+                    onPaymentSuccess={handlePaymentSuccess}
+                />
+            )}
         </>
     );
 }
