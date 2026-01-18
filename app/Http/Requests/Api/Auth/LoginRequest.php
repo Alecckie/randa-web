@@ -18,7 +18,7 @@ class LoginRequest extends BaseApiRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email:rfc,dns', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'string'],
         ];
     }
@@ -54,44 +54,79 @@ class LoginRequest extends BaseApiRequest
      * @throws \Illuminate\Http\Exceptions\HttpResponseException
      */
     public function authenticateForApi(): User
-    {
-        $this->ensureIsNotRateLimited();
+{
+    $this->ensureIsNotRateLimited();
 
-        $email = $this->validated('email');
-        $password = $this->validated('password');
+    // Use input() or validated() array, not validated('key')
+    $email = $this->input('email');
+    $password = $this->input('password');
 
-        // Find user by email
-        $user = User::where('email', $email)->first();
+    // DEBUG: Log what we're searching for
+    \Log::info('Login attempt', [
+        'email' => $email,
+        'password_length' => strlen($password),
+        'raw_email' => $this->email,
+    ]);
 
-        
-        if (!$user ||  !Hash::check($password, $user->password)) {
-            RateLimiter::hit($this->throttleKey());
+    // Find user by email
+    $user = User::where('email', $email)->first();
 
-            throw new HttpResponseException(
-                response()->json([
-                    'success' => false,
-                    'message' => 'Invalid credentials',
-                    'errors' => ['email' => ['The provided credentials are incorrect.']]
-                ], 401)
-            );
-        }
+    // DEBUG: Log if user was found
+    \Log::info('User lookup', [
+        'found' => $user ? 'yes' : 'no',
+        'user_email' => $user?->email,
+        'user_password_hash' => $user?->password,
+    ]);
 
-        // Check if user account is active
-        if (!$user->is_active) {
-            throw new HttpResponseException(
-                response()->json([
-                    'success' => false,
-                    'message' => 'Account deactivated',
-                    'errors' => ['email' => ['Your account has been deactivated.']]
-                ], 403)
-            );
-        }
+    if (!$user) {
+        \Log::warning('User not found for email: ' . $email);
+        RateLimiter::hit($this->throttleKey());
 
-        RateLimiter::clear($this->throttleKey());
-
-        return $user;
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'message' => 'Invalid credentials',
+                'errors' => ['email' => ['The provided credentials are incorrect.']]
+            ], 401)
+        );
     }
 
+    // DEBUG: Check password
+    $passwordMatches = Hash::check($password, $user->password);
+    \Log::info('Password check', [
+        'matches' => $passwordMatches,
+        'input_password' => $password,
+        'hash_in_db' => $user->password,
+    ]);
+
+    if (!$passwordMatches) {
+        \Log::warning('Password mismatch for user: ' . $user->email);
+        RateLimiter::hit($this->throttleKey());
+
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'message' => 'Invalid credentials',
+                'errors' => ['email' => ['The provided credentials are incorrect.']]
+            ], 401)
+        );
+    }
+
+    // Check if user account is active
+    if (!$user->is_active) {
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'message' => 'Account deactivated',
+                'errors' => ['email' => ['Your account has been deactivated.']]
+            ], 403)
+        );
+    }
+
+    RateLimiter::clear($this->throttleKey());
+
+    return $user;
+}
     /**
      * Ensure the login request is not rate limited (API version)
      */
@@ -124,6 +159,6 @@ class LoginRequest extends BaseApiRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->string('email')) . '|' . $this->ip());
     }
 }
