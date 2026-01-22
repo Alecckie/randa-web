@@ -36,14 +36,31 @@ Route::prefix('v1')->group(function () {
 
         // Rider routes - only accessible by riders
         Route::prefix('rider')->middleware(['auth:sanctum', 'role:rider'])->group(function () {
+
+            // Get profile data (includes completion status)
             Route::get('/profile', [RiderProfileController::class, 'index'])
-                ->name('api.rider.profile.index');
+                ->name('rider.profile.index');
 
-            Route::post('/profile', [RiderProfileController::class, 'store'])
-                ->name('api.rider.profile.store');
-
+            // Get full profile details (read-only view)
             Route::get('/profile/details', [RiderProfileController::class, 'show'])
-                ->name('api.rider.profile.show');
+                ->name('rider.profile.show');
+
+            // Step-by-step profile completion endpoints
+            Route::post('/profile/location', [RiderProfileController::class, 'storeLocation'])
+                ->name('rider.profile.location');
+
+            Route::post('/profile/documents', [RiderProfileController::class, 'storeDocuments'])
+                ->name('rider.profile.documents');
+
+            Route::post('/profile/contact', [RiderProfileController::class, 'storeContactInfo'])
+                ->name('rider.profile.contact');
+
+            Route::post('/profile/agreement', [RiderProfileController::class, 'storeAgreement'])
+                ->name('rider.profile.agreement');
+
+            // all at once (kept for backward compatibility)
+            Route::post('/profile', [RiderProfileController::class, 'store'])
+                ->name('rider.profile.store');
         });
 
         // Advertiser routes - only accessible by advertisers

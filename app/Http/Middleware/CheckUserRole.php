@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class CheckUserRole
@@ -24,19 +25,27 @@ class CheckUserRole
             ], 401);
         }
 
+        $user = $request->user();
+
         // Check if user's account is active
-        if (!$request->user()->is_active) {
+        if (!$user->is_active) {
             return response()->json([
                 'success' => false,
-                'message' => 'Your account is Inactive. Please contact support.'
+                'message' => 'Your account has been deactivated. Please contact support.'
             ], 403);
         }
 
+       
+
         // Check if user has any of the required roles
-        if (!empty($roles) && !$request->user()->hasAnyRole($roles)) {
+        if (!empty($roles) && !$user->hasAnyRole($roles)) {
             return response()->json([
                 'success' => false,
-                'message' => 'You do not have permission to access this resource.'
+                'message' => 'You do not have permission to access this resource.',
+                'debug' => [
+                    'your_role' => $user->role,
+                    'required_roles' => $roles
+                ]
             ], 403);
         }
 

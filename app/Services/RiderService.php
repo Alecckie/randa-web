@@ -86,7 +86,107 @@ class RiderService
     }
 
     /**
-     * Create a new rider with location data
+     * Create initial rider record with location (Step 1)
+     */
+    public function createRiderWithLocation(int $userId, array $locationData): Rider
+    {
+        return DB::transaction(function () use ($userId, $locationData) {
+            // Create rider record with minimal data
+            $rider = Rider::create([
+                'user_id' => $userId,
+                'status' => 'incomplete', // New status for incomplete profiles
+                'wallet_balance' => 0.00,
+                'location_changes_count' => 0,
+                'daily_rate' => 70.00, // Default daily rate
+            ]);
+
+            // Create rider location
+            $location = $this->createRiderLocation($rider, $locationData);
+
+            // Log the initial location assignment
+            $this->logLocationChange($rider, null, $location, 'initial');
+
+            return $rider->load(['user', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward']);
+        });
+    }
+
+    /**
+     * Update rider documents (Step 2)
+     */
+    public function updateRiderDocuments(Rider $rider, array $data): Rider
+    {
+        return DB::transaction(function () use ($rider, $data) {
+            $updateData = [];
+
+            // Update national ID
+            if (isset($data['national_id'])) {
+                $updateData['national_id'] = $data['national_id'];
+            }
+
+            // Handle file uploads
+            $fileFields = [
+                'national_id_front_photo',
+                'national_id_back_photo',
+                'passport_photo',
+                'good_conduct_certificate',
+                'motorbike_license',
+                'motorbike_registration'
+            ];
+
+            foreach ($fileFields as $field) {
+                if (isset($data[$field]) && $data[$field] instanceof UploadedFile) {
+                    // Delete old file if exists
+                    if ($rider->$field) {
+                        Storage::disk('public')->delete($rider->$field);
+                    }
+                    // Upload new file
+                    $updateData[$field] = $this->uploadFile($data[$field], "riders/{$field}");
+                }
+            }
+
+            $rider->update($updateData);
+            $rider->refresh();
+
+            return $rider;
+        });
+    }
+
+    /**
+     * Update rider contact and payment information (Step 3)
+     */
+    public function updateRiderContactInfo(Rider $rider, array $data): Rider
+    {
+        return DB::transaction(function () use ($rider, $data) {
+            $rider->update([
+                'mpesa_number' => $data['mpesa_number'],
+                'next_of_kin_name' => $data['next_of_kin_name'],
+                'next_of_kin_phone' => $data['next_of_kin_phone'],
+            ]);
+
+            $rider->refresh();
+
+            return $rider;
+        });
+    }
+
+    /**
+     * Update rider agreement (Step 4)
+     */
+    public function updateRiderAgreement(Rider $rider, array $data): Rider
+    {
+        return DB::transaction(function () use ($rider, $data) {
+            $rider->update([
+                'signed_agreement' => $data['signed_agreement'],
+            ]);
+
+            $rider->refresh();
+
+            return $rider;
+        });
+    }
+
+    /**
+     * Create a new rider with all data at once (legacy method for admin use)
      */
     public function createRider(array $data): Rider
     {
@@ -179,8 +279,8 @@ class RiderService
             'sub_county_id' => $locationData['sub_county_id'],
             'ward_id' => $locationData['ward_id'],
             'stage_name' => $locationData['stage_name'],
-            'latitude' => $locationData['latitude'] ?: null,
-            'longitude' => $locationData['longitude'] ?: null,
+            'latitude' => $locationData['latitude'] ?? null,
+            'longitude' => $locationData['longitude'] ?? null,
             'is_current' => true,
             'effective_from' => now()->toDateString(),
             'effective_to' => null,
@@ -191,7 +291,7 @@ class RiderService
         // Update rider's location tracking
         $rider->update([
             'location_last_updated' => now(),
-            'location_changes_count' => 1,
+            'location_changes_count' => ($rider->location_changes_count ?? 0) + 1,
         ]);
 
         return $location;
@@ -333,8 +433,8 @@ class RiderService
                 'sub_county_id' => $locationData['sub_county_id'],
                 'ward_id' => $locationData['ward_id'],
                 'stage_name' => $locationData['stage_name'],
-                'latitude' => $locationData['latitude'] ?: null,
-                'longitude' => $locationData['longitude'] ?: null,
+                'latitude' => $locationData['latitude'] ?? null,
+                'longitude' => $locationData['longitude'] ?? null,
                 'is_current' => true,
                 'effective_from' => now()->toDateString(),
                 'effective_to' => null,
@@ -657,5 +757,29 @@ class RiderService
                 }
             ])
             ->find($campaignId);
+    }
+
+    /**
+     * Check if rider has uploaded all documents
+     */
+    public function hasDocuments(Rider $rider): bool
+    {
+        return !empty($rider->national_id) &&
+            !empty($rider->national_id_front_photo) &&
+            !empty($rider->national_id_back_photo) &&
+            !empty($rider->passport_photo) &&
+            !empty($rider->good_conduct_certificate) &&
+            !empty($rider->motorbike_license) &&
+            !empty($rider->motorbike_registration);
+    }
+
+    /**
+     * Check if rider has completed contact info
+     */
+    public function hasContactInfo(Rider $rider): bool
+    {
+        return !empty($rider->mpesa_number) &&
+            !empty($rider->next_of_kin_name) &&
+            !empty($rider->next_of_kin_phone);
     }
 }

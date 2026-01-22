@@ -15,7 +15,8 @@ use Inertia\Response;
 class RiderProfileController extends Controller
 {
     public function __construct(
-        private RiderService $riderService,private LocationService $locationService
+        private RiderService $riderService,
+        private LocationService $locationService
     ) {}
 
     /**
@@ -47,29 +48,21 @@ class RiderProfileController extends Controller
                 'next_of_kin_phone' => $rider->next_of_kin_phone,
                 'status' => $rider->status,
                 'daily_rate' => $rider->daily_rate,
+                'has_location' => $rider->hasCurrentLocation(),
+                'has_documents' => $this->hasDocuments($rider),
+                'has_contact_info' => $this->hasContactInfo($rider),
+                'has_agreement' => !empty($rider->signed_agreement),
             ] : null,
             'counties' => $counties,
         ]);
     }
 
     /**
-     * Store or update rider profile
+     * Step 1: Store/Update Location Details
      */
-    public function store(Request $request)
+    public function storeLocation(Request $request)
     {
         $validated = $request->validate([
-            'national_id' => 'required|string|max:20',
-            'national_id_front_photo' => 'required_without:id|file|mimes:jpeg,png,jpg|max:5120',
-            'national_id_back_photo' => 'required_without:id|file|mimes:jpeg,png,jpg|max:5120',
-            'passport_photo' => 'required_without:id|file|mimes:jpeg,png,jpg|max:2048',
-            'good_conduct_certificate' => 'required_without:id|file|mimes:pdf,jpeg,png,jpg|max:10240',
-            'motorbike_license' => 'required_without:id|file|mimes:pdf,jpeg,png,jpg|max:5120',
-            'motorbike_registration' => 'required_without:id|file|mimes:pdf,jpeg,png,jpg|max:5120',
-            'mpesa_number' => 'required|string|regex:/^254[0-9]{9}$/',
-            'next_of_kin_name' => 'required|string|max:255',
-            'next_of_kin_phone' => 'required|string|regex:/^254[0-9]{9}$/',
-            'signed_agreement' => 'required|string|min:10',
-            'daily_rate' => 'nullable|numeric|min:0',
             'location.county_id' => 'required|exists:counties,id',
             'location.sub_county_id' => 'required|exists:sub_counties,id',
             'location.ward_id' => 'required|exists:wards,id',
@@ -80,44 +73,126 @@ class RiderProfileController extends Controller
         ]);
 
         try {
-            // Add user_id to the data
-            $validated['user_id'] = Auth::id();
+            $user = Auth::user();
+            $rider = $this->riderService->getRiderByUserId($user->id);
 
-            // Check if rider profile exists
-            $existingRider = $this->riderService->getRiderByUserId(Auth::id());
-
-            if ($existingRider) {
-                // Update existing profile
-                $rider = $this->riderService->updateRiderProfile($existingRider, $validated);
-
-                // Update location if changed
-                if (isset($validated['location'])) {
-                    $this->riderService->changeRiderLocation(
-                        $rider,
-                        $validated['location'],
-                        'Profile update'
-                    );
-                }
-
-                return redirect()
-                    ->route('rider.profile')
-                    ->with('success', 'Profile updated successfully! Your changes are under review.');
+            if ($rider) {
+                // Update existing location
+                $this->riderService->changeRiderLocation(
+                    $rider,
+                    $validated['location'],
+                    'Profile update - Location step'
+                );
             } else {
-                // Create new rider profile
-                $rider = $this->riderService->createRider($validated);
-
-                return redirect()
-                    ->route('rider.profile')
-                    ->with('success', 'Profile submitted successfully! Your application is under review.');
+                // Create initial rider record with location
+                $rider = $this->riderService->createRiderWithLocation($user->id, $validated['location']);
             }
+
+            return back()->with('success', 'Location details saved successfully!');
         } catch (\Exception $e) {
             return back()
-                ->withErrors(['error' => 'Failed to save profile: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to save location: ' . $e->getMessage()])
                 ->withInput();
         }
     }
 
-     /**
+    /**
+     * Step 2: Store/Update Documents
+     */
+    public function storeDocuments(Request $request)
+    {
+        $user = Auth::user();
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            return back()->withErrors(['error' => 'Please complete location details first.']);
+        }
+
+        // Determine if documents are required based on whether they already exist
+        $validated = $request->validate([
+            'national_id' => 'required|string|max:20|unique:riders,national_id,' . $rider->id,
+            'national_id_front_photo' => $rider->national_id_front_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:5120' : 'required|file|mimes:jpeg,png,jpg|max:5120',
+            'national_id_back_photo' => $rider->national_id_back_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:5120' : 'required|file|mimes:jpeg,png,jpg|max:5120',
+            'passport_photo' => $rider->passport_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:2048' : 'required|file|mimes:jpeg,png,jpg|max:2048',
+            'good_conduct_certificate' => $rider->good_conduct_certificate ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:10240' : 'required|file|mimes:pdf,jpeg,png,jpg|max:10240',
+            'motorbike_license' => $rider->motorbike_license ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120' : 'required|file|mimes:pdf,jpeg,png,jpg|max:5120',
+            'motorbike_registration' => $rider->motorbike_registration ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120' : 'required|file|mimes:pdf,jpeg,png,jpg|max:5120',
+        ]);
+
+        try {
+            $this->riderService->updateRiderDocuments($rider, $validated);
+
+            return back()->with('success', 'Documents uploaded successfully!');
+        } catch (\Exception $e) {
+            return back()
+                ->withErrors(['error' => 'Failed to upload documents: ' . $e->getMessage()])
+                ->withInput();
+        }
+    }
+
+    /**
+     * Step 3: Store/Update Contact & Payment Information
+     */
+    public function storeContactInfo(Request $request)
+    {
+        $user = Auth::user();
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            return back()->withErrors(['error' => 'Please complete location details first.']);
+        }
+
+        $validated = $request->validate([
+            'mpesa_number' => 'required|string|regex:/^254[0-9]{9}$/',
+            'next_of_kin_name' => 'required|string|max:255',
+            'next_of_kin_phone' => 'required|string|regex:/^254[0-9]{9}$/',
+        ]);
+
+        try {
+            $this->riderService->updateRiderContactInfo($rider, $validated);
+
+            return back()->with('success', 'Contact and payment information saved successfully!');
+        } catch (\Exception $e) {
+            return back()
+                ->withErrors(['error' => 'Failed to save contact information: ' . $e->getMessage()])
+                ->withInput();
+        }
+    }
+
+    /**
+     * Step 4: Store/Update Agreement
+     */
+    public function storeAgreement(Request $request)
+    {
+        $user = Auth::user();
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            return back()->withErrors(['error' => 'Please complete location details first.']);
+        }
+
+        $validated = $request->validate([
+            'signed_agreement' => 'required|string|min:10',
+        ]);
+
+        try {
+            $this->riderService->updateRiderAgreement($rider, $validated);
+
+            // Check if profile is complete and update status to pending if complete
+            if ($rider->isProfileComplete()) {
+                $rider->update(['status' => 'pending']);
+                return back()->with('success', 'Agreement signed successfully! Your profile is now complete and under review.');
+            }
+
+            return back()->with('success', 'Agreement signed successfully!');
+        } catch (\Exception $e) {
+            return back()
+                ->withErrors(['error' => 'Failed to save agreement: ' . $e->getMessage()])
+                ->withInput();
+        }
+    }
+
+    /**
      * Display the rider profile show page (view only)
      */
     public function show()
@@ -226,5 +301,29 @@ class RiderProfileController extends Controller
         return Inertia::render('front-end/Riders/ShowProfile', [
             'rider' => $riderData,
         ]);
+    }
+
+    /**
+     * Helper method to check if rider has uploaded all documents
+     */
+    private function hasDocuments($rider): bool
+    {
+        return !empty($rider->national_id) &&
+            !empty($rider->national_id_front_photo) &&
+            !empty($rider->national_id_back_photo) &&
+            !empty($rider->passport_photo) &&
+            !empty($rider->good_conduct_certificate) &&
+            !empty($rider->motorbike_license) &&
+            !empty($rider->motorbike_registration);
+    }
+
+    /**
+     * Helper method to check if rider has completed contact info
+     */
+    private function hasContactInfo($rider): bool
+    {
+        return !empty($rider->mpesa_number) &&
+            !empty($rider->next_of_kin_name) &&
+            !empty($rider->next_of_kin_phone);
     }
 }
