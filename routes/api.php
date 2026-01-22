@@ -29,11 +29,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/logout-all', [AuthController::class, 'logoutAll']);
 
+
         Route::get('/profile', [AuthController::class, 'profile']);
         Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::patch('/profile', [AuthController::class, 'updateProfile']);
 
-        Route::prefix('rider')->group(function () {
+        // Rider routes - only accessible by riders
+        Route::prefix('rider')->middleware(['auth:sanctum', 'role:rider'])->group(function () {
             Route::get('/profile', [RiderProfileController::class, 'index'])
                 ->name('api.rider.profile.index');
 
@@ -44,7 +46,8 @@ Route::prefix('v1')->group(function () {
                 ->name('api.rider.profile.show');
         });
 
-        Route::prefix('advertiser')->group(function () {
+        // Advertiser routes - only accessible by advertisers
+        Route::prefix('advertiser')->middleware(['auth:sanctum', 'role:advertiser'])->group(function () {
             // Dashboard
             Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])
                 ->name('api.advertiser.dashboard');
