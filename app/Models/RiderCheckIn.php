@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class RiderCheckIn extends Model
 {
-     use HasFactory;
+    use HasFactory;
 
     protected $fillable = [
         'rider_id',
@@ -23,9 +24,10 @@ class RiderCheckIn extends Model
         'check_in_date' => 'date',
         'check_in_time' => 'datetime',
         'check_out_time' => 'datetime',
-        'daily_earning' => 'decimal:2',
+        'daily_earning' => 'decimal:2'
     ];
 
+    // Relationships
     public function rider()
     {
         return $this->belongsTo(Rider::class);
@@ -36,27 +38,48 @@ class RiderCheckIn extends Model
         return $this->belongsTo(CampaignAssignment::class);
     }
 
-    public function gpsTrack()
+    // Scopes
+    public function scopeActive($query)
     {
-        return $this->hasMany(GpsTrack::class);
+        return $query->where('status', 'active');
     }
 
-    // Helper methods
-    public function getWorkingHours()
+    public function scopeCompleted($query)
     {
-        if ($this->check_out_time && $this->check_in_time) {
-            return $this->check_in_time->diffInHours($this->check_out_time);
-        }
-        return 0;
+        return $query->where('status', 'completed');
     }
 
     public function scopeToday($query)
     {
-        return $query->whereDate('check_in_date', today());
+        return $query->whereDate('check_in_date', Carbon::today());
     }
 
-    public function scopeActive($query)
+    public function scopeForRider($query, int $riderId)
     {
-        return $query->where('status', 'active');
+        return $query->where('rider_id', $riderId);
+    }
+
+    // Accessors
+    public function getWorkedHoursAttribute(): ?float
+    {
+        if ($this->check_in_time && $this->check_out_time) {
+            return $this->check_in_time->diffInHours($this->check_out_time, true);
+        }
+        return null;
+    }
+
+    public function getFormattedCheckInTimeAttribute(): string
+    {
+        return $this->check_in_time ? $this->check_in_time->format('h:i A') : '-';
+    }
+
+    public function getFormattedCheckOutTimeAttribute(): string
+    {
+        return $this->check_out_time ? $this->check_out_time->format('h:i A') : '-';
+    }
+
+    public function getFormattedDailyEarningAttribute(): string
+    {
+        return 'KSh ' . number_format($this->daily_earning, 2);
     }
 }

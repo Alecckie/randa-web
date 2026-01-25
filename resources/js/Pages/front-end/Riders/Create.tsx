@@ -76,54 +76,6 @@ export default function Create({
     const { auth } = usePage<PageProps>().props;
     const user = auth?.user;
 
-    const { data, setData, post, processing, errors, progress } = useForm<ExtendedRiderFormData>({
-        national_id: rider.national_id || '',
-        national_id_front_photo: null,
-        national_id_back_photo: null,
-        passport_photo: null,
-        good_conduct_certificate: null,
-        motorbike_license: null,
-        motorbike_registration: null,
-        mpesa_number: rider.mpesa_number || '',
-        next_of_kin_name: rider.next_of_kin_name || '',
-        next_of_kin_phone: rider.next_of_kin_phone || '',
-        signed_agreement: '',
-        daily_rate: rider.daily_rate || 70,
-        location: {
-            county_id: '',
-            sub_county_id: '',
-            ward_id: '',
-            stage_name: '',
-            // latitude: '',
-            // longitude: '',
-            effective_from: new Date(),
-            notes: ''
-        }
-    });
-
-    const handleChange = (field: string, value: any) => {
-        setData(field as keyof ExtendedRiderFormData, value);
-    };
-
-    const handleLocationChange = (field: keyof LocationData, value: any) => {
-        setData('location', {
-            ...data.location,
-            [field]: value,
-        });
-    };
-
-    const handleSubmit = () => {
-        post(route('riders.complete-profile'), {
-            onSuccess: () => {
-                // Redirect handled by backend
-            }
-        });
-    };
-
-    const handleCancel = () => {
-        window.location.href = route('riders.dashboard');
-    };
-
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
             <Head title="Complete Your Profile" />
@@ -181,16 +133,17 @@ export default function Create({
 
                         {/* Profile Completion Form */}
                         <RiderDetailsForm
-                            data={data}
-                            errors={errors}
+                            rider={{
+                                id: rider.id,
+                                national_id: rider.national_id || '',
+                                mpesa_number: rider.mpesa_number || '',
+                                next_of_kin_name: rider.next_of_kin_name || '',
+                                next_of_kin_phone: rider.next_of_kin_phone || '',
+                                signed_agreement: '',
+                                daily_rate: rider.daily_rate || 70,
+                            }}
                             counties={counties}
-                            processing={processing}
-                            progress={progress}
                             isUpdate={true}
-                            onChange={handleChange}
-                            onLocationChange={handleLocationChange}
-                            onSubmit={handleSubmit}
-                            onCancel={handleCancel}
                         />
                     </Container>
                 </div>

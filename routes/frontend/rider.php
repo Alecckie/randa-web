@@ -2,23 +2,51 @@
 
 use App\Http\Controllers\frontend\RiderCampaignsController;
 use App\Http\Controllers\frontend\riders\RiderProfileController;
+use App\Http\Controllers\RiderCheckInController;
 use App\Http\Controllers\RiderDashboardController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'role:rider'])->group(function () {
-    Route::get('/rider/profile', RiderProfileController::class)->name('rider.profile');
-    Route::post('/rider/profile/store', [RiderProfileController::class, 'store'])->name('rider.profile.store'); 
-    Route::get('/profile/show', [RiderProfileController::class, 'show'])->name('profile.show');
-    
-    // Step-by-step submission endpoints
-    Route::post('rider/profile/location', [RiderProfileController::class, 'storeLocation'])->name('rider.profile.location');
-    Route::post('rider/profile/documents', [RiderProfileController::class, 'storeDocuments'])->name('rider.profile.documents');
-    Route::post('rider/profile/contact', [RiderProfileController::class, 'storeContactInfo'])->name('rider.profile.contact');
-    Route::post('rider/profile/agreement', [RiderProfileController::class, 'storeAgreement'])->name('rider.profile.agreement');
+Route::middleware(['auth', 'role:rider'])
+    ->prefix('rider')
+    ->name('rider.')
+    ->group(function () {
+        
+        // Profile Management Routes
+        Route::controller(RiderProfileController::class)->group(function () {
+            Route::get('/profile', 'index')->name('profile');
+            Route::post('/profile', 'store')->name('profile.store');
+            Route::get('/show-profile', 'show')->name('show-profile');
+            
+            // Multi-step Profile Completion
+            Route::prefix('profile')->name('profile.')->group(function () {
+                Route::post('/location', 'storeLocation')->name('location');
+                Route::post('/documents', 'storeDocuments')->name('documents');
+                Route::post('/contact', 'storeContactInfo')->name('contact');
+                Route::post('/agreement', 'storeAgreement')->name('agreement');
+            });
+        });
 
-    Route::middleware(['rider.profile.complete'])->group(function () {
-        Route::resource('rider-dash', RiderDashboardController::class);
-        Route::get('/rider/show-profile', [RiderProfileController::class, 'show'])->name('rider.show-profile');
-        Route::get('rider/campaigns', RiderCampaignsController::class)->name('rider.campaigns');
+        // Routes requiring complete profile
+        Route::middleware(['rider.profile.complete'])->group(function () {
+            // Dashboard
+            Route::resource('dashboard', RiderDashboardController::class)
+                ->only(['index', 'show']);
+            
+            // Campaigns
+            Route::get('/campaigns', RiderCampaignsController::class)
+                ->name('campaigns');
+            
+            // Check-in Management
+            Route::controller(RiderCheckInController::class)
+                ->prefix('check-in')
+                ->name('check-in.')
+                ->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::post('/', 'checkIn')->name('store');
+                    Route::post('/check-out', 'checkOut')->name('checkout');
+                    Route::post('/validate-qr', 'validateQrCode')->name('validate');
+                    Route::get('/status', 'getTodayStatus')->name('status');
+                    Route::get('/history', 'history')->name('history');
+                });
+        });
     });
-});
