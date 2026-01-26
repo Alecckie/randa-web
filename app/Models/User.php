@@ -80,7 +80,7 @@ class User extends Authenticatable
         return match ($this->role) {
             'admin' => 'dashboard',
             'advertiser' => 'advert-dash.index',
-            'rider' => 'rider-dash.index',
+            'rider' => 'rider.rider-dash.index',
             default => 'dashboard',
         };
     }

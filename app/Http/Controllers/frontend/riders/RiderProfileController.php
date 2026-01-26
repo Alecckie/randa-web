@@ -22,15 +22,13 @@ class RiderProfileController extends Controller
     /**
      * Display the rider profile page
      */
-    public function __invoke(): Response
+    public function index(): Response
     {
         $user = Auth::user();
-
-        // Get rider profile if exists
-        $rider = $this->riderService->getRiderByUserId($user->id);
-
-        // Get counties for location dropdown
         $counties = $this->locationService->getAllCounties();
+        
+        // Use service method to get profile data
+        $profileData = $this->riderService->getRiderProfileData($user->id);
 
         return Inertia::render('front-end/Riders/Profile', [
             'user' => [
@@ -40,19 +38,7 @@ class RiderProfileController extends Controller
                 'phone' => $user->phone,
                 'role' => $user->role,
             ],
-            'rider' => $rider ? [
-                'id' => $rider->id,
-                'national_id' => $rider->national_id,
-                'mpesa_number' => $rider->mpesa_number,
-                'next_of_kin_name' => $rider->next_of_kin_name,
-                'next_of_kin_phone' => $rider->next_of_kin_phone,
-                'status' => $rider->status,
-                'daily_rate' => $rider->daily_rate,
-                'has_location' => $rider->hasCurrentLocation(),
-                'has_documents' => $this->hasDocuments($rider),
-                'has_contact_info' => $this->hasContactInfo($rider),
-                'has_agreement' => !empty($rider->signed_agreement),
-            ] : null,
+            'rider' => $profileData['rider'],
             'counties' => $counties,
         ]);
     }
@@ -97,7 +83,87 @@ class RiderProfileController extends Controller
     }
 
     /**
-     * Step 2: Store/Update Documents
+     * Upload a single document (NEW - AJAX endpoint for web)
+     * This is the RECOMMENDED approach for avoiding timeouts
+     */
+    public function uploadSingleDocument(Request $request)
+    {
+        $user = Auth::user();
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please complete location details first.',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'field_name' => 'required|string|in:national_id_front_photo,national_id_back_photo,passport_photo,good_conduct_certificate,motorbike_license,motorbike_registration',
+            'file' => 'required|file|max:10240', // 10MB max
+        ]);
+
+        try {
+            // Use service method to upload document
+            $result = $this->riderService->uploadSingleDocument(
+                $rider,
+                $validated['field_name'],
+                $request->file('file')
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document uploaded successfully!',
+                'data' => $result,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload document: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a specific document (NEW - AJAX endpoint for web)
+     */
+    public function deleteDocument(Request $request)
+    {
+        $user = Auth::user();
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rider profile not found',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'field_name' => 'required|string|in:national_id_front_photo,national_id_back_photo,passport_photo,good_conduct_certificate,motorbike_license,motorbike_registration',
+        ]);
+
+        try {
+            // Use service method to delete document
+            $result = $this->riderService->deleteDocument($rider, $validated['field_name']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document deleted successfully!',
+                'data' => $result,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete document: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Step 2: Store/Update Documents (Batch upload - kept for backward compatibility)
      */
     public function storeDocuments(Request $request)
     {
@@ -108,15 +174,15 @@ class RiderProfileController extends Controller
             return back()->withErrors(['error' => 'Please complete location details first.']);
         }
 
-        // Determine if documents are required based on whether they already exist
+        // Make all documents optional - allow partial uploads
         $validated = $request->validate([
-            'national_id' => 'required|string|max:20|unique:riders,national_id,' . $rider->id,
-            'national_id_front_photo' => $rider->national_id_front_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:5120' : 'required|file|mimes:jpeg,png,jpg|max:5120',
-            'national_id_back_photo' => $rider->national_id_back_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:5120' : 'required|file|mimes:jpeg,png,jpg|max:5120',
-            'passport_photo' => $rider->passport_photo ? 'nullable|file|mimes:jpeg,png,jpg|max:2048' : 'required|file|mimes:jpeg,png,jpg|max:2048',
-            'good_conduct_certificate' => $rider->good_conduct_certificate ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:10240' : 'required|file|mimes:pdf,jpeg,png,jpg|max:10240',
-            'motorbike_license' => $rider->motorbike_license ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120' : 'required|file|mimes:pdf,jpeg,png,jpg|max:5120',
-            'motorbike_registration' => $rider->motorbike_registration ? 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120' : 'required|file|mimes:pdf,jpeg,png,jpg|max:5120',
+            'national_id' => 'nullable|string|max:20|unique:riders,national_id,' . $rider->id,
+            'national_id_front_photo' => 'nullable|file|mimes:jpeg,png,jpg|max:5120',
+            'national_id_back_photo' => 'nullable|file|mimes:jpeg,png,jpg|max:5120',
+            'passport_photo' => 'nullable|file|mimes:jpeg,png,jpg|max:2048',
+            'good_conduct_certificate' => 'nullable|file|mimes:pdf,jpeg,png,jpg|max:10240',
+            'motorbike_license' => 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120',
+            'motorbike_registration' => 'nullable|file|mimes:pdf,jpeg,png,jpg|max:5120',
         ]);
 
         try {
@@ -178,13 +244,12 @@ class RiderProfileController extends Controller
         try {
             $this->riderService->updateRiderAgreement($rider, $validated);
 
-            // Check if profile is complete and update status to pending if complete
-            if ($rider->isProfileComplete()) {
-                $rider->update(['status' => 'pending']);
-                return back()->with('success', 'Agreement signed successfully! Your profile is now complete and under review.');
-            }
+            // Service already handles status update if profile is complete
+            $message = $rider->isProfileComplete()
+                ? 'Agreement signed successfully! Your profile is now complete and under review.'
+                : 'Agreement signed successfully!';
 
-            return back()->with('success', 'Agreement signed successfully!');
+            return back()->with('success', $message);
         } catch (\Exception $e) {
             return back()
                 ->withErrors(['error' => 'Failed to save agreement: ' . $e->getMessage()])
@@ -208,122 +273,12 @@ class RiderProfileController extends Controller
                 ->with('error', 'Please complete your profile first.');
         }
 
-        // Load full rider details
+        // Load full rider details and format using service
         $rider = $this->riderService->loadRiderDetailsForShow($rider);
-
-        // Format rider data for frontend
-        $riderData = [
-            'id' => $rider->id,
-            'national_id' => $rider->national_id,
-            'mpesa_number' => $rider->mpesa_number,
-            'next_of_kin_name' => $rider->next_of_kin_name,
-            'next_of_kin_phone' => $rider->next_of_kin_phone,
-            'status' => $rider->status,
-            'daily_rate' => $rider->daily_rate,
-            'wallet_balance' => $rider->wallet_balance,
-            'location_changes_count' => $rider->location_changes_count,
-            'location_last_updated' => $rider?->location_last_updated?->format('Y-m-d H:i:s') ?? "-",
-            'created_at' => $rider?->created_at?->format('Y-m-d H:i:s') ?? "-",
-            'is_profile_complete' => $rider->isProfileComplete(),
-            'can_work' => $rider->canWork(),
-            
-            // User information
-            'user' => [
-                'id' => $rider->user->id,
-                'first_name' => $rider->user->first_name,
-                'last_name' => $rider->user->last_name,
-                'name' => $rider->user->name,
-                'full_name' => $rider->user->full_name,
-                'email' => $rider->user->email,
-                'phone' => $rider->user->phone,
-                'is_active' => $rider->user->is_active,
-                'created_at' => $rider?->user?->created_at?->format('Y-m-d H:i:s') ?? "-",
-            ],
-
-            // Document URLs
-            'documents' => [
-                'national_id_front_photo' => $rider->national_id_front_photo ? Storage::url($rider->national_id_front_photo) : null,
-                'national_id_back_photo' => $rider->national_id_back_photo ? Storage::url($rider->national_id_back_photo) : null,
-                'passport_photo' => $rider->passport_photo ? Storage::url($rider->passport_photo) : null,
-                'good_conduct_certificate' => $rider->good_conduct_certificate ? Storage::url($rider->good_conduct_certificate) : null,
-                'motorbike_license' => $rider->motorbike_license ? Storage::url($rider->motorbike_license) : null,
-                'motorbike_registration' => $rider->motorbike_registration ? Storage::url($rider->motorbike_registration) : null,
-            ],
-
-            // Current location
-            'current_location' => $rider->currentLocation ? [
-                'id' => $rider->currentLocation->id,
-                'stage_name' => $rider->currentLocation->stage_name,
-                'latitude' => $rider->currentLocation->latitude,
-                'longitude' => $rider->currentLocation->longitude,
-                'effective_from' => $rider->currentLocation->effective_from,
-                'status' => $rider->currentLocation->status,
-                'county' => [
-                    'id' => $rider->currentLocation->county->id,
-                    'name' => $rider->currentLocation->county->name,
-                ],
-                'subcounty' => [
-                    'id' => $rider->currentLocation->subcounty->id,
-                    'name' => $rider->currentLocation->subcounty->name,
-                ],
-                'ward' => [
-                    'id' => $rider->currentLocation->ward->id,
-                    'name' => $rider->currentLocation->ward->name,
-                ],
-                'full_address' => $rider->location_display_name,
-            ] : null,
-
-            // Current assignment
-            'current_assignment' => $rider->currentAssignment ? [
-                'id' => $rider->currentAssignment->id,
-                'assigned_at' => $rider?->currentAssignment->assigned_at?->format('Y-m-d H:i:s') ?? "-",
-                'status' => $rider->currentAssignment->status,
-                'campaign' => [
-                    'id' => $rider->currentAssignment->campaign->id,
-                    'name' => $rider->currentAssignment->campaign->name,
-                ],
-            ] : null,
-
-            // Rejection reasons (if any)
-            'rejection_reasons' => $rider->rejectionReasons->map(function ($reason) {
-                return [
-                    'id' => $reason->id,
-                    'reason' => $reason->reason,
-                    'rejected_at' => $reason?->created_at?->format('Y-m-d H:i:s') ?? "-",
-                    'rejected_by' => $reason->rejectedBy ? [
-                        'id' => $reason->rejectedBy->id,
-                        'name' => $reason->rejectedBy->name,
-                    ] : null,
-                ];
-            })->toArray(),
-        ];
+        $riderData = $this->riderService->formatFullRiderData($rider);
 
         return Inertia::render('front-end/Riders/ShowProfile', [
             'rider' => $riderData,
         ]);
-    }
-
-    /**
-     * Helper method to check if rider has uploaded all documents
-     */
-    private function hasDocuments($rider): bool
-    {
-        return !empty($rider->national_id) &&
-            !empty($rider->national_id_front_photo) &&
-            !empty($rider->national_id_back_photo) &&
-            !empty($rider->passport_photo) &&
-            !empty($rider->good_conduct_certificate) &&
-            !empty($rider->motorbike_license) &&
-            !empty($rider->motorbike_registration);
-    }
-
-    /**
-     * Helper method to check if rider has completed contact info
-     */
-    private function hasContactInfo($rider): bool
-    {
-        return !empty($rider->mpesa_number) &&
-            !empty($rider->next_of_kin_name) &&
-            !empty($rider->next_of_kin_phone);
     }
 }

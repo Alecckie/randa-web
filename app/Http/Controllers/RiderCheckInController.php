@@ -25,7 +25,7 @@ class RiderCheckInController extends Controller
         $rider = Auth::user()->rider;
         
         if (!$rider) {
-            return redirect()->route('rider-dash.index')
+            return redirect()->route('rider.rider-dash.index')
                 ->with('error', 'Rider profile not found.');
         }
 

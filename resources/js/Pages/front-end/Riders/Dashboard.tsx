@@ -323,12 +323,12 @@ export default function RiderDashboard({ todayStatus: initialStatus }: { todaySt
                                         >
                                             Scan QR Code
                                         </Button>
-                                        <Button
+                                        {/* <Button
                                             variant="outline"
                                             onClick={openManualInput}
                                         >
                                             Enter Manually
-                                        </Button>
+                                        </Button> */}
                                     </div>
                                 </div>
                             </Alert>

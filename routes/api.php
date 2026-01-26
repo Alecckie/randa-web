@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Api\AdvertiserDashboardController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\CheckInController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MpesaCallbackController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\RiderCheckInController;
 use App\Http\Controllers\Api\RiderProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -37,11 +39,10 @@ Route::prefix('v1')->group(function () {
         // Rider routes - only accessible by riders
         Route::prefix('rider')->middleware(['auth:sanctum', 'role:rider'])->group(function () {
 
-            // Get profile data (includes completion status)
             Route::get('/profile', [RiderProfileController::class, 'index'])
                 ->name('rider.profile.index');
 
-            // Get full profile details (read-only view)
+            // Get full profile details
             Route::get('/profile/details', [RiderProfileController::class, 'show'])
                 ->name('rider.profile.show');
 
@@ -49,6 +50,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/profile/location', [RiderProfileController::class, 'storeLocation'])
                 ->name('rider.profile.location');
 
+            //  Individual document upload endpoint
+            Route::post('/profile/upload-document', [RiderProfileController::class, 'uploadSingleDocument'])
+                ->name('rider.profile.upload-document');
+
+            // NEW: Delete individual document
+            Route::post('/profile/delete-document', [RiderProfileController::class, 'deleteDocument'])
+                ->name('rider.profile.delete-document');
+
+            // Batch upload
             Route::post('/profile/documents', [RiderProfileController::class, 'storeDocuments'])
                 ->name('rider.profile.documents');
 
@@ -58,32 +68,64 @@ Route::prefix('v1')->group(function () {
             Route::post('/profile/agreement', [RiderProfileController::class, 'storeAgreement'])
                 ->name('rider.profile.agreement');
 
-            // all at once (kept for backward compatibility)
-            Route::post('/profile', [RiderProfileController::class, 'store'])
-                ->name('rider.profile.store');
+
+            Route::prefix('check-in')->name('rider.checkin.')->group(function () {
+                Route::get('/', [RiderCheckInController::class, 'index'])
+                    ->name('index');
+
+                Route::get('/status', [RiderCheckInController::class, 'getTodayStatus'])
+                    ->name('status');
+
+                Route::get('/stats', [RiderCheckInController::class, 'stats'])
+                    ->name('stats');
+
+                Route::get('/history', [RiderCheckInController::class, 'history'])
+                    ->name('history');
+
+                Route::get('/{id}', [RiderCheckInController::class, 'show'])
+                    ->name('show');
+
+                Route::post('/', [RiderCheckInController::class, 'checkIn'])
+                    ->name('checkin');
+
+                Route::post('/validate', [RiderCheckInController::class, 'validateQrCode'])
+                    ->name('validate');
+
+                Route::post('/checkout', [RiderCheckInController::class, 'checkOut'])
+                    ->name('checkout');
+
+                Route::post('/force-checkout', [RiderCheckInController::class, 'forceCheckOut'])
+                    ->name('force-checkout');
+
+                Route::get('/assignment/current', [RiderCheckInController::class, 'currentAssignment'])
+                    ->name('assignment.current');
+
+                Route::get('/earnings/monthly', [RiderCheckInController::class, 'monthlyEarnings'])
+                    ->name('earnings.monthly');
+            });
         });
 
         // Advertiser routes - only accessible by advertisers
         Route::prefix('advertiser')->middleware(['auth:sanctum', 'role:advertiser'])->group(function () {
             // Dashboard
             Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])
-                ->name('api.advertiser.dashboard');
+                ->name('advertiser.dashboard');
 
             // Advertiser Profile CRUD
             Route::post('/profile', [AdvertiserDashboardController::class, 'store'])
-                ->name('api.advertiser.profile.store');
+                ->name('advertiser.profile.store');
 
             Route::get('/profile/{id}', [AdvertiserDashboardController::class, 'show'])
-                ->name('api.advertiser.profile.show');
+                ->name('advertiser.profile.show');
 
             Route::put('/profile/{id}', [AdvertiserDashboardController::class, 'update'])
-                ->name('api.advertiser.profile.update');
+                ->name('advertiser.profile.update');
 
             Route::delete('/profile/{id}', [AdvertiserDashboardController::class, 'destroy'])
-                ->name('api.advertiser.profile.destroy');
+                ->name('advertiser.profile.destroy');
         });
 
-        Route::prefix('locations')->name('api.locations.')->group(function () {
+        Route::prefix('locations')->name('locations.')->group(function () {
             Route::get('counties', [LocationController::class, 'counties'])
                 ->name('counties');
 

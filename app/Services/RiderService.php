@@ -15,11 +15,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Exception;
 
 class RiderService
 {
+    public function __construct(
+        private RiderDocumentService $documentService
+    ) {}
+
     /**
      * Get paginated riders with filters
      */
@@ -111,44 +116,135 @@ class RiderService
     }
 
     /**
-     * Update rider documents (Step 2)
+     * Update rider documents (Step 2) - OPTIMIZED
      */
     public function updateRiderDocuments(Rider $rider, array $data): Rider
     {
-        return DB::transaction(function () use ($rider, $data) {
-            $updateData = [];
+        $updateData = [];
 
-            // Update national ID
-            if (isset($data['national_id'])) {
-                $updateData['national_id'] = $data['national_id'];
-            }
+        // Update national ID first (non-file field)
+        if (isset($data['national_id'])) {
+            $rider->update(['national_id' => $data['national_id']]);
+        }
 
-            // Handle file uploads
-            $fileFields = [
-                'national_id_front_photo',
-                'national_id_back_photo',
-                'passport_photo',
-                'good_conduct_certificate',
-                'motorbike_license',
-                'motorbike_registration'
-            ];
+        // Process file uploads ONE AT A TIME outside of transaction
+        $fileFields = [
+            'national_id_front_photo',
+            'national_id_back_photo',
+            'passport_photo',
+            'good_conduct_certificate',
+            'motorbike_license',
+            'motorbike_registration'
+        ];
 
-            foreach ($fileFields as $field) {
-                if (isset($data[$field]) && $data[$field] instanceof UploadedFile) {
-                    // Delete old file if exists
-                    if ($rider->$field) {
-                        Storage::disk('public')->delete($rider->$field);
-                    }
-                    // Upload new file
-                    $updateData[$field] = $this->uploadFile($data[$field], "riders/{$field}");
+        foreach ($fileFields as $field) {
+            if (isset($data[$field]) && $data[$field] instanceof UploadedFile) {
+                try {
+                    // Validate file
+                    $this->documentService->validateDocument($field, $data[$field]);
+                    
+                    // Upload and get path
+                    $path = $this->documentService->uploadDocument(
+                        $rider,
+                        $field,
+                        $data[$field]
+                    );
+                    
+                    // Update database immediately (separate transaction per file)
+                    DB::transaction(function () use ($rider, $field, $path) {
+                        $rider->update([$field => $path]);
+                    });
+
+                    Log::info("Document uploaded successfully", [
+                        'rider_id' => $rider->id,
+                        'field' => $field,
+                        'path' => $path
+                    ]);
+
+                } catch (\Exception $e) {
+                    Log::error("Failed to upload document", [
+                        'rider_id' => $rider->id,
+                        'field' => $field,
+                        'error' => $e->getMessage()
+                    ]);
+                    
+                    // Don't throw - allow partial uploads
+                    // The validation will catch missing required documents
                 }
             }
+        }
 
-            $rider->update($updateData);
-            $rider->refresh();
+        $rider->refresh();
+        return $rider;
+    }
 
-            return $rider;
-        });
+    /**
+     * Upload a single document
+     */
+    public function uploadSingleDocument(Rider $rider, string $fieldName, UploadedFile $file): array
+    {
+        try {
+            // Validate file type based on field
+            $allowedMimes = $this->documentService->getAllowedMimeTypes($fieldName);
+            if (!in_array($file->getMimeType(), $allowedMimes)) {
+                throw new \InvalidArgumentException('Invalid file type for this document');
+            }
+
+            // Validate and upload
+            $this->documentService->validateDocument($fieldName, $file);
+            $path = $this->documentService->uploadDocument($rider, $fieldName, $file);
+
+            // Update database
+            $rider->update([$fieldName => $path]);
+
+            return [
+                'success' => true,
+                'field_name' => $fieldName,
+                'path' => $path,
+                'url' => Storage::url($path),
+                'uploaded_documents' => $this->getUploadedDocumentsStatus($rider),
+                'missing_documents' => $this->getMissingDocuments($rider),
+                'has_all_documents' => $this->hasDocuments($rider),
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Failed to upload single document", [
+                'rider_id' => $rider->id,
+                'field' => $fieldName,
+                'error' => $e->getMessage()
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete a specific document
+     */
+    public function deleteDocument(Rider $rider, string $fieldName): array
+    {
+        try {
+            if ($rider->$fieldName) {
+                $this->documentService->deleteDocument($rider->$fieldName);
+                $rider->update([$fieldName => null]);
+            }
+
+            return [
+                'success' => true,
+                'field_name' => $fieldName,
+                'uploaded_documents' => $this->getUploadedDocumentsStatus($rider),
+                'missing_documents' => $this->getMissingDocuments($rider),
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete document", [
+                'rider_id' => $rider->id,
+                'field' => $fieldName,
+                'error' => $e->getMessage()
+            ]);
+
+            throw $e;
+        }
     }
 
     /**
@@ -178,6 +274,11 @@ class RiderService
             $rider->update([
                 'signed_agreement' => $data['signed_agreement'],
             ]);
+
+            // Check if profile is complete and update status to pending if complete
+            if ($rider->isProfileComplete()) {
+                $rider->update(['status' => 'pending']);
+            }
 
             $rider->refresh();
 
@@ -401,7 +502,7 @@ class RiderService
     }
 
     /**
-     * Upload file to storage
+     * Upload file to storage (legacy method)
      */
     private function uploadFile(UploadedFile $file, string $path): string
     {
@@ -781,5 +882,199 @@ class RiderService
         return !empty($rider->mpesa_number) &&
             !empty($rider->next_of_kin_name) &&
             !empty($rider->next_of_kin_phone);
+    }
+
+    /**
+     * Get missing documents list
+     */
+    public function getMissingDocuments(Rider $rider): array
+    {
+        $required = [
+            'national_id' => 'National ID Number',
+            'national_id_front_photo' => 'National ID Front Photo',
+            'national_id_back_photo' => 'National ID Back Photo',
+            'passport_photo' => 'Passport Photo',
+            'good_conduct_certificate' => 'Good Conduct Certificate',
+            'motorbike_license' => 'Motorbike License',
+            'motorbike_registration' => 'Motorbike Registration',
+        ];
+
+        $missing = [];
+        foreach ($required as $field => $label) {
+            if (empty($rider->$field)) {
+                $missing[$field] = $label;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Get status of all document uploads
+     */
+    public function getUploadedDocumentsStatus(Rider $rider): array
+    {
+        return [
+            'national_id' => !empty($rider->national_id),
+            'national_id_front_photo' => !empty($rider->national_id_front_photo),
+            'national_id_back_photo' => !empty($rider->national_id_back_photo),
+            'passport_photo' => !empty($rider->passport_photo),
+            'good_conduct_certificate' => !empty($rider->good_conduct_certificate),
+            'motorbike_license' => !empty($rider->motorbike_license),
+            'motorbike_registration' => !empty($rider->motorbike_registration),
+        ];
+    }
+
+    /**
+     * Format basic rider data for responses
+     */
+    public function formatBasicRiderData(Rider $rider): array
+    {
+        return [
+            'id' => $rider->id,
+            'national_id' => $rider->national_id,
+            'mpesa_number' => $rider->mpesa_number,
+            'next_of_kin_name' => $rider->next_of_kin_name,
+            'next_of_kin_phone' => $rider->next_of_kin_phone,
+            'status' => $rider->status,
+            'daily_rate' => $rider->daily_rate,
+            'has_location' => $rider->hasCurrentLocation(),
+            'has_documents' => $this->hasDocuments($rider),
+            'has_contact_info' => $this->hasContactInfo($rider),
+            'has_agreement' => !empty($rider->signed_agreement),
+        ];
+    }
+
+    /**
+     * Format full rider data for responses
+     */
+    public function formatFullRiderData(Rider $rider): array
+    {
+        return [
+            'id' => $rider->id,
+            'national_id' => $rider->national_id,
+            'mpesa_number' => $rider->mpesa_number,
+            'next_of_kin_name' => $rider->next_of_kin_name,
+            'next_of_kin_phone' => $rider->next_of_kin_phone,
+            'status' => $rider->status,
+            'daily_rate' => $rider->daily_rate,
+            'wallet_balance' => $rider->wallet_balance,
+            'location_changes_count' => $rider->location_changes_count,
+            'location_last_updated' => $rider?->location_last_updated?->format('Y-m-d H:i:s') ?? null,
+            'created_at' => $rider?->created_at?->format('Y-m-d H:i:s') ?? null,
+            'is_profile_complete' => $rider->isProfileComplete(),
+            'can_work' => $rider->canWork(),
+            // 'profile_completion' => $rider->getProfileCompletionPercentage(),
+            // 'next_step' => $rider->getNextIncompleteStep(),
+            
+            // User information
+            'user' => [
+                'id' => $rider->user->id,
+                'first_name' => $rider->user->first_name,
+                'last_name' => $rider->user->last_name,
+                'name' => $rider->user->name,
+                'full_name' => $rider->user->full_name,
+                'email' => $rider->user->email,
+                'phone' => $rider->user->phone,
+                'is_active' => $rider->user->is_active,
+                'created_at' => $rider?->user?->created_at?->format('Y-m-d H:i:s') ?? null,
+            ],
+
+            // Document URLs
+            'documents' => [
+                'national_id_front_photo' => $rider->national_id_front_photo ? Storage::url($rider->national_id_front_photo) : null,
+                'national_id_back_photo' => $rider->national_id_back_photo ? Storage::url($rider->national_id_back_photo) : null,
+                'passport_photo' => $rider->passport_photo ? Storage::url($rider->passport_photo) : null,
+                'good_conduct_certificate' => $rider->good_conduct_certificate ? Storage::url($rider->good_conduct_certificate) : null,
+                'motorbike_license' => $rider->motorbike_license ? Storage::url($rider->motorbike_license) : null,
+                'motorbike_registration' => $rider->motorbike_registration ? Storage::url($rider->motorbike_registration) : null,
+            ],
+
+            // Current location
+            'current_location' => $rider->currentLocation ? [
+                'id' => $rider->currentLocation->id,
+                'stage_name' => $rider->currentLocation->stage_name,
+                'latitude' => $rider->currentLocation->latitude,
+                'longitude' => $rider->currentLocation->longitude,
+                'effective_from' => $rider->currentLocation->effective_from,
+                'status' => $rider->currentLocation->status,
+                'county' => [
+                    'id' => $rider->currentLocation->county->id,
+                    'name' => $rider->currentLocation->county->name,
+                ],
+                'subcounty' => [
+                    'id' => $rider->currentLocation->subcounty->id,
+                    'name' => $rider->currentLocation->subcounty->name,
+                ],
+                'ward' => [
+                    'id' => $rider->currentLocation->ward->id,
+                    'name' => $rider->currentLocation->ward->name,
+                ],
+                'full_address' => $rider->location_display_name,
+            ] : null,
+
+            // Current assignment
+            'current_assignment' => $rider->currentAssignment ? [
+                'id' => $rider->currentAssignment->id,
+                'assigned_at' => $rider?->currentAssignment->assigned_at?->format('Y-m-d H:i:s') ?? null,
+                'status' => $rider->currentAssignment->status,
+                'campaign' => [
+                    'id' => $rider->currentAssignment->campaign->id,
+                    'name' => $rider->currentAssignment->campaign->name,
+                ],
+            ] : null,
+
+            // Rejection reasons (if any)
+            'rejection_reasons' => $rider->rejectionReasons->map(function ($reason) {
+                return [
+                    'id' => $reason->id,
+                    'reason' => $reason->reason,
+                    'rejected_at' => $reason?->created_at?->format('Y-m-d H:i:s') ?? null,
+                    'rejected_by' => $reason->rejectedBy ? [
+                        'id' => $reason->rejectedBy->id,
+                        'name' => $reason->rejectedBy->name,
+                    ] : null,
+                ];
+            })->toArray(),
+        ];
+    }
+
+    /**
+     * Get rider profile data (for profile page initialization)
+     */
+    public function getRiderProfileData(int $userId): array
+    {
+        $rider = $this->getRiderByUserId($userId);
+
+        return [
+            'rider' => $rider ? [
+                'id' => $rider->id,
+                'national_id' => $rider->national_id,
+                'mpesa_number' => $rider->mpesa_number,
+                'next_of_kin_name' => $rider->next_of_kin_name,
+                'next_of_kin_phone' => $rider->next_of_kin_phone,
+                'status' => $rider->status,
+                'daily_rate' => $rider->daily_rate,
+                'has_location' => $rider->hasCurrentLocation(),
+                'has_documents' => $this->hasDocuments($rider),
+                'has_contact_info' => $this->hasContactInfo($rider),
+                'has_agreement' => !empty($rider->signed_agreement),
+                'current_location' => $rider->currentLocation ? [
+                    'county_id' => $rider->currentLocation->county_id,
+                    'sub_county_id' => $rider->currentLocation->sub_county_id,
+                    'ward_id' => $rider->currentLocation->ward_id,
+                    'stage_name' => $rider->currentLocation->stage_name,
+                    'notes' => $rider->currentLocation->notes,
+                ] : null,
+                'documents' => [
+                    'national_id_front_photo' => $rider->national_id_front_photo ? Storage::url($rider->national_id_front_photo) : null,
+                    'national_id_back_photo' => $rider->national_id_back_photo ? Storage::url($rider->national_id_back_photo) : null,
+                    'passport_photo' => $rider->passport_photo ? Storage::url($rider->passport_photo) : null,
+                    'good_conduct_certificate' => $rider->good_conduct_certificate ? Storage::url($rider->good_conduct_certificate) : null,
+                    'motorbike_license' => $rider->motorbike_license ? Storage::url($rider->motorbike_license) : null,
+                    'motorbike_registration' => $rider->motorbike_registration ? Storage::url($rider->motorbike_registration) : null,
+                ],
+            ] : null,
+        ];
     }
 }

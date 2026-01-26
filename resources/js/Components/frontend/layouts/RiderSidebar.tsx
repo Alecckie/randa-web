@@ -29,7 +29,7 @@ const RiderSidebar: React.FC<RiderSidebarProps> = ({ user, activeNav }) => {
         {
             group: 'Main',
             items: [
-                { icon: <Package size={20} />, label: 'Dashboard', key: 'dashboard', href: '/rider-dash' },
+                { icon: <Package size={20} />, label: 'Dashboard', key: 'dashboard', href: '/rider/rider-dash' },
                 { icon: <Bike size={20} />, label: 'My Campaigns', key: 'campaigns', href: '/rider/campaigns' },
                 // { icon: <MapPinned size={20} />, label: 'GPS Tracking', key: 'tracking', href: '/rider/tracking' },
             ]

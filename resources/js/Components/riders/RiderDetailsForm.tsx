@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     Alert,
     Button,
@@ -15,8 +15,10 @@ import {
     Text,
     Textarea,
     TextInput,
+    Badge,
+    Loader,
 } from '@mantine/core';
-import { InfoIcon, MapPinIcon, UploadIcon, UserIcon, CheckCircleIcon } from 'lucide-react';
+import { InfoIcon, MapPinIcon, UploadIcon, UserIcon, CheckCircleIcon, Trash2Icon, XCircleIcon } from 'lucide-react';
 import axios from 'axios';
 import { useForm } from '@inertiajs/react';
 
@@ -60,6 +62,14 @@ interface RiderData {
     has_documents?: boolean;
     has_contact_info?: boolean;
     has_agreement?: boolean;
+    documents?: {
+        national_id_front_photo?: string | null;
+        national_id_back_photo?: string | null;
+        passport_photo?: string | null;
+        good_conduct_certificate?: string | null;
+        motorbike_license?: string | null;
+        motorbike_registration?: string | null;
+    };
 }
 
 interface RiderDetailsFormProps {
@@ -67,6 +77,76 @@ interface RiderDetailsFormProps {
     counties: County[];
     isUpdate?: boolean;
 }
+
+interface DocumentUploadStatus {
+    national_id: boolean;
+    national_id_front_photo: boolean;
+    national_id_back_photo: boolean;
+    passport_photo: boolean;
+    good_conduct_certificate: boolean;
+    motorbike_license: boolean;
+    motorbike_registration: boolean;
+}
+
+interface DocumentFieldConfig {
+    name: keyof Omit<DocumentUploadStatus, 'national_id'>;
+    label: string;
+    description: string;
+    accept: string;
+    maxSize: string;
+    maxSizeBytes: number;
+}
+
+const DOCUMENT_FIELDS: DocumentFieldConfig[] = [
+    {
+        name: 'national_id_front_photo',
+        label: 'National ID - Front Photo',
+        description: 'Front side of National ID',
+        accept: 'image/jpeg,image/png,image/jpg',
+        maxSize: '5MB',
+        maxSizeBytes: 5 * 1024 * 1024,
+    },
+    {
+        name: 'national_id_back_photo',
+        label: 'National ID - Back Photo',
+        description: 'Back side of National ID',
+        accept: 'image/jpeg,image/png,image/jpg',
+        maxSize: '5MB',
+        maxSizeBytes: 5 * 1024 * 1024,
+    },
+    {
+        name: 'passport_photo',
+        label: 'Passport Photo',
+        description: 'Passport size photo',
+        accept: 'image/jpeg,image/png,image/jpg',
+        maxSize: '2MB',
+        maxSizeBytes: 2 * 1024 * 1024,
+    },
+    {
+        name: 'good_conduct_certificate',
+        label: 'Good Conduct Certificate',
+        description: 'Certificate of good conduct',
+        accept: 'application/pdf,image/jpeg,image/png,image/jpg',
+        maxSize: '10MB',
+        maxSizeBytes: 10 * 1024 * 1024,
+    },
+    {
+        name: 'motorbike_license',
+        label: 'Motorbike License',
+        description: 'Motorbike driving license',
+        accept: 'application/pdf,image/jpeg,image/png,image/jpg',
+        maxSize: '5MB',
+        maxSizeBytes: 5 * 1024 * 1024,
+    },
+    {
+        name: 'motorbike_registration',
+        label: 'Motorbike Registration',
+        description: 'Motorbike registration document',
+        accept: 'application/pdf,image/jpeg,image/png,image/jpg',
+        maxSize: '5MB',
+        maxSizeBytes: 5 * 1024 * 1024,
+    },
+];
 
 export default function RiderDetailsForm({
     rider,
@@ -78,10 +158,29 @@ export default function RiderDetailsForm({
     const [wards, setWards] = useState<Ward[]>([]);
     const [loadingSubcounties, setLoadingSubcounties] = useState(false);
     const [loadingWards, setLoadingWards] = useState(false);
-    
+
+    // Document upload state
+    const [nationalId, setNationalId] = useState(rider?.national_id || '');
+    const [uploadStatus, setUploadStatus] = useState<DocumentUploadStatus>({
+        national_id: !!rider?.national_id,
+        national_id_front_photo: !!rider?.documents?.national_id_front_photo,
+        national_id_back_photo: !!rider?.documents?.national_id_back_photo,
+        passport_photo: !!rider?.documents?.passport_photo,
+        good_conduct_certificate: !!rider?.documents?.good_conduct_certificate,
+        motorbike_license: !!rider?.documents?.motorbike_license,
+        motorbike_registration: !!rider?.documents?.motorbike_registration,
+    });
+    const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+    const [uploading, setUploading] = useState<Record<string, boolean>>({});
+    const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
+    const [savingNationalId, setSavingNationalId] = useState(false);
+
+    // File input refs to clear inputs after upload
+    const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
     // Step completion tracking
     type StepKey = 'location' | 'documents' | 'contact' | 'agreement';
-    
+
     const [stepsCompleted, setStepsCompleted] = useState<Record<StepKey, boolean>>({
         location: rider?.has_location || false,
         documents: rider?.has_documents || false,
@@ -100,16 +199,6 @@ export default function RiderDetailsForm({
             longitude: '' as number | '',
             notes: '',
         }
-    });
-
-    const documentsForm = useForm({
-        national_id: rider?.national_id || '',
-        national_id_front_photo: null as File | null,
-        national_id_back_photo: null as File | null,
-        passport_photo: null as File | null,
-        good_conduct_certificate: null as File | null,
-        motorbike_license: null as File | null,
-        motorbike_registration: null as File | null,
     });
 
     const contactForm = useForm({
@@ -139,6 +228,9 @@ export default function RiderDetailsForm({
                     setSubcounties(res.data);
                     setWards([]);
                 })
+                .catch((err) => {
+                    console.error('Failed to load subcounties:', err);
+                })
                 .finally(() => setLoadingSubcounties(false));
         } else {
             setSubcounties([]);
@@ -154,6 +246,9 @@ export default function RiderDetailsForm({
                 .get(`/locations/subcounties/${locationForm.data.location.sub_county_id}/wards`)
                 .then((res) => {
                     setWards(res.data);
+                })
+                .catch((err) => {
+                    console.error('Failed to load wards:', err);
                 })
                 .finally(() => setLoadingWards(false));
         } else {
@@ -173,6 +268,233 @@ export default function RiderDetailsForm({
         }
     };
 
+    // Validate file before upload
+    const validateFile = (file: File, fieldConfig: DocumentFieldConfig): string | null => {
+        // Check file size
+        if (file.size > fieldConfig.maxSizeBytes) {
+            return `File size exceeds ${fieldConfig.maxSize}. Please compress or choose a smaller file.`;
+        }
+
+        // Check file type
+        const acceptedTypes = fieldConfig.accept.split(',');
+        const fileType = file.type;
+        const isValidType = acceptedTypes.some(type => {
+            if (type.includes('*')) {
+                const baseType = type.split('/')[0];
+                return fileType.startsWith(baseType);
+            }
+            return fileType === type;
+        });
+
+        if (!isValidType) {
+            return `Invalid file type. Accepted types: ${fieldConfig.accept}`;
+        }
+
+        return null;
+    };
+
+    // Save National ID
+    const saveNationalId = async () => {
+        if (!nationalId || nationalId.length < 5) {
+            setUploadErrors({ ...uploadErrors, national_id: 'Please enter a valid National ID' });
+            return;
+        }
+
+        setSavingNationalId(true);
+        setUploadErrors({ ...uploadErrors, national_id: '' });
+
+        console.log('Saving National ID:', nationalId);
+
+        try {
+            const response = await axios.post(route('rider.profile.documents'), {
+                national_id: nationalId,
+            }, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+
+            console.log('National ID save response:', response.data);
+            
+            setUploadStatus(prev => ({ ...prev, national_id: true }));
+            
+            // Show success message briefly
+            setUploadErrors({ ...uploadErrors, national_id: '' });
+        } catch (error: any) {
+            console.error('Failed to save National ID:', error);
+            const errorMessage = error.response?.data?.message ||
+                error.response?.data?.errors?.national_id?.[0] ||
+                'Failed to save National ID. Please try again.';
+            
+            setUploadErrors({
+                ...uploadErrors,
+                national_id: errorMessage,
+            });
+        } finally {
+            setSavingNationalId(false);
+        }
+    };
+
+    // Upload single document
+    const uploadSingleDocument = async (fieldName: string, file: File) => {
+        console.log('Starting upload for:', fieldName, file.name, 'Size:', file.size);
+
+        // Find field config
+        const fieldConfig = DOCUMENT_FIELDS.find(f => f.name === fieldName);
+        if (!fieldConfig) {
+            console.error('Field config not found for:', fieldName);
+            return;
+        }
+
+        // Validate file
+        const validationError = validateFile(file, fieldConfig);
+        if (validationError) {
+            setUploadErrors(prev => ({ ...prev, [fieldName]: validationError }));
+            return;
+        }
+
+        setUploading(prev => ({ ...prev, [fieldName]: true }));
+        setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
+        setUploadErrors(prev => ({ ...prev, [fieldName]: '' }));
+
+        const formData = new FormData();
+        formData.append('field_name', fieldName);
+        formData.append('file', file);
+
+        try {
+            const response = await axios.post(route('rider.profile.upload-document'), formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round(
+                        (progressEvent.loaded * 100) / (progressEvent.total || 1)
+                    );
+                    console.log(`Upload progress for ${fieldName}:`, percentCompleted);
+                    setUploadProgress(prev => ({ ...prev, [fieldName]: percentCompleted }));
+                },
+            });
+
+            console.log('Upload response:', response.data);
+
+            // Update status from response
+            if (response.data.success) {
+                if (response.data.data?.uploaded_documents) {
+                    setUploadStatus(response.data.data.uploaded_documents);
+                } else {
+                    // Fallback: manually update the specific field
+                    setUploadStatus(prev => ({
+                        ...prev,
+                        [fieldName]: true
+                    }));
+                }
+
+                // Check if all documents are uploaded
+                if (response.data.data?.has_all_documents) {
+                    setStepsCompleted(prev => ({ ...prev, documents: true }));
+                }
+
+                // Clear the file input
+                if (fileInputRefs.current[fieldName]) {
+                    fileInputRefs.current[fieldName]!.value = '';
+                }
+            }
+
+            console.log('Upload completed successfully for:', fieldName);
+        } catch (error: any) {
+            console.error(`Failed to upload ${fieldName}:`, error);
+            
+            let errorMessage = 'Upload failed. Please try again.';
+            
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.response?.data?.errors) {
+                const errors = error.response.data.errors;
+                if (Array.isArray(errors)) {
+                    errorMessage = errors[0];
+                } else if (typeof errors === 'object') {
+                    errorMessage = Object.values(errors)[0] as string;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            setUploadErrors(prev => ({
+                ...prev,
+                [fieldName]: errorMessage,
+            }));
+            setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
+        } finally {
+            setUploading(prev => ({ ...prev, [fieldName]: false }));
+        }
+    };
+
+    // Delete document
+    const deleteDocument = async (fieldName: string) => {
+        if (!confirm('Are you sure you want to delete this document?')) {
+            return;
+        }
+
+        console.log('Deleting document:', fieldName);
+
+        try {
+            const response = await axios.post(route('rider.profile.delete-document'), {
+                field_name: fieldName,
+            }, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+
+            console.log('Delete response:', response.data);
+
+            if (response.data.success) {
+                if (response.data.data?.uploaded_documents) {
+                    setUploadStatus(response.data.data.uploaded_documents);
+                } else {
+                    // Fallback: manually update the specific field
+                    setUploadStatus(prev => ({
+                        ...prev,
+                        [fieldName]: false
+                    }));
+                }
+
+                // Update documents completion status
+                setStepsCompleted(prev => ({ ...prev, documents: false }));
+            }
+
+            // Clear any upload errors for this field
+            setUploadErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[fieldName];
+                return newErrors;
+            });
+        } catch (error: any) {
+            console.error('Delete failed:', error);
+            const errorMessage = error.response?.data?.message || 'Failed to delete document';
+            setUploadErrors({
+                ...uploadErrors,
+                [fieldName]: errorMessage,
+            });
+        }
+    };
+
+    // Handle file change with key-based reset
+    const [fileInputKeys, setFileInputKeys] = useState<Record<string, number>>({});
+
+    const handleFileChange = (fieldName: string) => (file: File | null) => {
+        console.log('handleFileChange called:', { fieldName, file: file?.name });
+        if (file) {
+            uploadSingleDocument(fieldName, file);
+            // Reset the file input by changing its key
+            setFileInputKeys(prev => ({
+                ...prev,
+                [fieldName]: (prev[fieldName] || 0) + 1
+            }));
+        }
+    };
+
     // Step validation
     const isStepValid = (step: number) => {
         switch (step) {
@@ -182,15 +504,14 @@ export default function RiderDetailsForm({
                     locationForm.data.location.ward_id &&
                     locationForm.data.location.stage_name;
             case 1:
-                return documentsForm.data.national_id &&
-                    (stepsCompleted.documents || (
-                        documentsForm.data.national_id_front_photo &&
-                        documentsForm.data.national_id_back_photo &&
-                        documentsForm.data.passport_photo &&
-                        documentsForm.data.good_conduct_certificate &&
-                        documentsForm.data.motorbike_license &&
-                        documentsForm.data.motorbike_registration
-                    ));
+                // Check if all documents are uploaded
+                return uploadStatus.national_id &&
+                    uploadStatus.national_id_front_photo &&
+                    uploadStatus.national_id_back_photo &&
+                    uploadStatus.passport_photo &&
+                    uploadStatus.good_conduct_certificate &&
+                    uploadStatus.motorbike_license &&
+                    uploadStatus.motorbike_registration;
             case 2:
                 return contactForm.data.mpesa_number &&
                     contactForm.data.next_of_kin_name &&
@@ -214,14 +535,11 @@ export default function RiderDetailsForm({
     };
 
     const handleDocumentsSubmit = () => {
-        documentsForm.post(route('rider.profile.documents'), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => {
-                setStepsCompleted(prev => ({ ...prev, documents: true }));
-                nextStep();
-            },
-        });
+        // Just move to next step - documents are already uploaded individually
+        if (isStepValid(1)) {
+            setStepsCompleted(prev => ({ ...prev, documents: true }));
+            nextStep();
+        }
     };
 
     const handleContactSubmit = () => {
@@ -247,7 +565,6 @@ export default function RiderDetailsForm({
     const getCurrentForm = () => {
         switch (currentStep) {
             case 0: return locationForm;
-            case 1: return documentsForm;
             case 2: return contactForm;
             case 3: return agreementForm;
             default: return locationForm;
@@ -262,6 +579,10 @@ export default function RiderDetailsForm({
             case 3: return handleAgreementSubmit();
         }
     };
+
+    const completedCount = Object.values(uploadStatus).filter(Boolean).length;
+    const totalCount = Object.keys(uploadStatus).length;
+    const progressPercentage = (completedCount / totalCount) * 100;
 
     const renderStepContent = () => {
         switch (currentStep) {
@@ -395,110 +716,143 @@ export default function RiderDetailsForm({
                                     )}
                                 </Group>
                                 <Text size="sm" c="dimmed">
-                                    Please upload all required documents. All files should be clear and readable.
+                                    Upload documents one at a time. Each file will be saved immediately.
                                 </Text>
                             </div>
 
                             <Alert icon={<InfoIcon size={16} />} color="blue" variant="light">
                                 <Text size="sm">
-                                    <strong>File Requirements:</strong>
-                                    <br />• Images: JPEG, PNG, JPG format
-                                    <br />• Certificates: PDF, JPEG, PNG, JPG format
-                                    <br />• Maximum file sizes vary per document type
+                                    <strong>Upload Tips:</strong>
+                                    <br />• Upload one document at a time to avoid timeouts
+                                    <br />• Each file is saved immediately after upload
+                                    <br />• You can return later to upload remaining documents
+                                    <br />• Compress large images before uploading
                                 </Text>
                             </Alert>
 
+                            {/* Progress */}
+                            <div>
+                                <Group justify="space-between" mb="xs">
+                                    <Text size="sm" fw={500}>Upload Progress</Text>
+                                    <Badge color={completedCount === totalCount ? 'green' : 'blue'}>
+                                        {completedCount} / {totalCount}
+                                    </Badge>
+                                </Group>
+                                <Progress value={progressPercentage} size="md" radius="xl" />
+                            </div>
+
+                            {/* National ID Number */}
+                            <Card withBorder>
+                                <Group justify="space-between" align="flex-start">
+                                    <div style={{ flex: 1 }}>
+                                        <TextInput
+                                            label="National ID Number"
+                                            placeholder="Enter national ID number"
+                                            description="Enter your valid Kenyan National ID number"
+                                            value={nationalId}
+                                            onChange={(e) => setNationalId(e.currentTarget.value)}
+                                            error={uploadErrors.national_id}
+                                            disabled={uploadStatus.national_id}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        {uploadStatus.national_id ? (
+                                            <CheckCircleIcon size={20} className="text-green-500 mt-8" />
+                                        ) : (
+                                            <Button
+                                                onClick={saveNationalId}
+                                                loading={savingNationalId}
+                                                size="sm"
+                                                className="mt-6"
+                                            >
+                                                Save
+                                            </Button>
+                                        )}
+                                    </div>
+                                </Group>
+                            </Card>
+
+                            {/* Document Upload Fields */}
                             <Grid>
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <TextInput
-                                        label="National ID Number"
-                                        placeholder="Enter national ID number"
-                                        description="Enter the valid Kenyan National ID number"
-                                        value={documentsForm.data.national_id}
-                                        onChange={(e) => documentsForm.setData('national_id', e.currentTarget.value)}
-                                        error={documentsForm.errors.national_id}
-                                        required
-                                    />
-                                </Grid.Col>
+                                {DOCUMENT_FIELDS.map((field) => (
+                                    <Grid.Col key={field.name} span={{ base: 12, md: 6 }}>
+                                        <Card withBorder>
+                                            <Stack gap="sm">
+                                                <Group justify="space-between">
+                                                    <Text size="sm" fw={500}>{field.label}</Text>
+                                                    {uploadStatus[field.name] ? (
+                                                        <Badge color="green" size="sm">
+                                                            <CheckCircleIcon size={12} className="inline mr-1" />
+                                                            Uploaded
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge color="gray" size="sm">Pending</Badge>
+                                                    )}
+                                                </Group>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="National ID - Front Photo"
-                                        placeholder="Upload front side of National ID"
-                                        description="Maximum size: 5MB (JPEG, PNG, JPG)"
-                                        accept="image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('national_id_front_photo', file)}
-                                        error={documentsForm.errors.national_id_front_photo}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
+                                                <Text size="xs" c="dimmed">{field.description}</Text>
+                                                <Text size="xs" c="dimmed">Max size: {field.maxSize}</Text>
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="National ID - Back Photo"
-                                        placeholder="Upload back side of National ID"
-                                        description="Maximum size: 5MB (JPEG, PNG, JPG)"
-                                        accept="image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('national_id_back_photo', file)}
-                                        error={documentsForm.errors.national_id_back_photo}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
+                                                {uploading[field.name] && (
+                                                    <div>
+                                                        <Group gap="xs" mb="xs">
+                                                            <Loader size="xs" />
+                                                            <Text size="xs">Uploading... {uploadProgress[field.name]}%</Text>
+                                                        </Group>
+                                                        <Progress value={uploadProgress[field.name]} size="sm" />
+                                                    </div>
+                                                )}
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="Passport Photo"
-                                        placeholder="Upload passport size photo"
-                                        description="Maximum size: 2MB (JPEG, PNG, JPG)"
-                                        accept="image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('passport_photo', file)}
-                                        error={documentsForm.errors.passport_photo}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
+                                                {uploadErrors[field.name] && (
+                                                    <Alert color="red" variant="light" p="xs">
+                                                        <Text size="xs">{uploadErrors[field.name]}</Text>
+                                                    </Alert>
+                                                )}
 
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="Good Conduct Certificate"
-                                        placeholder="Upload certificate of good conduct"
-                                        description="Maximum size: 10MB (PDF, JPEG, PNG, JPG)"
-                                        accept="application/pdf,image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('good_conduct_certificate', file)}
-                                        error={documentsForm.errors.good_conduct_certificate}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
-
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="Motorbike License"
-                                        placeholder="Upload motorbike driving license"
-                                        description="Maximum size: 5MB (PDF, JPEG, PNG, JPG)"
-                                        accept="application/pdf,image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('motorbike_license', file)}
-                                        error={documentsForm.errors.motorbike_license}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
-
-                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                    <FileInput
-                                        label="Motorbike Registration"
-                                        placeholder="Upload motorbike registration document"
-                                        description="Maximum size: 5MB (PDF, JPEG, PNG, JPG)"
-                                        accept="application/pdf,image/jpeg,image/png,image/jpg"
-                                        leftSection={<UploadIcon size={14} />}
-                                        onChange={(file) => documentsForm.setData('motorbike_registration', file)}
-                                        error={documentsForm.errors.motorbike_registration}
-                                        required={!stepsCompleted.documents}
-                                    />
-                                </Grid.Col>
+                                                {!uploading[field.name] && (
+                                                    <>
+                                                        {uploadStatus[field.name] ? (
+                                                            <Group>
+                                                                <Button
+                                                                    variant="light"
+                                                                    color="red"
+                                                                    size="sm"
+                                                                    leftSection={<Trash2Icon size={14} />}
+                                                                    onClick={() => deleteDocument(field.name)}
+                                                                >
+                                                                    Replace
+                                                                </Button>
+                                                            </Group>
+                                                        ) : (
+                                                            <FileInput
+                                                                key={fileInputKeys[field.name] || 0}
+                                                                placeholder="Choose file"
+                                                                accept={field.accept}
+                                                                leftSection={<UploadIcon size={14} />}
+                                                                onChange={handleFileChange(field.name)}
+                                                                size="sm"
+                                                            />
+                                                        )}
+                                                    </>
+                                                )}
+                                            </Stack>
+                                        </Card>
+                                    </Grid.Col>
+                                ))}
                             </Grid>
+
+                            {/* Completion Status */}
+                            {completedCount === totalCount && (
+                                <Alert color="green" variant="light">
+                                    <Group gap="xs">
+                                        <CheckCircleIcon size={16} />
+                                        <Text size="sm" fw={500}>
+                                            All documents uploaded successfully! You can now proceed to the next step.
+                                        </Text>
+                                    </Group>
+                                </Alert>
+                            )}
                         </Stack>
                     </Card>
                 );
@@ -680,7 +1034,7 @@ export default function RiderDetailsForm({
                             <Button
                                 variant="light"
                                 onClick={prevStep}
-                                disabled={currentForm.processing}
+                                disabled={currentStep === 1 ? false : currentForm.processing}
                             >
                                 Previous
                             </Button>
@@ -690,8 +1044,8 @@ export default function RiderDetailsForm({
                     <div>
                         <Button
                             onClick={handleCurrentStepSubmit}
-                            loading={currentForm.processing}
-                            disabled={!isStepValid(currentStep) || currentForm.processing}
+                            loading={currentStep === 1 ? false : currentForm.processing}
+                            disabled={!isStepValid(currentStep) || (currentStep !== 1 && currentForm.processing)}
                         >
                             {currentStep === steps.length - 1 ? 'Complete Profile' : 'Save & Continue'}
                         </Button>
@@ -699,18 +1053,18 @@ export default function RiderDetailsForm({
                 </Group>
             </Card>
 
-            {/* Upload Progress */}
-            {currentForm.progress && (
+            {/* Upload Progress (for location, contact, agreement forms) */}
+            {currentStep !== 1 && currentForm.progress && (
                 <Card>
                     <div>
-                        <Text size="sm" mb="xs">Uploading files...</Text>
+                        <Text size="sm" mb="xs">Uploading...</Text>
                         <Progress value={currentForm.progress.percentage ?? 0} size="sm" />
                     </div>
                 </Card>
             )}
 
-            {/* Error Summary */}
-            {Object.keys(currentForm.errors).length > 0 && (
+            {/* Error Summary (for location, contact, agreement forms) */}
+            {currentStep !== 1 && Object.keys(currentForm.errors).length > 0 && (
                 <Alert color="red" variant="light">
                     <Text size="sm" fw={500} mb="xs">Please fix the following errors:</Text>
                     <ul className="list-disc list-inside text-sm space-y-1">

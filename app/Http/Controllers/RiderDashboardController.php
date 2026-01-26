@@ -52,9 +52,9 @@ class RiderDashboardController extends Controller
         $validated['status'] = 'pending';
         $validated['daily_rate'] = $validated['daily_rate'] ?? 70.00;
 
-        $rider = $this->riderService->createRiderProfile($validated);
+        $rider = $this->riderService->createRider($validated);
 
-        return redirect()->route('rider-dash.index')->with('success', 
+        return redirect()->route('rider.rider-dash.index')->with('success', 
             'Rider profile created successfully. Your application is under review.');
     }
 
