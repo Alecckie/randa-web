@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\Auth;
 
+use App\Enums\UserRole;
 use App\Http\Requests\Api\BaseApiRequest;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -9,6 +10,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class LoginRequest extends BaseApiRequest
 {
@@ -53,80 +55,69 @@ class LoginRequest extends BaseApiRequest
      * @return \App\Models\User
      * @throws \Illuminate\Http\Exceptions\HttpResponseException
      */
-    public function authenticateForApi(): User
-{
-    $this->ensureIsNotRateLimited();
+    public function authenticateForApi()
+    {
+        $this->ensureIsNotRateLimited();
 
-    // Use input() or validated() array, not validated('key')
-    $email = $this->input('email');
-    $password = $this->input('password');
+        // Use input() or validated() array, not validated('key')
+        $email = $this->input('email');
+        $password = $this->input('password');
 
-    // DEBUG: Log what we're searching for
-    \Log::info('Login attempt', [
-        'email' => $email,
-        'password_length' => strlen($password),
-        'raw_email' => $this->email,
-    ]);
+        // Find user by email
+        $user = User::where('email', $email)->first();
+        if (!$user) {
+            RateLimiter::hit($this->throttleKey());
 
-    // Find user by email
-    $user = User::where('email', $email)->first();
+            throw new HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials',
+                    'errors' => ['email' => ['The provided credentials are incorrect.']]
+                ], 401)
+            );
+        }
+        // Log::info("User role ",);
+        if (!$user->isRider()) {
+            throw new HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => "You are not authorized to login.ONLY RIDERS CAN LOGIN",
+                    'error' => 'INVALID_ROLE',
+                ], 403)
+            );
+        }
 
-    // DEBUG: Log if user was found
-    \Log::info('User lookup', [
-        'found' => $user ? 'yes' : 'no',
-        'user_email' => $user?->email,
-        'user_password_hash' => $user?->password,
-    ]);
 
-    if (!$user) {
-        \Log::warning('User not found for email: ' . $email);
-        RateLimiter::hit($this->throttleKey());
+        $passwordMatches = Hash::check($password, $user->password);
 
-        throw new HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials',
-                'errors' => ['email' => ['The provided credentials are incorrect.']]
-            ], 401)
-        );
+
+        if (!$passwordMatches) {
+            RateLimiter::hit($this->throttleKey());
+
+            throw new HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials',
+                    'errors' => ['email' => ['The provided credentials are incorrect.']]
+                ], 401)
+            );
+        }
+
+        // Check if user account is active
+        if (!$user->is_active) {
+            throw new HttpResponseException(
+                response()->json([
+                    'success' => false,
+                    'message' => 'Account deactivated',
+                    'errors' => ['email' => ['Your account has been deactivated.']]
+                ], 403)
+            );
+        }
+
+        RateLimiter::clear($this->throttleKey());
+
+        return $user;
     }
-
-    // DEBUG: Check password
-    $passwordMatches = Hash::check($password, $user->password);
-    \Log::info('Password check', [
-        'matches' => $passwordMatches,
-        'input_password' => $password,
-        'hash_in_db' => $user->password,
-    ]);
-
-    if (!$passwordMatches) {
-        \Log::warning('Password mismatch for user: ' . $user->email);
-        RateLimiter::hit($this->throttleKey());
-
-        throw new HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials',
-                'errors' => ['email' => ['The provided credentials are incorrect.']]
-            ], 401)
-        );
-    }
-
-    // Check if user account is active
-    if (!$user->is_active) {
-        throw new HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Account deactivated',
-                'errors' => ['email' => ['Your account has been deactivated.']]
-            ], 403)
-        );
-    }
-
-    RateLimiter::clear($this->throttleKey());
-
-    return $user;
-}
     /**
      * Ensure the login request is not rate limited (API version)
      */
