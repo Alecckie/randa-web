@@ -15,12 +15,12 @@ class CheckInService
     /**
      * Process rider check-in via QR code scan
      */
-    public function checkIn(string $qrCode, int $riderId): array
+    public function checkIn(string $qrCode, int $riderId, ?float $latitude = null, ?float $longitude = null): array
     {
-        return DB::transaction(function () use ($qrCode, $riderId) {
+        return DB::transaction(function () use ($qrCode, $riderId, $latitude, $longitude) {
             // Find helmet by QR code
             $helmet = Helmet::where('qr_code', $qrCode)->first();
-            
+
             if (!$helmet) {
                 throw new Exception('Invalid QR code. Helmet not found.');
             }
@@ -54,11 +54,10 @@ class CheckInService
                 ->first();
 
             if ($existingCheckIn) {
-                throw new Exception('You have already checked in today at ' . 
+                throw new Exception('You have already checked in today at ' .
                     $existingCheckIn->check_in_time->format('h:i A'));
             }
 
-            // Create check-in record
             $checkIn = RiderCheckIn::create([
                 'rider_id' => $riderId,
                 'campaign_assignment_id' => $assignment->id,
@@ -66,7 +65,9 @@ class CheckInService
                 'check_in_time' => Carbon::now(),
                 'check_out_time' => null,
                 'daily_earning' => $rider->daily_rate ?? 70.00,
-                'status' => 'active'
+                'status' => 'active',
+                'check_in_latitude' => $latitude,
+                'check_in_longitude' => $longitude
             ]);
 
             return [
@@ -84,9 +85,9 @@ class CheckInService
     /**
      * Process rider check-out
      */
-    public function checkOut(int $riderId): array
+    public function checkOut(int $riderId, ?float $latitude = null, ?float $longitude = null): array
     {
-        return DB::transaction(function () use ($riderId) {
+        return DB::transaction(function () use ($riderId, $latitude, $longitude) {
             // Find today's active check-in
             $checkIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
@@ -100,7 +101,9 @@ class CheckInService
             // Update check-out time
             $checkIn->update([
                 'check_out_time' => Carbon::now(),
-                'status' => 'completed'
+                'status' => 'completed',
+                'check_out_latitude' => $latitude,
+                'check_out_longitude' => $longitude
             ]);
 
             // Update rider's wallet balance
@@ -169,7 +172,7 @@ class CheckInService
         $completedCheckIns = RiderCheckIn::where('rider_id', $riderId)
             ->where('status', 'completed')
             ->count();
-        
+
         $totalEarnings = RiderCheckIn::where('rider_id', $riderId)
             ->where('status', 'completed')
             ->sum('daily_earning');
@@ -200,8 +203,8 @@ class CheckInService
             'total_hours_worked' => round($totalHours, 2),
             'this_month_check_ins' => $thisMonthCheckIns,
             'this_month_earnings' => 'KSh ' . number_format($thisMonthEarnings, 2),
-            'average_hours_per_day' => $completedCheckIns > 0 
-                ? round($totalHours / $completedCheckIns, 2) 
+            'average_hours_per_day' => $completedCheckIns > 0
+                ? round($totalHours / $completedCheckIns, 2)
                 : 0
         ];
     }
@@ -212,7 +215,7 @@ class CheckInService
     public function validateQrCode(string $qrCode, int $riderId): array
     {
         $helmet = Helmet::where('qr_code', $qrCode)->first();
-        
+
         if (!$helmet) {
             throw new Exception('Invalid QR code.');
         }

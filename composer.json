@@ -16,6 +16,7 @@
         "laravel/reverb": "^1.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "matanyadaev/laravel-eloquent-spatial": "^4.5",
         "pusher/pusher-php-server": "^7.2",
         "staudenmeir/eloquent-has-many-deep": "^1.21",
         "tightenco/ziggy": "^2.0"

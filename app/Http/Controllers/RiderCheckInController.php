@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\CheckInService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 
 class RiderCheckInController extends Controller
@@ -23,7 +25,7 @@ class RiderCheckInController extends Controller
     public function index()
     {
         $rider = Auth::user()->rider;
-        
+
         if (!$rider) {
             return redirect()->route('rider.rider-dash.index')
                 ->with('error', 'Rider profile not found.');
@@ -45,12 +47,14 @@ class RiderCheckInController extends Controller
     public function checkIn(Request $request)
     {
         $request->validate([
-            'qr_code' => 'required|string'
+            'qr_code' => 'required|string',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180'
         ]);
 
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -58,7 +62,12 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $result = $this->checkInService->checkIn($request->qr_code, $rider->id);
+            $result = $this->checkInService->checkIn(
+                $request->qr_code,
+                $rider->id,
+                $request->latitude,
+                $request->longitude
+            );
 
             return response()->json($result);
         } catch (\Exception $e) {
@@ -72,11 +81,24 @@ class RiderCheckInController extends Controller
     /**
      * Process check-out
      */
-    public function checkOut(Request $request)
+    public function checkOut(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -84,9 +106,13 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $result = $this->checkInService->checkOut($rider->id);
+            $result = $this->checkInService->checkOut(
+                $rider->id,
+                $request->latitude,
+                $request->longitude
+            );
 
-            return response()->json($result);
+            return response()->json($result, 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -106,7 +132,7 @@ class RiderCheckInController extends Controller
 
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -135,7 +161,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -163,7 +189,7 @@ class RiderCheckInController extends Controller
     public function history()
     {
         $rider = Auth::user()->rider;
-        
+
         if (!$rider) {
             return redirect()->route('rider.dashboard')
                 ->with('error', 'Rider profile not found.');

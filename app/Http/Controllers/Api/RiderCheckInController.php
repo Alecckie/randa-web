@@ -27,7 +27,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -69,7 +69,9 @@ class RiderCheckInController extends Controller
     public function checkIn(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'qr_code' => 'required|string|min:3|max:255'
+            'qr_code' => 'required|string|min:3|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180'
         ]);
 
         if ($validator->fails()) {
@@ -82,7 +84,7 @@ class RiderCheckInController extends Controller
 
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -90,7 +92,12 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $result = $this->checkInService->checkIn($request->qr_code, $rider->id);
+            $result = $this->checkInService->checkIn(
+                $request->qr_code,
+                $rider->id,
+                $request->latitude,
+                $request->longitude
+            );
 
             return response()->json($result, 200);
         } catch (\Exception $e) {
@@ -106,11 +113,24 @@ class RiderCheckInController extends Controller
      * 
      * @return JsonResponse
      */
-    public function checkOut(): JsonResponse
+    public function checkOut(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -118,7 +138,11 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $result = $this->checkInService->checkOut($rider->id);
+            $result = $this->checkInService->checkOut(
+                $rider->id,
+                $request->latitude,
+                $request->longitude
+            );
 
             return response()->json($result, 200);
         } catch (\Exception $e) {
@@ -151,7 +175,7 @@ class RiderCheckInController extends Controller
 
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -182,7 +206,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -215,7 +239,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -258,7 +282,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -291,7 +315,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -303,9 +327,9 @@ class RiderCheckInController extends Controller
                 'campaignAssignment.campaign',
                 'campaignAssignment.helmet'
             ])
-            ->where('id', $id)
-            ->where('rider_id', $rider->id)
-            ->first();
+                ->where('id', $id)
+                ->where('rider_id', $rider->id)
+                ->first();
 
             if (!$checkIn) {
                 return response()->json([
@@ -366,7 +390,7 @@ class RiderCheckInController extends Controller
 
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -422,7 +446,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -482,7 +506,7 @@ class RiderCheckInController extends Controller
     {
         try {
             $rider = Auth::user()->rider;
-            
+
             if (!$rider) {
                 return response()->json([
                     'success' => false,
@@ -515,7 +539,7 @@ class RiderCheckInController extends Controller
                 'total_earnings' => 'KSh ' . number_format($earnings->sum('total_earnings'), 2),
                 'average_daily_earning' => 'KSh ' . number_format($earnings->avg('average_earning'), 2),
                 'total_hours_worked' => $earnings->sum('total_hours'),
-                'daily_breakdown' => $earnings->map(function($item) {
+                'daily_breakdown' => $earnings->map(function ($item) {
                     return [
                         'date' => $item->date,
                         'earnings' => 'KSh ' . number_format($item->total_earnings, 2),

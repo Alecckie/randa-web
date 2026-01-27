@@ -17,14 +17,22 @@ class RiderCheckIn extends Model
         'check_in_time',
         'check_out_time',
         'daily_earning',
-        'status'
+        'status',
+        'check_in_latitude',
+        'check_in_longitude',
+        'check_out_latitude',
+        'check_out_longitude'
     ];
 
     protected $casts = [
         'check_in_date' => 'date',
         'check_in_time' => 'datetime',
         'check_out_time' => 'datetime',
-        'daily_earning' => 'decimal:2'
+        'daily_earning' => 'decimal:2',
+        'check_in_latitude' => 'decimal:8',
+        'check_in_longitude' => 'decimal:8',
+        'check_out_latitude' => 'decimal:8',
+        'check_out_longitude' => 'decimal:8'
     ];
 
     // Relationships
