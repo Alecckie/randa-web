@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\MpesaCallbackController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\RiderCheckInController;
 use App\Http\Controllers\Api\RiderProfileController;
+use App\Http\Controllers\Api\RiderTrackingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -103,6 +104,37 @@ Route::prefix('v1')->group(function () {
                 Route::get('/earnings/monthly', [RiderCheckInController::class, 'monthlyEarnings'])
                     ->name('earnings.monthly');
             });
+
+            //Rider Tracking endpoints 
+            // Record location points
+            Route::post('/location', [RiderTrackingController::class, 'recordLocation'])
+                ->name('record');
+
+            Route::post('/locations/batch', [RiderTrackingController::class, 'recordBatchLocations'])
+                ->name('batch');
+
+            // Get rider's own tracking data
+            Route::get('/location/current', [RiderTrackingController::class, 'getCurrentLocation'])
+                ->name('current');
+
+            Route::get('/routes/today', [RiderTrackingController::class, 'getTodayRoute'])
+                ->name('today');
+
+            Route::get('/routes/history', [RiderTrackingController::class, 'getRouteHistory'])
+                ->name('history');
+
+            Route::get('/routes/{routeId}', [RiderTrackingController::class, 'getRouteDetails'])
+                ->name('details');
+
+            Route::get('/tracking/stats', [RiderTrackingController::class, 'getTrackingStats'])
+                ->name('stats');
+
+            // Pause/Resume tracking
+            Route::post('/tracking/pause', [RiderTrackingController::class, 'pauseTracking'])
+                ->name('pause');
+
+            Route::post('/tracking/resume', [RiderTrackingController::class, 'resumeTracking'])
+                ->name('resume');
         });
 
         // Advertiser routes - only accessible by advertisers
