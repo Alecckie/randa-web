@@ -70,9 +70,9 @@ Route::prefix('v1')->group(function () {
                 ->name('rider.profile.agreement');
 
 
-            Route::prefix('check-in')->name('rider.checkin.')->group(function () {
-                Route::get('/', [RiderCheckInController::class, 'index'])
-                    ->name('index');
+            Route::name('rider')->group(function () {
+                Route::get('/rider_checkins', [RiderCheckInController::class, 'index'])
+                    ->name('rider_checkins');
 
                 Route::get('/status', [RiderCheckInController::class, 'getTodayStatus'])
                     ->name('status');
@@ -86,8 +86,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('/{id}', [RiderCheckInController::class, 'show'])
                     ->name('show');
 
-                Route::post('/', [RiderCheckInController::class, 'checkIn'])
-                    ->name('checkin');
+                Route::post('/check_in', [RiderCheckInController::class, 'checkIn'])
+                    ->name('check_in');
 
                 Route::post('/validate', [RiderCheckInController::class, 'validateQrCode'])
                     ->name('validate');

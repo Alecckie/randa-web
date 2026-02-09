@@ -44,7 +44,7 @@ class CheckInService
 
             // Check if campaign is active
             if ($assignment->campaign->status !== 'active') {
-                throw new Exception('The campaign associated with this helmet is not active.');
+                throw new Exception($assignment->campaign->id . 'The campaign associated with this helmet is not active.');
             }
 
             // Check if rider already checked in today
