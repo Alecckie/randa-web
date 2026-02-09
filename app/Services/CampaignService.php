@@ -217,7 +217,7 @@ class CampaignService
                 'business_type' => $data['business_type'] ?? null,
                 'require_vat_receipt' => $data['require_vat_receipt'] ?? false,
                 'agree_to_terms' => $data['agree_to_terms'] ?? false,
-                'status' => $data['payment_id'] ? 'paid' : 'draft',
+                'status' => $data['payment_id'] ? 'active' : 'active',
                 'special_instructions' => $data['special_instructions'] ?? null,
             ]);
 
