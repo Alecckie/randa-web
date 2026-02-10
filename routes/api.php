@@ -83,8 +83,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('/history', [RiderCheckInController::class, 'history'])
                     ->name('history');
 
-                Route::get('/{id}', [RiderCheckInController::class, 'show'])
-                    ->name('show');
+                // Route::get('/{id}', [RiderCheckInController::class, 'show'])
+                //     ->name('show');
 
                 Route::post('/check_in', [RiderCheckInController::class, 'checkIn'])
                     ->name('check_in');

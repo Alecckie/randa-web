@@ -311,61 +311,61 @@ class RiderCheckInController extends Controller
      * @param int $id
      * @return JsonResponse
      */
-    public function show(int $id): JsonResponse
-    {
-        try {
-            $rider = Auth::user()->rider;
+    // public function show(int $id): JsonResponse
+    // {
+    //     try {
+    //         $rider = Auth::user()->rider;
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
+    //         if (!$rider) {
+    //             return response()->json([
+    //                 'success' => false,
+    //                 'message' => 'Rider profile not found.'
+    //             ], 404);
+    //         }
 
-            $checkIn = \App\Models\RiderCheckIn::with([
-                'campaignAssignment.campaign',
-                'campaignAssignment.helmet'
-            ])
-                ->where('id', $id)
-                ->where('rider_id', $rider->id)
-                ->first();
+    //         $checkIn = \App\Models\RiderCheckIn::with([
+    //             'campaignAssignment.campaign',
+    //             'campaignAssignment.helmet'
+    //         ])
+    //             ->where('id', $id)
+    //             ->where('rider_id', $rider->id)
+    //             ->first();
 
-            if (!$checkIn) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Check-in record not found.'
-                ], 404);
-            }
+    //         if (!$checkIn) {
+    //             return response()->json([
+    //                 'success' => false,
+    //                 'message' => 'Check-in record not found.'
+    //             ], 404);
+    //         }
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'id' => $checkIn->id,
-                    'check_in_date' => $checkIn->check_in_date->format('Y-m-d'),
-                    'check_in_time' => $checkIn->formatted_check_in_time,
-                    'check_out_time' => $checkIn->formatted_check_out_time,
-                    'worked_hours' => $checkIn->worked_hours,
-                    'daily_earning' => $checkIn->formatted_daily_earning,
-                    'status' => $checkIn->status,
-                    'campaign' => [
-                        'id' => $checkIn->campaignAssignment->campaign->id,
-                        'name' => $checkIn->campaignAssignment->campaign->name,
-                    ],
-                    'helmet' => [
-                        'id' => $checkIn->campaignAssignment->helmet->id,
-                        'code' => $checkIn->campaignAssignment->helmet->helmet_code,
-                    ]
-                ]
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch check-in details.',
-                'error' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
-        }
-    }
+    //         return response()->json([
+    //             'success' => true,
+    //             'data' => [
+    //                 'id' => $checkIn->id,
+    //                 'check_in_date' => $checkIn->check_in_date->format('Y-m-d'),
+    //                 'check_in_time' => $checkIn->formatted_check_in_time,
+    //                 'check_out_time' => $checkIn->formatted_check_out_time,
+    //                 'worked_hours' => $checkIn->worked_hours,
+    //                 'daily_earning' => $checkIn->formatted_daily_earning,
+    //                 'status' => $checkIn->status,
+    //                 'campaign' => [
+    //                     'id' => $checkIn->campaignAssignment->campaign->id,
+    //                     'name' => $checkIn->campaignAssignment->campaign->name,
+    //                 ],
+    //                 'helmet' => [
+    //                     'id' => $checkIn->campaignAssignment->helmet->id,
+    //                     'code' => $checkIn->campaignAssignment->helmet->helmet_code,
+    //                 ]
+    //             ]
+    //         ], 200);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Failed to fetch check-in details.',
+    //             'error' => config('app.debug') ? $e->getMessage() : null
+    //         ], 500);
+    //     }
+    // }
 
     /**
      * Force check-out (admin only or emergency)
