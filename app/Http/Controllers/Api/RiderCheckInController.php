@@ -70,8 +70,8 @@ class RiderCheckInController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'qr_code' => 'required|string|min:3|max:255',
-            'latitude' => 'nullable|numeric|between:-90,90',
-            'longitude' => 'nullable|numeric|between:-180,180'
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180'
         ]);
 
         if ($validator->fails()) {
