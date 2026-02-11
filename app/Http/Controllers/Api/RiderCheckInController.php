@@ -23,10 +23,10 @@ class RiderCheckInController extends Controller
      * 
      * @return JsonResponse
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -83,7 +83,7 @@ class RiderCheckInController extends Controller
         }
 
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -129,7 +129,7 @@ class RiderCheckInController extends Controller
         }
 
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -174,7 +174,7 @@ class RiderCheckInController extends Controller
         }
 
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -202,10 +202,10 @@ class RiderCheckInController extends Controller
      * 
      * @return JsonResponse
      */
-    public function getTodayStatus(): JsonResponse
+    public function getTodayStatus(Request $request): JsonResponse
     {
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -238,7 +238,7 @@ class RiderCheckInController extends Controller
     public function history(Request $request): JsonResponse
     {
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -278,10 +278,10 @@ class RiderCheckInController extends Controller
      * 
      * @return JsonResponse
      */
-    public function stats(): JsonResponse
+    public function stats(Request $request): JsonResponse
     {
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
