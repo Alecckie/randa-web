@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCampaignRequest;
 use App\Models\Advertiser;
 use App\Models\Campaign;
+use App\Models\CampaignStatusHistory;
 use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class CampaignController extends Controller
@@ -192,4 +194,63 @@ class CampaignController extends Controller
 
         return $user;
     }
+
+    /**
+ * Update campaign status with history tracking
+ */
+public function updateStatus(Request $request, Campaign $campaign)
+{
+    $user = $this->getAuthenticatedUser();
+
+    // Only admins can update campaign status
+    if ($user->role !== 'admin') {
+        return redirect()
+            ->back()
+            ->with('error', 'You do not have permission to update campaign status.');
+    }
+
+    $validated = $request->validate([
+        'status' => ['required', 'string', 'in:draft,pending_payment,paid,active,paused,completed,cancelled'],
+        'notes' => ['nullable', 'string', 'max:1000'],
+    ]);
+
+    try {
+        $oldStatus = $campaign->status;
+        
+        // Use the service method to update status with validation
+        $this->campaignService->updateCampaignStatus(
+            $campaign,
+            $validated['status']
+        );
+
+        // Create status history record
+         CampaignStatusHistory::create([
+            'campaign_id' => $campaign->id,
+            'user_id' => $user->id,
+            'old_status' => $oldStatus,
+            'new_status' => $validated['status'],
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return redirect()
+            ->back()
+            ->with('success', 'Campaign status updated successfully.');
+
+    } catch (\InvalidArgumentException $e) {
+        return redirect()
+            ->back()
+            ->with('error', $e->getMessage());
+    } catch (\Exception $e) {
+        Log::error('Failed to update campaign status', [
+            'campaign_id' => $campaign->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return redirect()
+            ->back()
+            ->with('error', 'Failed to update campaign status. Please try again.');
+    }
+}
+
 }

@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\AdvertiserDashboardController;
 use App\Http\Controllers\Api\Auth\AuthController;
-use App\Http\Controllers\Api\CheckInController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MpesaCallbackController;
 use App\Http\Controllers\Api\PaymentController;
@@ -107,14 +106,14 @@ Route::prefix('v1')->group(function () {
 
             //Rider Tracking endpoints 
             // Record location points
-            Route::post('/location', [RiderTrackingController::class, 'recordLocation'])
+            Route::post('/location', [RiderTrackingController::class, 'store'])
                 ->name('record');
 
-            Route::post('/locations/batch', [RiderTrackingController::class, 'recordBatchLocations'])
+            Route::post('/locations/batch', [RiderTrackingController::class, 'storeBatch'])
                 ->name('batch');
 
             // Get rider's own tracking data
-            Route::get('/location/current', [RiderTrackingController::class, 'getCurrentLocation'])
+            Route::get('/location/current', [RiderTrackingController::class, 'current'])
                 ->name('current');
 
             Route::get('/routes/today', [RiderTrackingController::class, 'getTodayRoute'])
@@ -126,14 +125,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/routes/{routeId}', [RiderTrackingController::class, 'getRouteDetails'])
                 ->name('details');
 
-            Route::get('/tracking/stats', [RiderTrackingController::class, 'getTrackingStats'])
+            Route::get('/tracking/stats', [RiderTrackingController::class, 'stats'])
                 ->name('stats');
 
             // Pause/Resume tracking
-            Route::post('/tracking/pause', [RiderTrackingController::class, 'pauseTracking'])
+            Route::post('/tracking/pause', [RiderTrackingController::class, 'pause'])
                 ->name('pause');
 
-            Route::post('/tracking/resume', [RiderTrackingController::class, 'resumeTracking'])
+            Route::post('/tracking/resume', [RiderTrackingController::class, 'resume'])
                 ->name('resume');
         });
 

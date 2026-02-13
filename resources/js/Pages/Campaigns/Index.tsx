@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { Button, TextInput, Select, Badge, Card, Group, Text, Stack, ActionIcon, Menu, Modal, Textarea } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { CheckCircleIcon, Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon, FullscreenIcon } from 'lucide-react';
+import { Button, TextInput, Select, Badge, Card, Group, Text, ActionIcon, Menu } from '@mantine/core';
+import { Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon, FullscreenIcon, RefreshCw } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
-import type { CampaignsIndexProps, CampaignStatus } from '@/types/campaign';
-import { Campaign } from '@/types/dashboard';
+import type { Campaign,CampaignsIndexProps, CampaignStatus } from '@/types/campaign';
+
+import StatusUpdateModal from '@/Components/campaigns/StatusUpdateModal';
 
 export default function Index({ campaigns, stats, filters, advertisers }: CampaignsIndexProps) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
     const [selectedUser, setSelectedUser] = useState(filters.user_id?.toString() || '');
-    const [selectedAdvertiser, setSelectedAdvertiser] = useState<Advertiser | null>(null);
-    const [statusModalOpened, { open: openStatusModal, close: closeStatusModal }] = useDisclosure(false);
-    const [newStatus, setNewStatus] = useState<'approved' | 'rejected'>('approved');
-    const [rejectionReason, setRejectionReason] = useState('');
+    const [statusModalOpened, setStatusModalOpened] = useState(false);
+    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,14 +32,19 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
         router.get(route('campaigns.index'));
     };
 
+    const handleStatusUpdate = (campaign: Campaign) => {
+        setSelectedCampaign(campaign);
+        setStatusModalOpened(true);
+    };
+
     const getStatusColor = (status: CampaignStatus): string => {
         const colors: Record<CampaignStatus, string> = {
             draft: 'yellow',
             active: 'blue',
-            paused: 'red',
+            paused: 'grape',
             completed: 'green',
             cancelled: 'red',
-            pending_payment:'yellow',
+            pending_payment:'orange',
             paid: 'green'
         };
         return colors[status];
@@ -54,24 +57,15 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             paused: <PauseIcon size={14} />,
             completed: <Fullscreen size={14} />,
             cancelled: <BookLockIcon size={14} />,
-            pending_payment:<BookLockIcon size={14} />,
+            pending_payment:<Clock1Icon size={14} />,
             paid: <FullscreenIcon size={14}/>
         };
         return icons[status];
     };
 
-    const submitStatusUpdate = () => {
-        if (!selectedAdvertiser) return;
-
-        router.put(route('campaigns.update-status', selectedAdvertiser.id), {
-            status: newStatus,
-            rejection_reason: newStatus === 'rejected' ? rejectionReason : undefined,
-        }, {
-            onSuccess: () => {
-                closeStatusModal();
-                setSelectedAdvertiser(null);
-            }
-        });
+    const canUpdateStatus = (campaign: Campaign): boolean => {
+        // Only allow status updates for campaigns not in completed/cancelled state
+        return !['completed', 'cancelled'].includes(campaign.status);
     };
 
     // Helper function to safely render coverage areas
@@ -79,32 +73,51 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
         if (!coverageAreas) return '—';
         
         if (Array.isArray(coverageAreas)) {
+            if (coverageAreas.length === 0) return '—';
+            
             // Check if it's an array of objects
-            if (coverageAreas.length > 0 && typeof coverageAreas[0] === 'object') {
+            if (typeof coverageAreas[0] === 'object') {
                 return (
                     <div className="flex flex-wrap gap-1">
-                        {coverageAreas.map((area: any, idx: number) => (
-                            <Badge key={idx} variant="outline" color="blue">
+                        {coverageAreas.slice(0, 2).map((area: any, idx: number) => (
+                            <Badge key={idx} variant="outline" color="blue" size="sm">
                                 {area?.name || area?.full_name || area?.location_path || 'Unknown'}
                             </Badge>
                         ))}
+                        {coverageAreas.length > 2 && (
+                            <Badge variant="outline" color="gray" size="sm">
+                                +{coverageAreas.length - 2}
+                            </Badge>
+                        )}
                     </div>
                 );
             }
             // If it's an array of strings
             return (
                 <div className="flex flex-wrap gap-1">
-                    {coverageAreas.map((area: string, idx: number) => (
-                        <Badge key={idx} variant="outline" color="blue">
+                    {coverageAreas.slice(0, 2).map((area: string, idx: number) => (
+                        <Badge key={idx} variant="outline" color="blue" size="sm">
                             {String(area)}
                         </Badge>
                     ))}
+                    {coverageAreas.length > 2 && (
+                        <Badge variant="outline" color="gray" size="sm">
+                            +{coverageAreas.length - 2}
+                        </Badge>
+                    )}
                 </div>
             );
         }
         
         // If it's a single value
         return <span>{String(coverageAreas)}</span>;
+    };
+
+    const formatStatus = (status: string): string => {
+        return status
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
     };
 
     return (
@@ -125,7 +138,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                         leftSection={<PlusIcon size={16} />}
                         size="sm"
                     >
-                        New Campaigns Application
+                        New Campaign Application
                     </Button>
                 </div>
             }
@@ -135,11 +148,11 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white dark:bg-gray-800 shadow-md">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Campaigns</Text>
-                                <Text size="xl" fw={700}>{stats.total_campaigns}</Text>
+                                <Text size="xl" fw={700}>{stats.total_campaigns || 0}</Text>
                             </div>
                             <div className="text-3xl">
                                 <Building2Icon size={32} className="text-blue-500" />
@@ -147,45 +160,45 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white dark:bg-gray-800 shadow-md">
                         <Group>
                             <div className="flex-1">
-                                <Text size="sm" c="dimmed">Pending Applications</Text>
-                                <Text size="xl" fw={700} c="yellow">{stats.pending_applications}</Text>
+                                <Text size="sm" c="dimmed">Active Campaigns</Text>
+                                <Text size="xl" fw={700} c="blue">{stats.active_campaigns || 0}</Text>
                             </div>
                             <div className="text-3xl">
-                                <Clock1Icon size={32} className="text-yellow-500" />
+                                <ActivitySquareIcon size={32} className="text-blue-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white dark:bg-gray-800 shadow-md">
                         <Group>
                             <div className="flex-1">
-                                <Text size="sm" c="dimmed">Approved Campaigns</Text>
-                                <Text size="xl" fw={700} c="green">{stats.approved_campaigns}</Text>
+                                <Text size="sm" c="dimmed">Draft Campaigns</Text>
+                                <Text size="xl" fw={700} c="yellow">{stats.draft_campaigns || 0}</Text>
+                            </div>
+                            <div className="text-3xl">
+                                <DraftingCompass size={32} className="text-yellow-500" />
+                            </div>
+                        </Group>
+                    </Card>
+
+                    <Card className="bg-white dark:bg-gray-800 shadow-md">
+                        <Group>
+                            <div className="flex-1">
+                                <Text size="sm" c="dimmed">Completed</Text>
+                                <Text size="xl" fw={700} c="green">{stats.completed_campaigns || 0}</Text>
                             </div>
                             <div className="text-3xl">
                                 <CheckIcon size={32} className="text-green-500" />
                             </div>
                         </Group>
                     </Card>
-
-                    <Card className="bg-white dark:bg-gray-800">
-                        <Group>
-                            <div className="flex-1">
-                                <Text size="sm" c="dimmed">Rejected Applications</Text>
-                                <Text size="xl" fw={700} c="red">{stats.rejected_applications}</Text>
-                            </div>
-                            <div className="text-3xl">
-                                <XIcon size={32} className="text-red-500" />
-                            </div>
-                        </Group>
-                    </Card>
                 </div>
 
                 {/* Filters */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white dark:bg-gray-800 shadow-md">
                     <form onSubmit={handleSearch}>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                             <TextInput
@@ -199,12 +212,17 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                 placeholder="Filter by status"
                                 data={[
                                     { value: '', label: 'All Status' },
-                                    { value: 'pending', label: 'Pending' },
-                                    { value: 'approved', label: 'Approved' },
-                                    { value: 'rejected', label: 'Rejected' },
+                                    { value: 'draft', label: 'Draft' },
+                                    { value: 'pending_payment', label: 'Pending Payment' },
+                                    { value: 'paid', label: 'Paid' },
+                                    { value: 'active', label: 'Active' },
+                                    { value: 'paused', label: 'Paused' },
+                                    { value: 'completed', label: 'Completed' },
+                                    { value: 'cancelled', label: 'Cancelled' },
                                 ]}
                                 value={statusFilter}
                                 onChange={(value) => setStatusFilter(value || '')}
+                                clearable
                             />
 
                             <Select
@@ -215,6 +233,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                 ]}
                                 value={selectedUser}
                                 onChange={(value) => setSelectedUser(value || '')}
+                                clearable
                             />
 
                             <Group>
@@ -230,7 +249,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                 </Card>
 
                 {/* Campaigns Table */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white dark:bg-gray-800 shadow-md">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-700">
@@ -269,22 +288,17 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                     <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
-                                                <div className="text-sm text-gray-900 dark:text-white">
-                                                    {campaign?.name ?? " "}
+                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                                    {campaign?.name ?? "—"}
                                                 </div>
                                                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    {campaign?.description ?? ''}
+                                                    {campaign?.description ?? '—'}
                                                 </div>
                                             </div>
                                         </td>
                                          <td className="px-6 py-4 whitespace-nowrap">
-                                            <div>
-                                                <div className="text-sm text-gray-900 dark:text-white">
-                                                    {campaign?.advertiser?.user?.name ?? " "}
-                                                </div>
-                                                {/* <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    {campaign?.description ?? ''}
-                                                </div> */}
+                                            <div className="text-sm text-gray-900 dark:text-white">
+                                                {campaign?.advertiser?.company_name ?? campaign?.advertiser?.user?.name ?? "—"}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -293,7 +307,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                 leftSection={getStatusIcon(campaign.status)}
                                                 variant="light"
                                             >
-                                                {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
+                                                {formatStatus(campaign.status)}
                                             </Badge>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -306,10 +320,10 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                             {renderCoverageAreas(campaign.coverage_areas)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {campaign.helmet_count}
+                                            {campaign.helmet_count || 0}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                           KES {campaign?.current_cost?.total_cost}
+                                           KES {campaign?.current_cost?.total_cost?.toLocaleString() || '0.00'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>
@@ -327,20 +341,23 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                     >
                                                         View Details
                                                     </Menu.Item>
-                                                    {campaign.status === 'draft' && (
+                                                    {canUpdateStatus(campaign) && (
                                                         <Menu.Item
-                                                            leftSection={<CheckCircleIcon size={14} />}
+                                                            leftSection={<RefreshCw size={14} />}
+                                                            onClick={() => handleStatusUpdate(campaign)}
                                                         >
                                                             Update Status
                                                         </Menu.Item>
                                                     )}
-                                                    <Menu.Item
-                                                        leftSection={<PencilIcon size={14} />}
-                                                        component={Link}
-                                                        href={route('campaigns.edit', campaign.id)}
-                                                    >
-                                                        Edit
-                                                    </Menu.Item>
+                                                    {(campaign.status === 'draft' || campaign.status === 'pending_payment') && (
+                                                        <Menu.Item
+                                                            leftSection={<PencilIcon size={14} />}
+                                                            component={Link}
+                                                            href={route('campaigns.edit', campaign.id)}
+                                                        >
+                                                            Edit
+                                                        </Menu.Item>
+                                                    )}
                                                 </Menu.Dropdown>
                                             </Menu>
                                         </td>
@@ -370,17 +387,56 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                             <div className="text-sm text-gray-500 dark:text-gray-400">
                                 Showing {campaigns.from} to {campaigns.to} of {campaigns.total} campaigns
                             </div>
-                            <div className="flex space-x-1">
-                                {Array.from({ length: campaigns.last_page }, (_, i) => i + 1).map((page) => (
+                            <div className="flex flex-wrap gap-1">
+                                {campaigns.current_page > 1 && (
                                     <Button
-                                        key={page}
-                                        variant={page === campaigns.current_page ? "filled" : "subtle"}
+                                        variant="light"
                                         size="sm"
-                                        onClick={() => router.get(route('campaigns.index', { ...filters, page }))}
+                                        onClick={() => router.get(route('campaigns.index', { 
+                                            ...filters, 
+                                            page: campaigns.current_page - 1 
+                                        }))}
                                     >
-                                        {page}
+                                        Previous
                                     </Button>
-                                ))}
+                                )}
+                                
+                                {Array.from({ length: Math.min(5, campaigns.last_page) }, (_, i) => {
+                                    let page: number;
+                                    if (campaigns.last_page <= 5) {
+                                        page = i + 1;
+                                    } else if (campaigns.current_page <= 3) {
+                                        page = i + 1;
+                                    } else if (campaigns.current_page >= campaigns.last_page - 2) {
+                                        page = campaigns.last_page - 4 + i;
+                                    } else {
+                                        page = campaigns.current_page - 2 + i;
+                                    }
+                                    
+                                    return (
+                                        <Button
+                                            key={page}
+                                            variant={page === campaigns.current_page ? "filled" : "light"}
+                                            size="sm"
+                                            onClick={() => router.get(route('campaigns.index', { ...filters, page }))}
+                                        >
+                                            {page}
+                                        </Button>
+                                    );
+                                })}
+                                
+                                {campaigns.current_page < campaigns.last_page && (
+                                    <Button
+                                        variant="light"
+                                        size="sm"
+                                        onClick={() => router.get(route('campaigns.index', { 
+                                            ...filters, 
+                                            page: campaigns.current_page + 1 
+                                        }))}
+                                    >
+                                        Next
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -388,49 +444,14 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             </div>
 
             {/* Status Update Modal */}
-            <Modal
+            <StatusUpdateModal
                 opened={statusModalOpened}
-                onClose={closeStatusModal}
-                title="Update Advertiser Status"
-                centered
-            >
-                <Stack>
-                    <div>
-                        <Text size="sm" c="dimmed">Company</Text>
-                        <Text fw={500}>{selectedAdvertiser?.company_name}</Text>
-                    </div>
-
-                    <Select
-                        label="New Status"
-                        placeholder="Select status"
-                        data={[
-                            { value: 'approved', label: 'Approved' },
-                            { value: 'rejected', label: 'Rejected' },
-                        ]}
-                        value={newStatus}
-                        onChange={(value) => setNewStatus(value as 'approved' | 'rejected')}
-                    />
-
-                    {newStatus === 'rejected' && (
-                        <Textarea
-                            label="Rejection Reason"
-                            placeholder="Please provide a reason for rejection..."
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.currentTarget.value)}
-                            required
-                        />
-                    )}
-
-                    <Group justify="flex-end">
-                        <Button variant="light" onClick={closeStatusModal}>
-                            Cancel
-                        </Button>
-                        <Button onClick={submitStatusUpdate}>
-                            Update Status
-                        </Button>
-                    </Group>
-                </Stack>
-            </Modal>
+                onClose={() => {
+                    setStatusModalOpened(false);
+                    setSelectedCampaign(null);
+                }}
+                campaign={selectedCampaign}
+            />
         </AuthenticatedLayout>
     );
 }

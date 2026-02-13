@@ -4,17 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCampaignRequest;
 use App\Models\Campaign;
+use App\Models\CampaignStatusHistory;
 use App\Services\CampaignAssignmentService;
 use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class CampaignController extends Controller
 {
-    protected $campaignService,$coverageAreasService,$assignmentService;
+    protected $campaignService, $coverageAreasService, $assignmentService;
 
-    public function __construct(CampaignService $campaignService,CoverageAreasService $coverageAreasService,CampaignAssignmentService $assignmentService)
+    public function __construct(CampaignService $campaignService, CoverageAreasService $coverageAreasService, CampaignAssignmentService $assignmentService)
     {
         $this->campaignService = $campaignService;
         $this->coverageAreasService = $coverageAreasService;
@@ -31,10 +34,10 @@ class CampaignController extends Controller
 
         $campaigns = $this->campaignService->getCampaigns($filters, $user);
         $stats = $this->campaignService->getCampaignStats($user);
-        
+
         // Only show advertiser filter to admins
-        $advertisers = $user->role === 'admin' 
-            ? $this->campaignService->getApprovedAdvertisers() 
+        $advertisers = $user->role === 'admin'
+            ? $this->campaignService->getApprovedAdvertisers()
             : [];
 
 
@@ -54,7 +57,7 @@ class CampaignController extends Controller
     {
         $advertisers = $this->campaignService->getApprovedAdvertisers();
         $coverageAreas = $this->coverageAreasService->forSelect();
-        
+
 
         return Inertia::render('Campaigns/Create', [
             'advertisers' => $advertisers,
@@ -86,7 +89,7 @@ class CampaignController extends Controller
      */
     public function show(Campaign $campaign)
     {
-          $campaign->load([
+        $campaign->load([
             'advertiser.user',
             'coverageAreas',
             'riderDemographics',
@@ -100,7 +103,7 @@ class CampaignController extends Controller
         $availableHelmets = $this->assignmentService->getAvailableHelmets();
 
         $assignmentStats = $this->assignmentService->getAssignmentStats($campaign);
-        
+
         return Inertia::render('Campaigns/Show', [
             'campaign' => $campaign,
             'availableRiders' => $availableRiders,
@@ -139,7 +142,7 @@ class CampaignController extends Controller
     {
         try {
             $campaign->delete();
-            
+
             return redirect()
                 ->route('campaigns.index')
                 ->with('success', 'Campaign deleted successfully.');
@@ -150,7 +153,7 @@ class CampaignController extends Controller
         }
     }
 
-     /**
+    /**
      * Build filters array from request
      */
     protected function buildFilters(Request $request): array
@@ -169,5 +172,76 @@ class CampaignController extends Controller
             'sort_order' => $request->input('sort_order', 'desc'),
             'per_page' => $request->input('per_page', 15),
         ];
+    }
+
+    /**
+     * Update campaign status with history tracking
+     */
+    public function updateStatus(Request $request, Campaign $campaign)
+    {
+        $user = $this->getAuthenticatedUser();
+
+        // Only admins can update campaign status
+        if ($user->role !== 'admin') {
+            return redirect()
+                ->back()
+                ->with('error', 'You do not have permission to update campaign status.');
+        }
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:draft,pending_payment,paid,active,paused,completed,cancelled'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $oldStatus = $campaign->status;
+
+            // Use the service method to update status with validation
+            $this->campaignService->updateCampaignStatus(
+                $campaign,
+                $validated['status']
+            );
+
+            // Create status history record
+            CampaignStatusHistory::create([
+                'campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'old_status' => $oldStatus,
+                'new_status' => $validated['status'],
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('success', 'Campaign status updated successfully.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()
+                ->back()
+                ->with('error', $e->getMessage());
+        } catch (\Exception $e) {
+            Log::error('Failed to update campaign status', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to update campaign status. Please try again.');
+        }
+    }
+
+    /**
+     * Get authenticated user with role validation
+     */
+    private function getAuthenticatedUser()
+    {
+        $user = Auth::user();
+
+        // if (!$user || $user->role !== 'advertiser' || $user->role !== 'admin') {
+        //     abort(403, 'Access denied. Advertiser/Admin role required.');
+        // }
+
+        return $user;
     }
 }

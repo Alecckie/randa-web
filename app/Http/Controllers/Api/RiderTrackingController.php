@@ -3,16 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Rider\StoreLocationRequest;
+use App\Http\Requests\StoreBatchLocationRequest;
 use App\Services\RiderTrackingService;
 use App\Services\RiderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Exception;
 
+/**
+ * Rider Location Tracking Controller
+ * 
+ * Handles location tracking for both web (Inertia) and mobile (API)
+ * Uses Form Requests for validation and calls RiderTrackingService
+ */
 class RiderTrackingController extends Controller
 {
     public function __construct(
@@ -23,48 +30,15 @@ class RiderTrackingController extends Controller
     /**
      * Record a single location point
      * 
-     * POST /api/rider/location
-     * 
-     * @param Request $request
-     * @return JsonResponse
+     * POST /rider/location (web)
+     * POST /api/rider/location (mobile)
      */
-    public function recordLocation(Request $request): JsonResponse
+    public function store(StoreLocationRequest $request): JsonResponse|RedirectResponse
     {
         try {
-            // Get authenticated user's rider profile
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
+            $rider = $this->getRider();
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
-
-            // Validate the incoming location data
-            $validator = Validator::make($request->all(), [
-                'latitude' => 'required|numeric|between:-90,90',
-                'longitude' => 'required|numeric|between:-180,180',
-                'accuracy' => 'nullable|numeric|min:0',
-                'altitude' => 'nullable|numeric',
-                'speed' => 'nullable|numeric|min:0',
-                'heading' => 'nullable|numeric|between:0,360',
-                'recorded_at' => 'nullable|date',
-                'metadata' => 'nullable|array',
-                'metadata.battery_level' => 'nullable|numeric|between:0,100',
-                'metadata.network_type' => 'nullable|string|in:wifi,cellular,none',
-                'metadata.app_version' => 'nullable|string',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            // Prepare location data
+            // Prepare location data from validated request
             $locationData = [
                 'latitude' => $request->latitude,
                 'longitude' => $request->longitude,
@@ -72,541 +46,312 @@ class RiderTrackingController extends Controller
                 'altitude' => $request->altitude,
                 'speed' => $request->speed,
                 'heading' => $request->heading,
-                'recorded_at' => $request->recorded_at ? Carbon::parse($request->recorded_at) : now(),
-                'source' => $request->header('User-Agent-Type', 'mobile'), // mobile or web
+                'recorded_at' => $request->recorded_at 
+                    ? Carbon::parse($request->recorded_at) 
+                    : now(),
+                'source' => $this->getSource($request),
                 'metadata' => $request->metadata,
             ];
 
-            // Record the location
+            // Call service to record location
             $location = $this->trackingService->recordLocation($rider->id, $locationData);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Location recorded successfully.',
-                'data' => [
-                    'location_id' => $location->id,
-                    'recorded_at' => $location->recorded_at->toIso8601String(),
-                    'latitude' => $location->latitude,
-                    'longitude' => $location->longitude,
-                ]
-            ], 201);
+            return $this->success([
+                'location_id' => $location->id,
+                'recorded_at' => $location->recorded_at->toIso8601String(),
+                'latitude' => (float) $location->latitude,
+                'longitude' => (float) $location->longitude,
+            ], 'Location recorded successfully', 201);
 
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], $e->getCode() ?: 500);
+            return $this->error($e->getMessage(), $e->getCode() ?: 400);
         }
     }
 
     /**
      * Record multiple location points in batch
-     * Useful for offline tracking - send accumulated points when connection is restored
      * 
-     * POST /api/rider/locations/batch
-     * 
-     * @param Request $request
-     * @return JsonResponse
+     * POST /rider/locations/batch (web)
+     * POST /api/rider/locations/batch (mobile)
      */
-    public function recordBatchLocations(Request $request): JsonResponse
+    public function storeBatch(StoreBatchLocationRequest $request): JsonResponse|RedirectResponse
     {
         try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
+            $rider = $this->getRider();
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
+            // Call service to record batch locations
+            $count = $this->trackingService->recordBatchLocations(
+                $rider->id, 
+                $request->locations
+            );
 
-            // Validate batch data
-            $validator = Validator::make($request->all(), [
-                'locations' => 'required|array|min:1|max:500', // Limit to 500 points per batch
-                'locations.*.latitude' => 'required|numeric|between:-90,90',
-                'locations.*.longitude' => 'required|numeric|between:-180,180',
-                'locations.*.accuracy' => 'nullable|numeric|min:0',
-                'locations.*.altitude' => 'nullable|numeric',
-                'locations.*.speed' => 'nullable|numeric|min:0',
-                'locations.*.heading' => 'nullable|numeric|between:0,360',
-                'locations.*.recorded_at' => 'required|date',
-                'locations.*.metadata' => 'nullable|array',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            // Record batch locations
-            $count = $this->trackingService->recordBatchLocations($rider->id, $request->locations);
-
-            return response()->json([
-                'success' => true,
-                'message' => "{$count} location points recorded successfully.",
-                'data' => [
-                    'recorded_count' => $count,
-                    'timestamp' => now()->toIso8601String(),
-                ]
-            ], 201);
+            return $this->success([
+                'recorded_count' => $count,
+                'timestamp' => now()->toIso8601String(),
+            ], "{$count} locations recorded successfully", 201);
 
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], $e->getCode() ?: 500);
+            return $this->error($e->getMessage(), $e->getCode() ?: 400);
         }
     }
 
     /**
      * Get rider's current/latest location
      * 
-     * GET /api/rider/location/current
-     * 
-     * @return JsonResponse
+     * GET /rider/location/current (web)
+     * GET /api/rider/location/current (mobile)
      */
-    public function getCurrentLocation(): JsonResponse
+    public function current(): JsonResponse|RedirectResponse
     {
         try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
-
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
-
+            $rider = $this->getRider();
+            
+            // Call service to get current location
             $location = $this->trackingService->getCurrentLocation($rider->id);
 
             if (!$location) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'No location data found.',
-                    'data' => null
-                ], 200);
+                return $this->success(null, 'No location data found');
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Current location retrieved successfully.',
-                'data' => [
+            return $this->success([
+                'id' => $location->id,
+                'latitude' => (float) $location->latitude,
+                'longitude' => (float) $location->longitude,
+                'accuracy' => $location->accuracy ? (float) $location->accuracy : null,
+                'speed' => $location->speed ? (float) $location->speed : null,
+                'heading' => $location->heading ? (float) $location->heading : null,
+                'address' => $location->address,
+                'recorded_at' => $location->recorded_at->toIso8601String(),
+                'time_ago' => $location->recorded_at->diffForHumans(),
+            ]);
+
+        } catch (Exception $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get rider's locations for a specific date range
+     * 
+     * GET /rider/locations (web)
+     * GET /api/rider/locations (mobile)
+     */
+    public function index(Request $request): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'date' => 'nullable|date',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+            'limit' => 'nullable|integer|min:1|max:1000',
+        ]);
+
+        try {
+            $rider = $this->getRider();
+
+            $filters = [
+                'date_from' => $validated['date_from'] ?? $validated['date'] ?? null,
+                'date_to' => $validated['date_to'] ?? $validated['date'] ?? null,
+                'limit' => $validated['limit'] ?? 1000,
+            ];
+
+            // Call service to get locations
+            $locations = $this->trackingService->getRiderLocations($rider->id, $filters);
+
+            return $this->success([
+                'count' => $locations->count(),
+                'locations' => $locations->map(fn($location) => [
                     'id' => $location->id,
                     'latitude' => (float) $location->latitude,
                     'longitude' => (float) $location->longitude,
-                    'accuracy' => $location->accuracy ? (float) $location->accuracy : null,
                     'speed' => $location->speed ? (float) $location->speed : null,
-                    'heading' => $location->heading ? (float) $location->heading : null,
-                    'address' => $location->address,
                     'recorded_at' => $location->recorded_at->toIso8601String(),
-                    'time_ago' => $location->recorded_at->diffForHumans(),
-                ]
-            ], 200);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get rider's route for today
-     * 
-     * GET /api/rider/routes/today
-     * 
-     * @return JsonResponse
-     */
-    public function getTodayRoute(): JsonResponse
-    {
-        try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
-
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
-
-            $routeData = $this->trackingService->getRiderRoute($rider->id, today());
-
-            if (!$routeData) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'No route data found for today.',
-                    'data' => null
-                ], 200);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Today\'s route retrieved successfully.',
-                'data' => [
-                    'route' => [
-                        'id' => $routeData['route']->id,
-                        'date' => $routeData['route']->route_date->format('Y-m-d'),
-                        'started_at' => $routeData['route']->started_at->toIso8601String(),
-                        'ended_at' => $routeData['route']->ended_at?->toIso8601String(),
-                        'status' => $routeData['route']->status,
-                    ],
-                    'summary' => $routeData['summary'],
-                    'locations' => $routeData['locations']->map(function ($location) {
-                        return [
-                            'latitude' => (float) $location->latitude,
-                            'longitude' => (float) $location->longitude,
-                            'recorded_at' => $location->recorded_at->toIso8601String(),
-                            'speed' => $location->speed ? (float) $location->speed : null,
-                        ];
-                    }),
-                    'polyline' => $routeData['route']->route_polyline,
-                ]
-            ], 200);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get rider's route history
-     * 
-     * GET /api/rider/routes/history
-     * 
-     * @param Request $request
-     * @return JsonResponse
-     */
-    public function getRouteHistory(Request $request): JsonResponse
-    {
-        try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
-
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
-
-            // Validate query parameters
-            $validator = Validator::make($request->all(), [
-                'date_from' => 'nullable|date',
-                'date_to' => 'nullable|date|after_or_equal:date_from',
-                'per_page' => 'nullable|integer|min:1|max:100',
+                    'address' => $location->address,
+                ]),
             ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $query = \App\Models\RiderRoute::where('rider_id', $rider->id)
-                ->with(['checkIn.campaignAssignment.campaign']);
-
-            // Apply date filters
-            if ($request->date_from) {
-                $query->whereDate('route_date', '>=', $request->date_from);
-            }
-
-            if ($request->date_to) {
-                $query->whereDate('route_date', '<=', $request->date_to);
-            }
-
-            $routes = $query->orderBy('route_date', 'desc')
-                ->paginate($request->per_page ?? 15);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Route history retrieved successfully.',
-                'data' => $routes->map(function ($route) {
-                    return [
-                        'id' => $route->id,
-                        'date' => $route->route_date->format('Y-m-d'),
-                        'distance' => (float) $route->total_distance,
-                        'duration' => $route->total_duration,
-                        'avg_speed' => $route->avg_speed ? (float) $route->avg_speed : null,
-                        'location_points' => $route->location_points_count,
-                        'status' => $route->status,
-                        'campaign' => $route->checkIn?->campaignAssignment?->campaign ? [
-                            'id' => $route->checkIn->campaignAssignment->campaign->id,
-                            'name' => $route->checkIn->campaignAssignment->campaign->name,
-                        ] : null,
-                    ];
-                }),
-                'pagination' => [
-                    'current_page' => $routes->currentPage(),
-                    'per_page' => $routes->perPage(),
-                    'total' => $routes->total(),
-                    'last_page' => $routes->lastPage(),
-                ]
-            ], 200);
-
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get specific route details by ID
-     * 
-     * GET /api/rider/routes/{routeId}
-     * 
-     * @param int $routeId
-     * @return JsonResponse
-     */
-    public function getRouteDetails(int $routeId): JsonResponse
-    {
-        try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
-
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
-
-            $route = \App\Models\RiderRoute::where('id', $routeId)
-                ->where('rider_id', $rider->id)
-                ->with(['checkIn.campaignAssignment.campaign', 'locations'])
-                ->first();
-
-            if (!$route) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Route not found.'
-                ], 404);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Route details retrieved successfully.',
-                'data' => [
-                    'route' => [
-                        'id' => $route->id,
-                        'date' => $route->route_date->format('Y-m-d'),
-                        'started_at' => $route->started_at->toIso8601String(),
-                        'ended_at' => $route->ended_at?->toIso8601String(),
-                        'distance' => (float) $route->total_distance,
-                        'duration' => $route->total_duration,
-                        'avg_speed' => $route->avg_speed ? (float) $route->avg_speed : null,
-                        'max_speed' => $route->max_speed ? (float) $route->max_speed : null,
-                        'location_points' => $route->location_points_count,
-                        'coverage_areas' => $route->coverage_areas,
-                        'status' => $route->status,
-                    ],
-                    'campaign' => $route->checkIn?->campaignAssignment?->campaign ? [
-                        'id' => $route->checkIn->campaignAssignment->campaign->id,
-                        'name' => $route->checkIn->campaignAssignment->campaign->name,
-                    ] : null,
-                    'locations' => $route->locations->map(function ($location) {
-                        return [
-                            'latitude' => (float) $location->latitude,
-                            'longitude' => (float) $location->longitude,
-                            'recorded_at' => $location->recorded_at->toIso8601String(),
-                            'speed' => $location->speed ? (float) $location->speed : null,
-                            'address' => $location->address,
-                        ];
-                    }),
-                    'polyline' => $route->route_polyline,
-                ]
-            ], 200);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return $this->error($e->getMessage());
         }
     }
 
     /**
      * Get rider's tracking statistics
      * 
-     * GET /api/rider/tracking/stats
-     * 
-     * @param Request $request
-     * @return JsonResponse
+     * GET /rider/stats (web)
+     * GET /api/rider/stats (mobile)
      */
-    public function getTrackingStats(Request $request): JsonResponse
+    public function stats(Request $request): JsonResponse|RedirectResponse
     {
+        $validated = $request->validate([
+            'date' => 'nullable|date',
+        ]);
+
         try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
+            $rider = $this->getRider();
+            $date = isset($validated['date']) ? Carbon::parse($validated['date']) : today();
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
+            // Call service to get stats
+            $stats = $this->trackingService->getRiderStats($rider->id, $date);
 
-            // Validate period parameter
-            $period = $request->input('period', 'week'); // week, month, all
-            
-            $query = \App\Models\RiderRoute::where('rider_id', $rider->id)
-                ->where('status', 'completed');
-
-            // Apply period filter
-            switch ($period) {
-                case 'week':
-                    $query->where('route_date', '>=', now()->subDays(7));
-                    break;
-                case 'month':
-                    $query->where('route_date', '>=', now()->subDays(30));
-                    break;
-                // 'all' - no filter
-            }
-
-            $routes = $query->get();
-
-            $stats = [
-                'total_routes' => $routes->count(),
-                'total_distance' => round($routes->sum('total_distance'), 2),
-                'total_duration' => $routes->sum('total_duration'),
-                'avg_distance_per_day' => $routes->count() > 0 
-                    ? round($routes->sum('total_distance') / $routes->count(), 2) 
-                    : 0,
-                'avg_speed' => $routes->count() > 0 
-                    ? round($routes->avg('avg_speed'), 2) 
-                    : 0,
-                'max_speed_recorded' => $routes->max('max_speed') 
-                    ? round($routes->max('max_speed'), 2) 
-                    : 0,
-                'unique_coverage_areas' => $routes->pluck('coverage_areas')
-                    ->flatten()
-                    ->unique()
-                    ->count(),
-                'period' => $period,
-            ];
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Tracking statistics retrieved successfully.',
-                'data' => $stats
-            ], 200);
+            return $this->success($stats);
 
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return $this->error($e->getMessage());
         }
     }
 
     /**
-     * Pause tracking (for breaks, stops, etc.)
+     * Pause location tracking
      * 
-     * POST /api/rider/tracking/pause
-     * 
-     * @return JsonResponse
+     * POST /rider/tracking/pause (web)
+     * POST /api/rider/tracking/pause (mobile)
      */
-    public function pauseTracking(): JsonResponse
+    public function pause(): JsonResponse|RedirectResponse
     {
         try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
+            $rider = $this->getRider();
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
+            // Call service to pause tracking
+            $route = $this->trackingService->pauseTracking($rider->id);
 
-            // Find today's active route
-            $route = \App\Models\RiderRoute::where('rider_id', $rider->id)
-                ->whereDate('route_date', today())
-                ->where('status', 'active')
-                ->first();
-
-            if (!$route) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active route found to pause.'
-                ], 404);
-            }
-
-            $route->update(['status' => 'paused']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Tracking paused successfully.',
-                'data' => [
-                    'route_id' => $route->id,
-                    'status' => $route->status,
-                    'paused_at' => now()->toIso8601String(),
-                ]
-            ], 200);
+            return $this->success([
+                'route_id' => $route->id,
+                'tracking_status' => $route->tracking_status,
+                'paused_at' => $route->last_paused_at->toIso8601String(),
+                'total_pause_duration' => $route->total_pause_duration,
+            ], 'Tracking paused successfully');
 
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return $this->error($e->getMessage());
         }
     }
 
     /**
-     * Resume tracking after pause
+     * Resume location tracking
      * 
-     * POST /api/rider/tracking/resume
-     * 
-     * @return JsonResponse
+     * POST /rider/tracking/resume (web)
+     * POST /api/rider/tracking/resume (mobile)
      */
-    public function resumeTracking(): JsonResponse
+    public function resume(): JsonResponse|RedirectResponse
     {
         try {
-            $rider = $this->riderService->getRiderByUserId(Auth::id());
+            $rider = $this->getRider();
 
-            if (!$rider) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Rider profile not found.'
-                ], 404);
-            }
+            // Call service to resume tracking
+            $route = $this->trackingService->resumeTracking($rider->id);
 
-            // Find today's paused route
-            $route = \App\Models\RiderRoute::where('rider_id', $rider->id)
-                ->whereDate('route_date', today())
-                ->where('status', 'paused')
-                ->first();
-
-            if (!$route) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No paused route found to resume.'
-                ], 404);
-            }
-
-            $route->update(['status' => 'active']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Tracking resumed successfully.',
-                'data' => [
-                    'route_id' => $route->id,
-                    'status' => $route->status,
-                    'resumed_at' => now()->toIso8601String(),
-                ]
-            ], 200);
+            return $this->success([
+                'route_id' => $route->id,
+                'tracking_status' => $route->tracking_status,
+                'resumed_at' => $route->last_resumed_at->toIso8601String(),
+                'total_pause_duration' => $route->total_pause_duration,
+            ], 'Tracking resumed successfully');
 
         } catch (Exception $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get tracking status
+     * 
+     * GET /rider/tracking/status (web)
+     * GET /api/rider/tracking/status (mobile)
+     */
+    public function trackingStatus(): JsonResponse|RedirectResponse
+    {
+        try {
+            $rider = $this->getRider();
+
+            // Call service to get status
+            $status = $this->trackingService->getTrackingStatus($rider->id);
+
+            return $this->success($status);
+
+        } catch (Exception $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    // ============================================
+    // HELPER METHODS
+    // ============================================
+
+    /**
+     * Get authenticated rider
+     */
+    private function getRider()
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            throw new Exception('User not authenticated', 401);
+        }
+
+        $rider = $this->riderService->getRiderByUserId($user->id);
+
+        if (!$rider) {
+            throw new Exception('Rider profile not found', 404);
+        }
+
+        return $rider;
+    }
+
+    /**
+     * Determine source of request
+     */
+    private function getSource(Request $request): string
+    {
+        if ($request->header('User-Agent-Type')) {
+            return $request->header('User-Agent-Type');
+        }
+
+        return $request->is('api/*') ? 'mobile' : 'web';
+    }
+
+    /**
+     * Check if request is from API
+     */
+    private function isApiRequest(): bool
+    {
+        return request()->is('api/*') || request()->expectsJson();
+    }
+
+    /**
+     * Success response
+     */
+    private function success(
+        mixed $data = null, 
+        string $message = 'Success', 
+        int $code = 200
+    ): JsonResponse|RedirectResponse 
+    {
+        if ($this->isApiRequest()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'data' => $data,
+            ], $code);
+        }
+
+        return back()->with('success', $message)->with('data', $data);
+    }
+
+    /**
+     * Error response
+     */
+    private function error(
+        string $message = 'An error occurred', 
+        int $code = 400
+    ): JsonResponse|RedirectResponse 
+    {
+        if ($this->isApiRequest()) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+                'message' => $message,
+            ], $code);
         }
+
+        return back()->withErrors(['error' => $message]);
     }
 }

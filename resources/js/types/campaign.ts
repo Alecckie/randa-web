@@ -1,6 +1,6 @@
 import { Advertiser } from "./advertiser";
 
-// types/campaign.ts - Add this to your existing types file
+// types/campaign.ts
 
 export type CampaignStatus =
     | 'draft'
@@ -31,23 +31,23 @@ export interface Campaign {
     special_instructions: string | null;
     created_at: string;
     updated_at: string;
-    current_cost: CampaignCost;
+    current_cost?: CampaignCost | null;
     duration_days: number;
-    payment_status: string;
-    total_paid_amount: number;
-    coverage_areas: CoverageArea
-    advertiser: Advertiser
-
+    payment_status?: string;
+    total_paid_amount?: number;
+    coverage_areas?: CoverageArea[] | string; // Fixed: can be array of objects or string
+    advertiser?: Advertiser;
 }
 
 export interface CoverageArea {
     id: number;
     name: string;
-    full_name: string;
-    area_code: string;
+    full_name?: string;
+    area_code?: string;
     county_id?: number;
     sub_county_id?: number;
     ward_id?: number;
+    location_path?: string; // Added this as it's used in the component
 }
 
 export interface RiderDemographic {
@@ -118,9 +118,12 @@ export interface CampaignsIndexProps {
     };
     stats: {
         total_campaigns: number;
-        pending_applications: number;
-        approved_campaigns: number;
-        rejected_applications: number;
+        pending_applications?: number;
+        approved_campaigns?: number;
+        rejected_applications?: number;
+        draft_campaigns: number;
+        completed_campaigns: number;
+        active_campaigns: number;
     };
     filters: {
         search?: string;
