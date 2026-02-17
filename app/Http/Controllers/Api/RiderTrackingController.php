@@ -216,9 +216,9 @@ class RiderTrackingController extends Controller
 
             return $this->success([
                 'route_id' => $route->id,
-                'tracking_status' => $route->tracking_status,
-                'paused_at' => $route->last_paused_at->toIso8601String(),
-                'total_pause_duration' => $route->total_pause_duration,
+                'tracking_status' => $route?->tracking_status,
+                'paused_at' => $route?->last_paused_at?->toIso8601String() ?? null,
+                'total_pause_duration' => $route?->total_pause_duration,
             ], 'Tracking paused successfully');
 
         } catch (Exception $e) {
