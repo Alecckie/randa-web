@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Rider\StoreLocationRequest;
 use App\Http\Requests\StoreBatchLocationRequest;
+use App\Http\Requests\StoreLocationRequest;
 use App\Services\RiderTrackingService;
 use App\Services\RiderService;
 use Illuminate\Http\Request;
