@@ -12,9 +12,9 @@ use Illuminate\Http\Request;
 class CampaignAssignmentController extends Controller
 {
 
-    protected $assignmentService,$campaignService;
+    protected $assignmentService, $campaignService;
 
-    public function __construct(CampaignAssignmentService $assignmentService,CampaignService $campaignService)
+    public function __construct(CampaignAssignmentService $assignmentService, CampaignService $campaignService)
     {
         $this->assignmentService = $assignmentService;
         $this->campaignService = $campaignService;
@@ -26,9 +26,9 @@ class CampaignAssignmentController extends Controller
      */
     public function assignRider(AssignRiderRequest $request, Campaign $campaign)
     {
-        // try {
+        try {
             $validated = $request->validated();
-            
+
             $this->assignmentService->assignRider(
                 $campaign,
                 $validated['rider_id'],
@@ -38,12 +38,9 @@ class CampaignAssignmentController extends Controller
             return redirect()
                 ->route('campaigns.show', $campaign->id)
                 ->with('success', 'Rider assigned successfully to campaign.');
-                
-        // } catch (\Exception $e) {
-        //     return redirect()
-        //         ->back()
-        //         ->with('error', $e->getMessage());
-        // }
+        } catch (\Exception $e) {
+            return back()->withErrors(['assignment' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -53,13 +50,12 @@ class CampaignAssignmentController extends Controller
     {
         try {
             $assignment = $campaign->assignments()->findOrFail($assignmentId);
-            
+
             $this->assignmentService->removeAssignment($assignment);
 
             return redirect()
                 ->route('campaigns.show', $campaign->id)
                 ->with('success', 'Rider assignment removed successfully.');
-                
         } catch (\Exception $e) {
             return redirect()
                 ->back()
@@ -74,13 +70,12 @@ class CampaignAssignmentController extends Controller
     {
         try {
             $assignment = $campaign->assignments()->findOrFail($assignmentId);
-            
+
             $this->assignmentService->completeAssignment($assignment);
 
             return redirect()
                 ->route('campaigns.show', $campaign->id)
                 ->with('success', 'Assignment marked as completed.');
-                
         } catch (\Exception $e) {
             return redirect()
                 ->back()
@@ -103,7 +98,6 @@ class CampaignAssignmentController extends Controller
             return redirect()
                 ->route('campaigns.show', $campaign->id)
                 ->with('success', 'Campaign status updated successfully.');
-                
         } catch (\Exception $e) {
             return redirect()
                 ->back()
@@ -127,7 +121,7 @@ class CampaignAssignmentController extends Controller
             );
 
             $message = "Successfully assigned {$result['assignments']->count()} riders.";
-            
+
             if (!empty($result['errors'])) {
                 $message .= " Some assignments failed: " . implode(', ', $result['errors']);
             }
@@ -135,7 +129,6 @@ class CampaignAssignmentController extends Controller
             return redirect()
                 ->route('campaigns.show', $campaign->id)
                 ->with('success', $message);
-                
         } catch (\Exception $e) {
             return redirect()
                 ->back()

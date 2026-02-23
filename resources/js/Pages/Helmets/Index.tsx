@@ -1,28 +1,28 @@
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { 
-    Button, 
-    TextInput, 
-    Select, 
-    Badge, 
-    Card, 
-    Group, 
-    Text, 
-    Stack, 
-    ActionIcon, 
-    Menu, 
+import {
+    Button,
+    TextInput,
+    Select,
+    Badge,
+    Card,
+    Group,
+    Text,
+    Stack,
+    ActionIcon,
+    Menu,
     Modal,
     Checkbox
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { 
+import {
     HardHat,
-    EyeIcon, 
-    FilterIcon, 
-    MoreVerticalIcon, 
-    PencilIcon, 
-    PlusIcon, 
+    EyeIcon,
+    FilterIcon,
+    MoreVerticalIcon,
+    PencilIcon,
+    PlusIcon,
     SearchIcon,
     Trash2Icon,
     CheckCircleIcon,
@@ -104,7 +104,7 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
     const getStatusColor = (status: Helmet['status']): string => {
         const colors = {
             available: 'green',
-            assigned: 'blue', 
+            assigned: 'blue',
             maintenance: 'yellow',
             retired: 'red',
         };
@@ -137,8 +137,8 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
     };
 
     const toggleHelmetSelection = (helmetId: number) => {
-        setSelectedHelmets(prev => 
-            prev.includes(helmetId) 
+        setSelectedHelmets(prev =>
+            prev.includes(helmetId)
                 ? prev.filter(id => id !== helmetId)
                 : [...prev, helmetId]
         );
@@ -273,8 +273,8 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                     Clear
                                 </Button>
                                 {selectedHelmets.length > 0 && (
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         onClick={openBulkModal}
                                         color="blue"
                                     >
@@ -493,7 +493,7 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                         <Button variant="light" onClick={closeBulkModal}>
                             Cancel
                         </Button>
-                        <Button 
+                        <Button
                             onClick={handleBulkStatusUpdate}
                             disabled={!bulkStatus}
                         >

@@ -104,7 +104,8 @@ class CampaignAssignmentService
             ]);
 
             // Update helmet status if you have a status column
-            // $helmet->update(['status' => 'assigned']);
+            $helmet = Helmet::find($helmetId);
+            $helmet->update(['status' => 'assigned']);
 
             return $assignment->load(['rider.user', 'helmet']);
         });
@@ -164,7 +165,7 @@ class CampaignAssignmentService
     {
         return DB::transaction(function () use ($assignment) {
             // Update helmet status back to available if you have status column
-            // $assignment->helmet->update(['status' => 'available']);
+            $assignment->helmet->update(['status' => 'available']);
 
             // Update assignment status
             $assignment->update([
@@ -188,7 +189,7 @@ class CampaignAssignmentService
             ]);
 
             // Update helmet status back to available
-            // $assignment->helmet->update(['status' => 'available']);
+            $assignment->helmet->update(['status' => 'available']);
 
             return true;
         });

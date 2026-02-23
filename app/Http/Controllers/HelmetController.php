@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Helmet;
 use App\Services\HelmetService;
 use App\Http\Requests\StoreHelmetRequest;
+use App\Http\Requests\UpdateHelmetRequest;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -25,7 +26,7 @@ class HelmetController extends Controller
     public function index(Request $request): Response
     {
         $filters = $request->only(['search', 'status']);
-        
+
         $helmets = $this->helmetService->getAllHelmets($filters);
         $stats = $this->helmetService->getHelmetStats();
 
@@ -68,7 +69,16 @@ class HelmetController extends Controller
      */
     public function show(Helmet $helmet): Response
     {
-        $helmet->load(['currentAssignment.campaign', 'currentAssignment.rider', 'assignments.campaign']);
+        $helmet->load([
+            'currentAssignment.campaign',
+            'currentAssignment.rider.user',
+            'assignments' => function ($query) {
+                // Latest assignments first; select only what the UI needs
+                $query->orderBy('assigned_at', 'desc');
+            },
+            'assignments.campaign:id,name,status',
+            'assignments.rider.user:id,name,first_name,last_name,email,phone',
+        ]);
 
         return Inertia::render('Helmets/Show', [
             'helmet' => $helmet,
@@ -88,7 +98,7 @@ class HelmetController extends Controller
     /**
      * Update the specified helmet in storage.
      */
-    public function update(StoreHelmetRequest $request, Helmet $helmet): RedirectResponse
+    public function update(UpdateHelmetRequest $request, Helmet $helmet): RedirectResponse
     {
         try {
             $this->helmetService->updateHelmet($helmet, $request->validated());

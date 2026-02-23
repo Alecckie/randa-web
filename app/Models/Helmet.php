@@ -26,10 +26,10 @@ class Helmet extends Model
         return $this->hasOne(CampaignAssignment::class)->where('status', 'active');
     }
 
-    public function qrScans()
-    {
-        return $this->hasMany(QrScan::class);
-    }
+    // public function qrScans()
+    // {
+    //     return $this->hasMany(QrScan::class);
+    // }
 
     // Scopes
     public function scopeAvailable($query)

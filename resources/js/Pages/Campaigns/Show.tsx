@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Button,
     Badge,
@@ -161,6 +161,24 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
         return colors[status] || 'gray';
     };
 
+    // Inside your Show component, add this near other state declarations:
+    const { errors, flash } = usePage().props as any;
+
+    const handleCompleteAssignment = (assignmentId: number) => {
+        router.patch(route('campaigns.complete-assignment', { campaign: campaign.id, assignment: assignmentId }), {}, {
+            preserveScroll: true,
+        });
+    };
+
+    const handleRemoveAssignment = (assignmentId: number) => {
+        if (!confirm('Are you sure you want to remove this rider assignment?')) return;
+
+        router.delete(route('campaigns.remove-assignment', { campaign: campaign.id, assignment: assignmentId }), {
+            preserveScroll: true,
+        });
+    };
+
+
     const handleAssignRider = () => {
         if (!selectedRider || !selectedHelmet) return;
 
@@ -174,7 +192,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                 setSelectedRider('');
                 setSelectedHelmet('');
                 setAssignmentCount(1);
-            }
+            },
         });
     };
 
@@ -285,6 +303,28 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                     </Alert>
                 )}
 
+                {flash?.success && (
+                    <Alert
+                        icon={<CheckCircleIcon size={16} />}
+                        title="Success"
+                        color="green"
+                        withCloseButton
+                    >
+                        {flash.success}
+                    </Alert>
+                )}
+
+                {flash?.error && (
+                    <Alert
+                        icon={<AlertCircleIcon size={16} />}
+                        title="Error"
+                        color="red"
+                        withCloseButton
+                    >
+                        {flash.error}
+                    </Alert>
+                )}
+
                 {/* Overview Cards */}
                 <Grid gutter="md">
                     <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
@@ -362,7 +402,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                     {campaign.assignments?.filter(a => a.status === 'active').length || 0} of {campaign.helmet_count} riders assigned
                                 </Text>
                             </div>
-                            {campaign.status === 'paid' && (
+                            {(campaign.status === 'paid' || campaign.status === 'active') && (
                                 <Button
                                     leftSection={<UserPlusIcon size={16} />}
                                     onClick={openAssignModal}
@@ -587,7 +627,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                     <Badge
                                                         color={
                                                             assignment.status === 'active' ? 'green' :
-                                                            assignment.status === 'completed' ? 'blue' : 'red'
+                                                                assignment.status === 'completed' ? 'blue' : 'red'
                                                         }
                                                     >
                                                         {assignment.status}
@@ -601,10 +641,19 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                             </ActionIcon>
                                                         </Menu.Target>
                                                         <Menu.Dropdown>
-                                                            <Menu.Item leftSection={<CheckCircleIcon size={14} />}>
+                                                            <Menu.Item
+                                                                leftSection={<CheckCircleIcon size={14} />}
+                                                                onClick={() => handleCompleteAssignment(assignment.id)}
+                                                                disabled={assignment.status !== 'active'}
+                                                            >
                                                                 Mark Complete
                                                             </Menu.Item>
-                                                            <Menu.Item leftSection={<XCircleIcon size={14} />} color="red">
+                                                            <Menu.Item
+                                                                leftSection={<XCircleIcon size={14} />}
+                                                                color="red"
+                                                                onClick={() => handleRemoveAssignment(assignment.id)}
+                                                                disabled={assignment.status === 'completed'}
+                                                            >
                                                                 Remove Assignment
                                                             </Menu.Item>
                                                         </Menu.Dropdown>
@@ -857,6 +906,19 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                     <Alert icon={<InfoIcon size={16} />} color="blue" variant="light">
                         Assign riders to this campaign. Each rider will be paired with a helmet and will participate in the advertising campaign.
                     </Alert>
+
+                    {errors?.assignment && (
+                        <Alert
+                            icon={<AlertCircleIcon size={16} />}
+                            color="red"
+                            variant="light"
+                            title="Assignment Failed"
+                            withCloseButton
+                            onClose={() => router.reload({ only: [] })} // clears the error
+                        >
+                            {errors.assignment}
+                        </Alert>
+                    )}
 
                     <div>
                         <Text size="sm" fw={500} mb={4}>Campaign Details</Text>
