@@ -243,7 +243,7 @@ class RiderTrackingController extends Controller
             return $this->success([
                 'route_id' => $route->id,
                 'tracking_status' => $route->tracking_status,
-                'resumed_at' => $route->last_resumed_at->toIso8601String(),
+                'resumed_at' => $route?->last_resumed_at?->toIso8601String(),
                 'total_pause_duration' => $route->total_pause_duration,
             ], 'Tracking resumed successfully');
 

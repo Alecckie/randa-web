@@ -23,10 +23,10 @@ class RiderTrackingService
      * 
      * @param int $riderId
      * @param array $locationData
-     * @return RiderLocation
+     * @return RiderRoute
      * @throws \Exception
      */
-    public function recordLocation(int $riderId, array $locationData): RiderLocation
+    public function recordLocation(int $riderId, array $locationData): RiderRoute
     {
         try {
             // Get active check-in
@@ -38,13 +38,13 @@ class RiderTrackingService
 
             // Check if tracking is paused
             $route = $this->getTodayRoute($riderId);
-            
+
             if ($route && $route->tracking_status === 'paused') {
                 throw new \Exception('Location tracking is currently paused. Please resume to continue recording.');
             }
 
             // Create location record
-            $location = RiderLocation::create([
+            $location = RiderRoute::create([
                 'rider_id' => $riderId,
                 'check_in_id' => $checkIn->id,
                 'campaign_assignment_id' => $checkIn->campaign_assignment_id,
@@ -77,7 +77,6 @@ class RiderTrackingService
             ]);
 
             return $location;
-
         } catch (\Exception $e) {
             Log::error("Failed to record location", [
                 'rider_id' => $riderId,
@@ -125,16 +124,16 @@ class RiderTrackingService
             })->toArray();
 
             // Bulk insert
-            RiderLocation::insert($records);
+            RiderRoute::insert($records);
 
             $count = count($records);
 
             // Update route with latest location
             if ($count > 0) {
-                $lastLocation = RiderLocation::where('check_in_id', $checkIn->id)
+                $lastLocation = RiderRoute::where('check_in_id', $checkIn->id)
                     ->latest('recorded_at')
                     ->first();
-                    
+
                 if ($lastLocation) {
                     $this->updateRouteRecord($checkIn, $lastLocation);
                 }
@@ -146,7 +145,6 @@ class RiderTrackingService
             ]);
 
             return $count;
-
         } catch (\Exception $e) {
             Log::error("Failed to record batch locations", [
                 'rider_id' => $riderId,
@@ -218,15 +216,14 @@ class RiderTrackingService
             ]);
 
             return $route->fresh();
-
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             Log::error("Failed to pause tracking", [
                 'rider_id' => $riderId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -262,7 +259,7 @@ class RiderTrackingService
             }
 
             // Calculate pause duration
-            $pauseDuration = $route->last_paused_at 
+            $pauseDuration = $route->last_paused_at
                 ? now()->diffInMinutes($route->last_paused_at)
                 : 0;
 
@@ -278,6 +275,9 @@ class RiderTrackingService
 
             // Record resume event in metadata
             $pauseHistory = $route->pause_history ?? [];
+            if (is_string($pauseHistory)) {
+                $pauseHistory = json_decode($pauseHistory, true) ?? [];
+            }
             if (!empty($pauseHistory)) {
                 $lastPause = &$pauseHistory[count($pauseHistory) - 1];
                 $lastPause['resumed_at'] = now()->toIso8601String();
@@ -295,15 +295,14 @@ class RiderTrackingService
             ]);
 
             return $route->fresh();
-
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             Log::error("Failed to resume tracking", [
                 'rider_id' => $riderId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -317,7 +316,7 @@ class RiderTrackingService
     public function getTrackingStatus(int $riderId): array
     {
         $checkIn = $this->getActiveCheckIn($riderId);
-        
+
         if (!$checkIn) {
             return [
                 'is_active' => false,
@@ -345,8 +344,8 @@ class RiderTrackingService
             'last_resumed_at' => $route->last_resumed_at?->toIso8601String(),
             'total_pause_duration' => $route->total_pause_duration ?? 0,
             'locations_recorded' => $route->location_points_count ?? 0,
-            'message' => $route->tracking_status === 'paused' 
-                ? 'Tracking paused' 
+            'message' => $route->tracking_status === 'paused'
+                ? 'Tracking paused'
                 : 'Tracking active',
         ];
     }
@@ -358,7 +357,7 @@ class RiderTrackingService
      * @param RiderLocation $location
      * @return void
      */
-    private function updateRouteRecord(RiderCheckIn $checkIn, RiderLocation $location): void
+    private function updateRouteRecord(RiderCheckIn $checkIn, RiderRoute $location): void
     {
         $route = RiderRoute::firstOrCreate(
             [
@@ -415,14 +414,14 @@ class RiderTrackingService
      * Get rider's current/latest location
      * 
      * @param int $riderId
-     * @return RiderLocation|null
+     * @return RiderRoute|null
      */
-    public function getCurrentLocation(int $riderId): ?RiderLocation
+    public function getCurrentLocation(int $riderId): ?RiderRoute
     {
         return Cache::remember(
             "rider.{$riderId}.latest_location",
             now()->addMinutes(5),
-            fn() => RiderLocation::where('rider_id', $riderId)
+            fn() => RiderRoute::where('rider_id', $riderId)
                 ->with(['rider.user'])
                 ->latest('recorded_at')
                 ->first()
@@ -438,7 +437,7 @@ class RiderTrackingService
      */
     public function getRiderLocations(int $riderId, array $filters = [])
     {
-        $query = RiderLocation::where('rider_id', $riderId)
+        $query = RiderRoute::where('rider_id', $riderId)
             ->with(['campaignAssignment.campaign']);
 
         if (!empty($filters['date_from'])) {
@@ -470,7 +469,7 @@ class RiderTrackingService
     {
         $date = $date ?? today();
 
-        $locations = RiderLocation::where('rider_id', $riderId)
+        $locations = RiderRoute::where('rider_id', $riderId)
             ->whereDate('recorded_at', $date)
             ->get();
 
@@ -505,7 +504,7 @@ class RiderTrackingService
     public function getLiveTrackingData(array $filters = []): array
     {
         try {
-            $query = RiderLocation::query()
+            $query = RiderRoute::query()
                 ->with(['rider.user', 'campaignAssignment.campaign'])
                 ->join('rider_check_ins', 'rider_locations.check_in_id', '=', 'rider_check_ins.id')
                 ->where('rider_check_ins.status', 'active')
@@ -542,7 +541,6 @@ class RiderTrackingService
                     'campaign_id' => $filters['campaign_id'] ?? null,
                 ],
             ];
-
         } catch (\Exception $e) {
             Log::error("Failed to get live tracking data", [
                 'error' => $e->getMessage(),

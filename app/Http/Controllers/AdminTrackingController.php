@@ -25,7 +25,7 @@ class AdminTrackingController extends Controller
         private CampaignService $campaignService
     ) {
         // Ensure only admins can access these endpoints
-        $this->middleware(['auth:sanctum', 'role:admin']);
+        $this->middleware(['role:admin']);
     }
 
     /**

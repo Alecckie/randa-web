@@ -11,6 +11,7 @@ import { DatesProvider } from '@mantine/dates';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
+import 'leaflet/dist/leaflet.css';
 import { configureEcho } from '@laravel/echo-react';
 import './utils/echo';
 
