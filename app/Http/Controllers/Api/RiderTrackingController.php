@@ -9,36 +9,35 @@ use App\Services\RiderTrackingService;
 use App\Services\RiderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Exception;
 
 /**
- * Rider Location Tracking Controller
+ * Rider Location Tracking Controller (API for Mobile App)
  * 
- * Handles location tracking for both web (Inertia) and mobile (API)
- * Uses Form Requests for validation and calls RiderTrackingService
+ * Handles GPS location tracking for riders
+ * Uses RiderGpsPoint model for tracking points
  */
 class RiderTrackingController extends Controller
 {
     public function __construct(
         private RiderTrackingService $trackingService,
         private RiderService $riderService
-    ) {}
+    ) {
+        $this->middleware(['auth:sanctum', 'role:rider']);
+    }
 
     /**
-     * Record a single location point
+     * Record a single GPS location point
      * 
-     * POST /rider/location (web)
-     * POST /api/rider/location (mobile)
+     * POST /api/rider/location
      */
-    public function store(StoreLocationRequest $request): JsonResponse|RedirectResponse
+    public function store(StoreLocationRequest $request): JsonResponse
     {
         try {
             $rider = $this->getRider();
 
-            // Prepare location data from validated request
             $locationData = [
                 'latitude' => $request->latitude,
                 'longitude' => $request->longitude,
@@ -53,14 +52,13 @@ class RiderTrackingController extends Controller
                 'metadata' => $request->metadata,
             ];
 
-            // Call service to record location
-            $location = $this->trackingService->recordLocation($rider->id, $locationData);
+            $gpsPoint = $this->trackingService->recordLocation($rider->id, $locationData);
 
             return $this->success([
-                'location_id' => $location->id,
-                'recorded_at' => $location->recorded_at->toIso8601String(),
-                'latitude' => (float) $location->latitude,
-                'longitude' => (float) $location->longitude,
+                'gps_point_id' => $gpsPoint->id,
+                'recorded_at' => $gpsPoint->recorded_at->toIso8601String(),
+                'latitude' => (float) $gpsPoint->latitude,
+                'longitude' => (float) $gpsPoint->longitude,
             ], 'Location recorded successfully', 201);
 
         } catch (Exception $e) {
@@ -69,17 +67,15 @@ class RiderTrackingController extends Controller
     }
 
     /**
-     * Record multiple location points in batch
+     * Record multiple GPS location points in batch (offline sync)
      * 
-     * POST /rider/locations/batch (web)
-     * POST /api/rider/locations/batch (mobile)
+     * POST /api/rider/locations/batch
      */
-    public function storeBatch(StoreBatchLocationRequest $request): JsonResponse|RedirectResponse
+    public function storeBatch(StoreBatchLocationRequest $request): JsonResponse
     {
         try {
             $rider = $this->getRider();
 
-            // Call service to record batch locations
             $count = $this->trackingService->recordBatchLocations(
                 $rider->id, 
                 $request->locations
@@ -96,33 +92,31 @@ class RiderTrackingController extends Controller
     }
 
     /**
-     * Get rider's current/latest location
+     * Get rider's current/latest GPS location
      * 
-     * GET /rider/location/current (web)
-     * GET /api/rider/location/current (mobile)
+     * GET /api/rider/location/current
      */
-    public function current(): JsonResponse|RedirectResponse
+    public function current(): JsonResponse
     {
         try {
             $rider = $this->getRider();
             
-            // Call service to get current location
-            $location = $this->trackingService->getCurrentLocation($rider->id);
+            $gpsPoint = $this->trackingService->getCurrentLocation($rider->id);
 
-            if (!$location) {
+            if (!$gpsPoint) {
                 return $this->success(null, 'No location data found');
             }
 
             return $this->success([
-                'id' => $location->id,
-                'latitude' => (float) $location->latitude,
-                'longitude' => (float) $location->longitude,
-                'accuracy' => $location->accuracy ? (float) $location->accuracy : null,
-                'speed' => $location->speed ? (float) $location->speed : null,
-                'heading' => $location->heading ? (float) $location->heading : null,
-                'address' => $location->address,
-                'recorded_at' => $location->recorded_at->toIso8601String(),
-                'time_ago' => $location->recorded_at->diffForHumans(),
+                'id' => $gpsPoint->id,
+                'latitude' => (float) $gpsPoint->latitude,
+                'longitude' => (float) $gpsPoint->longitude,
+                'accuracy' => $gpsPoint->accuracy ? (float) $gpsPoint->accuracy : null,
+                'speed' => $gpsPoint->speed ? (float) $gpsPoint->speed : null,
+                'heading' => $gpsPoint->heading ? (float) $gpsPoint->heading : null,
+                'recorded_at' => $gpsPoint->recorded_at->toIso8601String(),
+                'time_ago' => $gpsPoint->recorded_at->diffForHumans(),
+                'is_recent' => $gpsPoint->is_recent,
             ]);
 
         } catch (Exception $e) {
@@ -131,42 +125,88 @@ class RiderTrackingController extends Controller
     }
 
     /**
-     * Get rider's locations for a specific date range
+     * Get today's route summary
      * 
-     * GET /rider/locations (web)
-     * GET /api/rider/locations (mobile)
+     * GET /api/rider/routes/today
      */
-    public function index(Request $request): JsonResponse|RedirectResponse
+    public function getTodayRoute(): JsonResponse
+    {
+        try {
+            $rider = $this->getRider();
+            
+            $stats = $this->trackingService->getRiderStats($rider->id, today());
+
+            return $this->success([
+                'date' => $stats['date'],
+                'checked_in' => $stats['checked_in'],
+                'check_in_time' => $stats['check_in_time'],
+                'tracking_status' => $stats['tracking_status'],
+                'total_locations_recorded' => $stats['total_locations_recorded'],
+                'total_pause_duration' => $stats['total_pause_duration'],
+                'average_speed' => $stats['average_speed'],
+                'max_speed' => $stats['max_speed'],
+            ]);
+
+        } catch (Exception $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get rider's route history
+     * 
+     * GET /api/rider/routes/history
+     */
+    public function getRouteHistory(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'date' => 'nullable|date',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'limit' => 'nullable|integer|min:1|max:1000',
+            'limit' => 'nullable|integer|min:1|max:30',
         ]);
 
         try {
             $rider = $this->getRider();
 
             $filters = [
-                'date_from' => $validated['date_from'] ?? $validated['date'] ?? null,
-                'date_to' => $validated['date_to'] ?? $validated['date'] ?? null,
+                'date_from' => $validated['date_from'] ?? now()->subDays(30),
+                'date_to' => $validated['date_to'] ?? today(),
                 'limit' => $validated['limit'] ?? 1000,
             ];
 
-            // Call service to get locations
-            $locations = $this->trackingService->getRiderLocations($rider->id, $filters);
+            $gpsPoints = $this->trackingService->getRiderLocations($rider->id, $filters);
 
             return $this->success([
-                'count' => $locations->count(),
-                'locations' => $locations->map(fn($location) => [
-                    'id' => $location->id,
-                    'latitude' => (float) $location->latitude,
-                    'longitude' => (float) $location->longitude,
-                    'speed' => $location->speed ? (float) $location->speed : null,
-                    'recorded_at' => $location->recorded_at->toIso8601String(),
-                    'address' => $location->address,
+                'count' => $gpsPoints->count(),
+                'locations' => $gpsPoints->map(fn($point) => [
+                    'id' => $point->id,
+                    'latitude' => (float) $point->latitude,
+                    'longitude' => (float) $point->longitude,
+                    'speed' => $point->speed ? (float) $point->speed : null,
+                    'recorded_at' => $point->recorded_at->toIso8601String(),
                 ]),
+            ]);
+
+        } catch (Exception $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get specific route details
+     * 
+     * GET /api/rider/routes/{routeId}
+     */
+    public function getRouteDetails(int $routeId): JsonResponse
+    {
+        try {
+            $rider = $this->getRider();
+            
+            // Implementation depends on your RiderRoute relationship
+            // For now, return basic route info
+            
+            return $this->success([
+                'message' => 'Route details feature coming soon'
             ]);
 
         } catch (Exception $e) {
@@ -177,10 +217,9 @@ class RiderTrackingController extends Controller
     /**
      * Get rider's tracking statistics
      * 
-     * GET /rider/stats (web)
-     * GET /api/rider/stats (mobile)
+     * GET /api/rider/tracking/stats
      */
-    public function stats(Request $request): JsonResponse|RedirectResponse
+    public function stats(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'date' => 'nullable|date',
@@ -190,7 +229,6 @@ class RiderTrackingController extends Controller
             $rider = $this->getRider();
             $date = isset($validated['date']) ? Carbon::parse($validated['date']) : today();
 
-            // Call service to get stats
             $stats = $this->trackingService->getRiderStats($rider->id, $date);
 
             return $this->success($stats);
@@ -203,22 +241,20 @@ class RiderTrackingController extends Controller
     /**
      * Pause location tracking
      * 
-     * POST /rider/tracking/pause (web)
-     * POST /api/rider/tracking/pause (mobile)
+     * POST /api/rider/tracking/pause
      */
-    public function pause(): JsonResponse|RedirectResponse
+    public function pause(): JsonResponse
     {
         try {
             $rider = $this->getRider();
 
-            // Call service to pause tracking
             $route = $this->trackingService->pauseTracking($rider->id);
 
             return $this->success([
                 'route_id' => $route->id,
-                'tracking_status' => $route?->tracking_status,
-                'paused_at' => $route?->last_paused_at?->toIso8601String() ?? null,
-                'total_pause_duration' => $route?->total_pause_duration,
+                'tracking_status' => $route->tracking_status,
+                'paused_at' => $route->last_paused_at?->toIso8601String(),
+                'total_pause_duration' => $route->total_pause_duration,
             ], 'Tracking paused successfully');
 
         } catch (Exception $e) {
@@ -229,44 +265,21 @@ class RiderTrackingController extends Controller
     /**
      * Resume location tracking
      * 
-     * POST /rider/tracking/resume (web)
-     * POST /api/rider/tracking/resume (mobile)
+     * POST /api/rider/tracking/resume
      */
-    public function resume(): JsonResponse|RedirectResponse
+    public function resume(): JsonResponse
     {
         try {
             $rider = $this->getRider();
 
-            // Call service to resume tracking
             $route = $this->trackingService->resumeTracking($rider->id);
 
             return $this->success([
                 'route_id' => $route->id,
                 'tracking_status' => $route->tracking_status,
-                'resumed_at' => $route?->last_resumed_at?->toIso8601String(),
+                'resumed_at' => $route->last_resumed_at?->toIso8601String(),
                 'total_pause_duration' => $route->total_pause_duration,
             ], 'Tracking resumed successfully');
-
-        } catch (Exception $e) {
-            return $this->error($e->getMessage());
-        }
-    }
-
-    /**
-     * Get tracking status
-     * 
-     * GET /rider/tracking/status (web)
-     * GET /api/rider/tracking/status (mobile)
-     */
-    public function trackingStatus(): JsonResponse|RedirectResponse
-    {
-        try {
-            $rider = $this->getRider();
-
-            // Call service to get status
-            $status = $this->trackingService->getTrackingStatus($rider->id);
-
-            return $this->success($status);
 
         } catch (Exception $e) {
             return $this->error($e->getMessage());
@@ -306,15 +319,7 @@ class RiderTrackingController extends Controller
             return $request->header('User-Agent-Type');
         }
 
-        return $request->is('api/*') ? 'mobile' : 'web';
-    }
-
-    /**
-     * Check if request is from API
-     */
-    private function isApiRequest(): bool
-    {
-        return request()->is('api/*') || request()->expectsJson();
+        return 'mobile';
     }
 
     /**
@@ -324,17 +329,13 @@ class RiderTrackingController extends Controller
         mixed $data = null, 
         string $message = 'Success', 
         int $code = 200
-    ): JsonResponse|RedirectResponse 
+    ): JsonResponse 
     {
-        if ($this->isApiRequest()) {
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'data' => $data,
-            ], $code);
-        }
-
-        return back()->with('success', $message)->with('data', $data);
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => $data,
+        ], $code);
     }
 
     /**
@@ -343,15 +344,11 @@ class RiderTrackingController extends Controller
     private function error(
         string $message = 'An error occurred', 
         int $code = 400
-    ): JsonResponse|RedirectResponse 
+    ): JsonResponse 
     {
-        if ($this->isApiRequest()) {
-            return response()->json([
-                'success' => false,
-                'message' => $message,
-            ], $code);
-        }
-
-        return back()->withErrors(['error' => $message]);
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+        ], $code);
     }
 }

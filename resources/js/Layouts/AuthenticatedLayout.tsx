@@ -117,6 +117,7 @@ export default function Authenticated({
                 { name: 'Coverage Areas', href: '/coverage-areas', icon: '🪖' },
                 { name: 'Payments', href: '/admin/payments', icon: '💰' },
                 { name: 'Settings', href: '/admin/settings', icon: '⚙️' },
+                { name: 'Live Tracking',href:'/admin/tracking/live-map',icon:''},
             ],
             rider: [
                 { name: 'My Campaign', href: '/rider/campaign', icon: '🎯' },

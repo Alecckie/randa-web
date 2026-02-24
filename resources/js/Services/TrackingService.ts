@@ -22,7 +22,7 @@ class TrackingService {
             filters.rider_ids.forEach(id => params.append('rider_ids[]', id.toString()));
         }
         
-        const response = await axios.get('/api/admin/tracking/live', { params });
+        const response = await axios.get('/admin/tracking/live', { params });
         return response.data.data;
     }
 
@@ -31,7 +31,7 @@ class TrackingService {
      */
     async getRiderTracking(riderId: number, date?: string): Promise<RiderTrackingData> {
         const params = date ? { date } : {};
-        const response = await axios.get(`/api/admin/tracking/rider/${riderId}`, { params });
+        const response = await axios.get(`/admin/tracking/rider/${riderId}`, { params });
         return response.data.data;
     }
 
@@ -39,7 +39,7 @@ class TrackingService {
      * Get dashboard statistics
      */
     async getDashboardStats(period: 'today' | 'week' | 'month' = 'today'): Promise<TrackingStats> {
-        const response = await axios.get('/api/admin/tracking/dashboard-stats', {
+        const response = await axios.get('/admin/tracking/dashboard-stats', {
             params: { period }
         });
         return response.data.data;
@@ -54,7 +54,7 @@ class TrackingService {
         search?: string;
         per_page?: number;
     } = {}): Promise<{ data: RiderListItem[]; pagination: any }> {
-        const response = await axios.get('/api/admin/tracking/riders', { params: filters });
+        const response = await axios.get('/admin/tracking/riders', { params: filters });
         return {
             data: response.data.data,
             pagination: response.data.pagination
@@ -68,7 +68,7 @@ class TrackingService {
         date?: string;
         live?: boolean;
     } = {}): Promise<any> {
-        const response = await axios.get(`/api/admin/tracking/campaign/${campaignId}`, {
+        const response = await axios.get(`/admin/tracking/campaign/${campaignId}`, {
             params: options
         });
         return response.data.data;
@@ -78,7 +78,7 @@ class TrackingService {
      * Get route details by route ID
      */
     async getRouteDetails(routeId: number): Promise<any> {
-        const response = await axios.get(`/api/admin/tracking/routes/${routeId}`);
+        const response = await axios.get(`/admin/tracking/routes/${routeId}`);
         return response.data.data;
     }
 
@@ -92,7 +92,7 @@ class TrackingService {
         county_id?: number;
         intensity_threshold?: number;
     } = {}): Promise<any> {
-        const response = await axios.get('/api/admin/tracking/heatmap', { params: filters });
+        const response = await axios.get('/admin/tracking/heatmap', { params: filters });
         return response.data.data;
     }
 
@@ -106,7 +106,7 @@ class TrackingService {
         campaign_id?: number;
         rider_ids?: number[];
     }): Promise<any> {
-        const response = await axios.post('/api/admin/tracking/export', filters);
+        const response = await axios.post('/admin/tracking/export', filters);
         return response.data;
     }
 }
