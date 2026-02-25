@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { Card, Badge, Text, Group, Button, Loader } from '@mantine/core';
@@ -7,14 +8,14 @@ import { NavigationIcon, ClockIcon, GaugeIcon, MapPinIcon } from 'lucide-react';
 import type { EnrichedLocation, RouteLocation } from '@/types/tracking';
 
 const RIDER_COLORS = [
-    '#3B82F6',
-    '#10B981',
-    '#F59E0B',
-    '#EF4444',
-    '#8B5CF6',
-    '#EC4899',
-    '#06B6D4',
-    '#84CC16',
+    '#3B82F6', // Blue
+    '#10B981', // Green
+    '#F59E0B', // Amber
+    '#EF4444', // Red
+    '#8B5CF6', // Purple
+    '#EC4899', // Pink
+    '#06B6D4', // Cyan
+    '#84CC16', // Lime
 ];
 
 interface TrackingMapProps {
@@ -30,31 +31,54 @@ interface TrackingMapProps {
 
 /**
  * Safely extract a [lat, lng] tuple from an EnrichedLocation.
- * Returns null when either coordinate is missing or non-finite so the caller
- * can skip rendering rather than passing NaN to Leaflet.
+ * Handles both flat structure and nested location.location structure
  */
 function safeLatLng(location: EnrichedLocation): [number, number] | null {
-    // Coordinates may live directly on the location object OR nested under location.location
-    const lat = location.latitude ?? location?.location?.latitude;
-    const lng = location.longitude ?? location?.location?.longitude;
+    // Try direct properties first
+    let lat: number | null | undefined = location.latitude;
+    let lng: number | null | undefined = location.longitude;
+    
+    // If not found or null, try nested location object (from API)
+    if ((lat == null) && location.location) {
+        lat = location.location.latitude ?? undefined;
+        lng = location.location.longitude ?? undefined;
+    }
 
-    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
+    // Validate coordinates - convert null to undefined for consistency
+    const finalLat = lat ?? undefined;
+    const finalLng = lng ?? undefined;
+
+    if (finalLat == null || finalLng == null || !isFinite(finalLat) || !isFinite(finalLng)) {
+        console.warn('Invalid coordinates for location:', location);
         return null;
     }
+    
+    return [finalLat, finalLng];
+}
+
+/**
+ * Safely extract [lat, lng] from a RouteLocation
+ */
+function safeRouteLatLng(loc: RouteLocation): [number, number] | null {
+    const lat = loc.latitude;
+    const lng = loc.longitude;
+    
+    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
+        console.warn('Invalid route coordinates:', loc);
+        return null;
+    }
+    
     return [lat, lng];
 }
 
 /**
- * Safely extract [lat, lng] from a RouteLocation.
- * Returns null when the coordinate is missing or non-finite.
+ * Safely extract numeric value, handling both null and undefined
  */
-function safeRouteLatlng(loc: RouteLocation): [number, number] | null {
-    const lat = loc.latitude;
-    const lng = loc.longitude;
-    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
+function safeNumber(value: number | null | undefined): number | null {
+    if (value == null || !isFinite(value)) {
         return null;
     }
-    return [lat, lng];
+    return value;
 }
 
 // ── Map bounds handler ────────────────────────────────────────────────────────
@@ -63,7 +87,7 @@ function MapBoundsHandler({ locations }: { locations: EnrichedLocation[] }) {
     const map = useMap();
 
     useEffect(() => {
-        // Only use locations that have valid coordinates
+        // Only use locations with valid coordinates
         const validPoints = locations
             .map(safeLatLng)
             .filter((p): p is [number, number] => p !== null);
@@ -73,7 +97,13 @@ function MapBoundsHandler({ locations }: { locations: EnrichedLocation[] }) {
         if (validPoints.length === 1) {
             map.setView(validPoints[0], 13);
         } else {
-            map.fitBounds(validPoints, { padding: [50, 50] });
+            try {
+                map.fitBounds(validPoints, { padding: [50, 50] });
+            } catch (error) {
+                console.error('Error fitting bounds:', error);
+                // Fallback to center on first point
+                map.setView(validPoints[0], 12);
+            }
         }
     }, [locations, map]);
 
@@ -113,9 +143,9 @@ function createRiderIcon(color: string, isActive: boolean): DivIcon {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TrackingMap({
-    locations,
+    locations = [], // Default to empty array
     routes,
-    center = [-1.286389, 36.817223],
+    center = [-1.286389, 36.817223], // Nairobi default
     zoom = 12,
     onMarkerClick,
     loading = false,
@@ -123,7 +153,9 @@ export default function TrackingMap({
     const [selectedLocation, setSelectedLocation] = useState<EnrichedLocation | null>(null);
 
     const getRiderColor = (riderId: number | null | undefined): string => {
-        if (riderId == null) return RIDER_COLORS[0];
+        if (riderId == null || !isFinite(riderId)) {
+            return RIDER_COLORS[0];
+        }
         return RIDER_COLORS[riderId % RIDER_COLORS.length];
     };
 
@@ -145,8 +177,7 @@ export default function TrackingMap({
         );
     }
 
-    // Pre-filter to only locations with valid coordinates so nothing below
-    // ever receives a null/NaN position.
+    // Pre-filter to only locations with valid coordinates
     const validLocations = locations.filter((loc) => safeLatLng(loc) !== null);
 
     // ── Render ─────────────────────────────────────────────────────────────────
@@ -194,26 +225,33 @@ export default function TrackingMap({
 
                 {/* Rider markers */}
                 {validLocations.map((location) => {
-                    const coords = safeLatLng(location)!; // safe: filtered above
-                    const color  = getRiderColor(location.rider_id);
+                    const coords = safeLatLng(location);
+                    if (!coords) return null; // Extra safety check
+
+                    // Safely get rider info (handle both flat and nested structures)
+                    const riderId = location.rider_id ?? location.rider?.id;
+                    const riderName = location.rider?.name ?? 'Unknown Rider';
+                    const riderPhone = location.rider?.phone ?? null;
+                    
+                    const color = getRiderColor(riderId);
                     const isActive = location.is_recent ?? false;
 
-                    // Safely resolve nested speed / heading / accuracy.
-                    // The API may return these directly on the location object
-                    // or nested under location.location depending on the endpoint.
-                    const speed    = location.speed    ?? location?.location?.speed    ?? null;
-                    const heading  = location.heading  ?? location?.location?.heading  ?? null;
-                    const accuracy = location.accuracy ?? location?.location?.accuracy ?? null;
+                    // Safely resolve speed / heading / accuracy from either structure
+                    // Use safeNumber to handle null/undefined properly
+                    const speed = safeNumber(location.speed ?? location.location?.speed);
+                    const heading = safeNumber(location.heading ?? location.location?.heading);
+                    const accuracy = safeNumber(location.accuracy ?? location.location?.accuracy);
 
-                    const riderName  = location.rider?.name   ?? 'Unknown Rider';
-                    const riderPhone = location.rider?.phone  ?? null;
-                    const timeAgo    = location.time_ago      ?? null;
-                    const address    = location.address       ?? null;
-                    const campaign   = location.campaign      ?? null;
+                    const timeAgo = location.time_ago ?? null;
+                    const address = location.address ?? location.location?.address ?? null;
+                    const campaign = location.campaign ?? null;
+
+                    // Generate unique key
+                    const markerKey = location.id ?? `marker-${riderId}-${coords[0]}-${coords[1]}`;
 
                     return (
                         <Marker
-                            key={location.id ?? `${coords[0]}-${coords[1]}`}
+                            key={markerKey}
                             position={coords as LatLngExpression}
                             icon={createRiderIcon(color, isActive)}
                             eventHandlers={{ click: () => handleMarkerClick(location) }}
@@ -244,7 +282,7 @@ export default function TrackingMap({
 
                                     {/* Location details */}
                                     <div className="space-y-2">
-                                        {speed != null && isFinite(speed) && (
+                                        {speed !== null && (
                                             <Group gap="xs">
                                                 <GaugeIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
@@ -253,7 +291,7 @@ export default function TrackingMap({
                                             </Group>
                                         )}
 
-                                        {heading != null && isFinite(heading) && (
+                                        {heading !== null && (
                                             <Group gap="xs">
                                                 <NavigationIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
@@ -262,7 +300,7 @@ export default function TrackingMap({
                                             </Group>
                                         )}
 
-                                        {accuracy != null && isFinite(accuracy) && (
+                                        {accuracy !== null && (
                                             <Group gap="xs">
                                                 <MapPinIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
@@ -302,21 +340,23 @@ export default function TrackingMap({
 
                 {/* Route polylines */}
                 {routes && Array.from(routes.entries()).map(([riderId, routeLocations]) => {
-                    // Drop any points with invalid coordinates before passing to Leaflet
+                    // Drop any points with invalid coordinates
                     const positions = routeLocations
-                        .map(safeRouteLatlng)
-                        .filter((p): p is [number, number] => p !== null) as LatLngExpression[];
+                        .map(safeRouteLatLng)
+                        .filter((p): p is [number, number] => p !== null);
 
-                    // Nothing to draw if fewer than 2 valid points
+                    // Need at least 2 valid points to draw a line
                     if (positions.length < 2) return null;
+
+                    const polylineKey = `polyline-${riderId}`;
 
                     return (
                         <Polyline
-                            key={riderId}
-                            positions={positions}
+                            key={polylineKey}
+                            positions={positions as LatLngExpression[]}
                             pathOptions={{
-                                color:   getRiderColor(riderId),
-                                weight:  4,
+                                color: getRiderColor(riderId),
+                                weight: 4,
                                 opacity: 0.7,
                             }}
                         />
@@ -337,10 +377,15 @@ export default function TrackingMap({
                 </div>
             )}
 
+            {/* Pulse animation */}
             <style>{`
                 @keyframes pulse {
-                    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-                    50%       { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+                    0%, 100% { 
+                        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); 
+                    }
+                    50% { 
+                        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); 
+                    }
                 }
             `}</style>
         </Card>

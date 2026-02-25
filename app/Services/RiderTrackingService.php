@@ -58,7 +58,6 @@ class RiderTrackingService
             ]);
 
             return $gpsPoint;
-
         } catch (\Exception $e) {
             Log::error('Failed to record GPS point', [
                 'rider_id' => $riderId,
@@ -114,7 +113,6 @@ class RiderTrackingService
             ]);
 
             return $count;
-
         } catch (\Exception $e) {
             Log::error('Failed to record batch GPS points', [
                 'rider_id' => $riderId,
@@ -173,7 +171,6 @@ class RiderTrackingService
             DB::commit();
 
             return $route->fresh();
-
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -225,7 +222,6 @@ class RiderTrackingService
             DB::commit();
 
             return $route->fresh();
-
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -369,17 +365,36 @@ class RiderTrackingService
     public function getLiveTrackingData(array $filters = []): array
     {
         try {
+            $date = $filters['date'] ?? today();
+
+            // Convert to Carbon if string
+            if (is_string($date)) {
+                $date = Carbon::parse($date);
+            }
+
+            // ✅ FIX: Check if viewing today or historical date
+            // $isToday = $date->isToday();
+            $isToday = false;
+
             $query = RiderGpsPoint::query()
                 ->with(['rider.user', 'campaignAssignment.campaign'])
                 ->join('rider_check_ins', 'rider_gps_points.check_in_id', '=', 'rider_check_ins.id')
-                ->where('rider_check_ins.status', 'active')
                 ->select('rider_gps_points.*');
 
-            $date = $filters['date'] ?? today();
-            $query->whereDate('rider_gps_points.recorded_at', $date);
+            // ✅ FIX: For today, only active check-ins. For historical, include completed.
+            if ($isToday) {
+                $query->where('rider_check_ins.status', 'active');
+            } else {
+                // Allow both active and completed for historical dates
+                $query->whereIn('rider_check_ins.status', ['active', 'completed']);
+            }
+
+            // $query->whereDate('rider_gps_points.recorded_at', $date);
 
             if (!empty($filters['campaign_id'])) {
-                $query->whereHas('campaignAssignment', fn($q) =>
+                $query->whereHas(
+                    'campaignAssignment',
+                    fn($q) =>
                     $q->where('campaign_id', $filters['campaign_id'])
                 );
             }
@@ -388,12 +403,13 @@ class RiderTrackingService
                 $query->whereIn('rider_gps_points.rider_id', $filters['rider_ids']);
             }
 
+            // Get latest point per rider for this date
             $latestPoints = $query->get()
                 ->groupBy('rider_id')
                 ->map(fn($points) => $points->sortByDesc('recorded_at')->first())
                 ->values();
 
-            $dateString = ($date instanceof Carbon ? $date : Carbon::parse($date))->toDateString();
+            $dateString = $date->toDateString();
 
             return [
                 'active_riders'   => $latestPoints->count(),
@@ -402,13 +418,14 @@ class RiderTrackingService
                 'filters_applied' => [
                     'date'        => $dateString,
                     'campaign_id' => $filters['campaign_id'] ?? null,
+                    'is_today'    => $isToday,  // Debug info
                 ],
             ];
-
         } catch (\Exception $e) {
             Log::error('Failed to get live tracking data', [
                 'error'   => $e->getMessage(),
                 'filters' => $filters,
+                'trace'   => $e->getTraceAsString(),
             ]);
 
             return [
@@ -419,7 +436,6 @@ class RiderTrackingService
             ];
         }
     }
-
     /**
      * Transform a RiderGpsPoint into the enriched array used by both
      * the Inertia page and the API. Every nested relationship access
@@ -427,6 +443,8 @@ class RiderTrackingService
      */
     public function enrichLocation(RiderGpsPoint $gpsPoint): array
     {
+
+       // dd($gpsPoint);
         $rider              = $gpsPoint->rider;
         $user               = $rider?->user;
         $campaignAssignment = $gpsPoint->campaignAssignment;
@@ -441,6 +459,7 @@ class RiderTrackingService
                 'id'     => $rider?->id,
                 'name'   => $user?->name,
                 'phone'  => $user?->phone,
+                'email'  => $user?->email,
                 'status' => $rider?->status,
             ],
 
@@ -450,6 +469,7 @@ class RiderTrackingService
                 'accuracy'  => $gpsPoint->accuracy  !== null ? (float) $gpsPoint->accuracy  : null,
                 'speed'     => $gpsPoint->speed     !== null ? (float) $gpsPoint->speed     : null,
                 'heading'   => $gpsPoint->heading   !== null ? (float) $gpsPoint->heading   : null,
+                'address'   => null,  // TODO: Add reverse geocoding if needed
             ],
 
             'campaign' => ($campaignAssignment && $campaign)
@@ -462,6 +482,14 @@ class RiderTrackingService
             'recorded_at' => $recordedAt?->toIso8601String(),
             'time_ago'    => $recordedAt?->diffForHumans(),
             'is_recent'   => $gpsPoint->is_recent ?? false,
+
+            // Also include flat properties for backward compatibility
+            'latitude'  => $gpsPoint->latitude  !== null ? (float) $gpsPoint->latitude  : null,
+            'longitude' => $gpsPoint->longitude !== null ? (float) $gpsPoint->longitude : null,
+            'accuracy'  => $gpsPoint->accuracy  !== null ? (float) $gpsPoint->accuracy  : null,
+            'speed'     => $gpsPoint->speed     !== null ? (float) $gpsPoint->speed     : null,
+            'heading'   => $gpsPoint->heading   !== null ? (float) $gpsPoint->heading   : null,
+            'address'   => null,  // TODO: Add reverse geocoding if needed
         ];
     }
 

@@ -48,7 +48,6 @@ class TrackingController extends Controller
         // shared enrichLocation() helper so the Inertia page gets the same
         // shape as the API endpoint.
         $rawData = $this->trackingService->getLiveTrackingData();
-
         $initialData = [
             'active_riders' => $rawData['active_riders'],
             'last_updated'  => $rawData['last_updated'],

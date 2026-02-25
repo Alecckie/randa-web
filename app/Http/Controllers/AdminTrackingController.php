@@ -57,6 +57,8 @@ class AdminTrackingController extends Controller
                 'rider_ids'   => $request->rider_ids,
             ]);
 
+            // dd($trackingData);
+
             // Enrich via the shared service helper — no duplication
             $enrichedLocations = $trackingData['locations']->map(
                 fn($point) => $this->trackingService->enrichLocation($point)
