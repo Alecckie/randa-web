@@ -10,7 +10,7 @@ class HelmetService
 {
     public function getAllHelmets(array $filters = []): LengthAwarePaginator
     {
-        $query = Helmet::query()->with(['currentAssignment.campaign', 'currentAssignment.rider']);
+        $query = Helmet::query()->with(['currentAssignment.campaign', 'currentAssignment.rider.user']);
 
         // Apply filters
         if (!empty($filters['search'])) {
@@ -79,5 +79,44 @@ class HelmetService
     public function bulkUpdateStatus(array $helmetIds, string $status): int
     {
         return Helmet::whereIn('id', $helmetIds)->update(['status' => $status]);
+    }
+
+    public function getRidersWithoutHelmets(): \Illuminate\Database\Eloquent\Collection
+    {
+        try {
+            return \App\Models\Rider::whereDoesntHave('assignments', function($query) {
+                $query->where('status', 'active');
+            })
+            ->where('status', 'approved')
+            ->with('user')
+            ->get();
+        } catch (\Exception $e) {
+            \Log::error('Error getting riders without helmets: ' . $e->getMessage());
+            return collect(); // Return empty collection on error
+        }
+    }
+
+    public function assignHelmetToRider(Helmet $helmet, int $riderId): \App\Models\CampaignAssignment
+    {
+        if ($helmet->status !== 'available') {
+            throw new \Exception('Helmet is not available for assignment.');
+        }
+
+        $rider = \App\Models\Rider::findOrFail($riderId);
+        
+        if ($rider->currentAssignment) {
+            throw new \Exception('Rider already has an active assignment.');
+        }
+
+        $assignment = \App\Models\CampaignAssignment::create([
+            'rider_id' => $riderId,
+            'helmet_id' => $helmet->id,
+            'assigned_at' => now(),
+            'status' => 'active'
+        ]);
+
+        $helmet->update(['status' => 'assigned']);
+
+        return $assignment;
     }
 }

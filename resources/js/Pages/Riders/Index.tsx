@@ -4,7 +4,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { Button, TextInput, Select, Badge, Card, Group, Text, Stack, ActionIcon, Menu, Modal, Textarea, CheckIcon, ActionIconGroup } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import type { RidersIndexProps, Rider } from '@/types/rider';
-import { AccessibilityIcon, CheckCircleIcon, Clock1Icon, DotSquareIcon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react';
+import { AccessibilityIcon, BellIcon, CheckCircleIcon, Clock1Icon, DotSquareIcon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react';
 
 export default function Index({ riders, stats, filters, users }: RidersIndexProps) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
@@ -32,22 +32,24 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
         router.get(route('riders.index'));
     };
 
-    const getStatusColor = (status: Rider['status']) => {
+    const getStatusColor = (status: Rider['status'] | 'incomplete' | null) => {
         const colors = {
             pending: 'yellow',
             approved: 'green',
             rejected: 'red',
+            incomplete: 'gray',
         };
-        return colors[status];
+        return colors[status as keyof typeof colors] || 'gray';
     };
 
-    const getStatusIcon = (status: Rider['status']) => {
+    const getStatusIcon = (status: Rider['status'] | 'incomplete' | null) => {
         const icons = {
             pending: <Clock1Icon size={14} />,
             approved: <CheckIcon size={14} />,
             rejected: <XIcon size={14} />,
+            incomplete: <DotSquareIcon size={14} />,
         };
-        return icons[status];
+        return icons[status as keyof typeof icons] || <DotSquareIcon size={14} />;
     };
 
     const handleStatusUpdate = (rider: Rider) => {
@@ -155,6 +157,7 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
                                 placeholder="Filter by status"
                                 data={[
                                     { value: '', label: 'All Status' },
+                                    { value: 'incomplete', label: 'Incomplete Profile' },
                                     { value: 'pending', label: 'Pending' },
                                     { value: 'approved', label: 'Approved' },
                                     { value: 'rejected', label: 'Rejected' },
@@ -239,18 +242,18 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <Badge
-                                                color={getStatusColor(rider.status)}
-                                                leftSection={getStatusIcon(rider.status)}
+                                                color={getStatusColor(rider.status || 'incomplete')}
+                                                leftSection={getStatusIcon(rider.status || 'incomplete')}
                                                 variant="light"
                                             >
-                                                {rider.status.charAt(0).toUpperCase() + rider.status.slice(1)}
+                                                {rider.status ? (rider.status.charAt(0).toUpperCase() + rider.status.slice(1)) : 'Incomplete Profile'}
                                             </Badge>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                            KSh {parseFloat(rider.daily_rate).toFixed(2)}
+                                            {rider.daily_rate ? `KSh ${parseFloat(rider.daily_rate).toFixed(2)}` : 'Not set'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                            KSh {parseFloat(rider.wallet_balance).toFixed(2)}
+                                            {rider.wallet_balance ? `KSh ${parseFloat(rider.wallet_balance).toFixed(2)}` : 'KSh 0.00'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {new Date(rider.created_at).toLocaleDateString()}
@@ -264,28 +267,42 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
                                                 </Menu.Target>
 
                                                 <Menu.Dropdown>
-                                                    <Menu.Item 
-                                                        leftSection={<EyeIcon size={14} />}
-                                                        component={Link}
-                                                        href={route('riders.show', rider.id)}
-                                                    >
-                                                        View Details
-                                                    </Menu.Item>
-                                                    {rider.status === 'pending' && (
+                                                    {rider.id ? (
+                                                        <>
+                                                            <Menu.Item 
+                                                                leftSection={<EyeIcon size={14} />}
+                                                                component={Link}
+                                                                href={route('riders.show', rider.id)}
+                                                            >
+                                                                View Details
+                                                            </Menu.Item>
+                                                            {rider.status === 'pending' && (
+                                                                <Menu.Item
+                                                                    leftSection={<CheckCircleIcon size={14} />}
+                                                                    onClick={() => handleStatusUpdate(rider)}
+                                                                >
+                                                                    Update Status
+                                                                </Menu.Item>
+                                                            )}
+                                                            <Menu.Item
+                                                                leftSection={<PencilIcon size={14} />}
+                                                                component={Link}
+                                                                href={route('riders.edit', rider.id)}
+                                                            >
+                                                                Edit
+                                                            </Menu.Item>
+                                                        </>
+                                                    ) : (
                                                         <Menu.Item
-                                                            leftSection={<CheckCircleIcon size={14} />}
-                                                            onClick={() => handleStatusUpdate(rider)}
+                                                            leftSection={<BellIcon size={14} />}
+                                                            component={Link}
+                                                            href={route('riders.notify', rider.user_id)}
+                                                            method="post"
+                                                            as="button"
                                                         >
-                                                            Update Status
+                                                            Notify Rider
                                                         </Menu.Item>
                                                     )}
-                                                    <Menu.Item
-                                                        leftSection={<PencilIcon size={14} />}
-                                                        component={Link}
-                                                        href={route('riders.edit', rider.id)}
-                                                    >
-                                                        Edit
-                                                    </Menu.Item>
                                                 </Menu.Dropdown>
                                             </Menu>
                                         </td>

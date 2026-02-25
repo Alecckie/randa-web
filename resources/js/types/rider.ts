@@ -16,7 +16,7 @@ export interface Rider {
     next_of_kin_name: string;
     next_of_kin_phone: string;
     signed_agreement: string;
-    status: 'pending' | 'approved' | 'rejected';
+    status: 'pending' | 'approved' | 'rejected' | 'incomplete' | null;
     daily_rate: string;
     wallet_balance: string;
     created_at: string;
@@ -60,7 +60,7 @@ export interface RiderStats {
 }
 
 export interface RiderFilters {
-    status?: 'pending' | 'approved' | 'rejected' | '';
+    status?: 'pending' | 'approved' | 'rejected' | 'incomplete' | '';
     search?: string;
     user_id?: number;
     date_from?: string;

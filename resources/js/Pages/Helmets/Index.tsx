@@ -42,13 +42,18 @@ interface Helmet {
     updated_at: string;
     current_assignment?: {
         id: number;
-        campaign: {
+        campaign?: {
             id: number;
             name: string;
         };
         rider: {
             id: number;
-            name: string;
+            user: {
+                id: number;
+                name: string;
+                email: string;
+                phone?: string;
+            };
         };
     };
 }
@@ -309,7 +314,7 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                         Status
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Current Assignment
+                                        Assigned Rider
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                         Branding
@@ -366,11 +371,16 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                             {helmet.current_assignment ? (
                                                 <div>
                                                     <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                        {helmet.current_assignment.campaign.name}
+                                                        {helmet.current_assignment.rider.user.name}
                                                     </div>
                                                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                        Rider: {helmet.current_assignment.rider.name}
+                                                        {helmet.current_assignment.rider.user.email}
                                                     </div>
+                                                    {helmet.current_assignment.campaign && (
+                                                        <div className="text-xs text-blue-600 dark:text-blue-400">
+                                                            Campaign: {helmet.current_assignment.campaign.name}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <Text size="sm" c="dimmed">Not assigned</Text>

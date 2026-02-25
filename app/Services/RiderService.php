@@ -26,61 +26,76 @@ class RiderService
     ) {}
 
     /**
-     * Get paginated riders with filters
+     * Get paginated riders with filters - includes users with rider role
      */
     public function getRidersPaginated(array $filters, int $perPage = 15): LengthAwarePaginator
     {
-        $query = Rider::query()
-            ->with(['user:id,first_name,last_name,name,email,phone', 'currentAssignment.campaign:id,name', 'currentLocation.county', 'currentLocation.subcounty', 'currentLocation.ward'])
-            ->latest();
+        // Get users with rider role and left join with riders table
+        $query = User::query()
+            ->where('role', 'rider')
+            ->leftJoin('riders', 'users.id', '=', 'riders.user_id')
+            ->with([
+                'rider.currentAssignment.campaign:id,name', 
+                'rider.currentLocation.county', 
+                'rider.currentLocation.subcounty', 
+                'rider.currentLocation.ward'
+            ])
+            ->select(
+                'users.*',
+                'riders.id as rider_id',
+                'riders.status as rider_status',
+                'riders.national_id',
+                'riders.mpesa_number',
+                'riders.daily_rate',
+                'riders.wallet_balance',
+                'riders.created_at as rider_created_at'
+            )
+            ->latest('users.created_at');
 
         // Apply filters
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            if ($filters['status'] === 'incomplete') {
+                $query->whereNull('riders.id'); // Users without rider profiles
+            } else {
+                $query->where('riders.status', $filters['status']);
+            }
         }
 
         if (!empty($filters['search'])) {
             $search = $filters['search'];
-            $query->whereHas('user', function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
-            })->orWhere('national_id', 'like', "%{$search}%")
-                ->orWhere('mpesa_number', 'like', "%{$search}%");
-        }
-
-        if (!empty($filters['user_id'])) {
-            $query->where('user_id', $filters['user_id']);
+            $query->where(function($q) use ($search) {
+                $q->where('users.first_name', 'like', "%{$search}%")
+                  ->orWhere('users.last_name', 'like', "%{$search}%")
+                  ->orWhere('users.name', 'like', "%{$search}%")
+                  ->orWhere('users.email', 'like', "%{$search}%")
+                  ->orWhere('users.phone', 'like', "%{$search}%")
+                  ->orWhere('riders.national_id', 'like', "%{$search}%")
+                  ->orWhere('riders.mpesa_number', 'like', "%{$search}%");
+            });
         }
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('created_at', '>=', $filters['date_from']);
+            $query->whereDate('users.created_at', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('created_at', '<=', $filters['date_to']);
-        }
-
-        if (!empty($filters['daily_rate_min'])) {
-            $query->where('daily_rate', '>=', $filters['daily_rate_min']);
-        }
-
-        if (!empty($filters['daily_rate_max'])) {
-            $query->where('daily_rate', '<=', $filters['daily_rate_max']);
+            $query->whereDate('users.created_at', '<=', $filters['date_to']);
         }
 
         return $query->paginate($perPage);
     }
 
     /**
-     * Get rider statistics
+     * Get rider statistics - includes all users with rider role
      */
     public function getRiderStats(): array
     {
+        $totalRiderUsers = User::where('role', 'rider')->count();
+        $incompleteProfiles = User::where('role', 'rider')->whereDoesntHave('rider')->count();
+        
         return [
-            'total_riders' => Rider::count(),
+            'total_riders' => $totalRiderUsers,
+            'incomplete_profiles' => $incompleteProfiles,
             'pending_applications' => Rider::where('status', 'pending')->count(),
             'approved_riders' => Rider::where('status', 'approved')->count(),
             'rejected_applications' => Rider::where('status', 'rejected')->count(),

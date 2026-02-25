@@ -24,24 +24,24 @@ configureEcho({
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 const theme = createTheme({
-    primaryColor: 'blue',
+    primaryColor: 'orange',
     fontFamily: 'Inter, system-ui, sans-serif',
     headings: {
         fontFamily: 'Inter, system-ui, sans-serif',
         fontWeight: '600',
     },
     colors: {
-        dark: [
-            '#C1C2C5',
-            '#A6A7AB',
-            '#909296',
-            '#5c5f66',
-            '#373A40',
-            '#2C2E33',
-            '#25262b',
-            '#1A1B1E',
-            '#141517',
-            '#101113',
+        orange: [
+            '#fff7ed',
+            '#ffedd5',
+            '#fed7aa',
+            '#fdba74',
+            '#fb923c',
+            '#f97316',
+            '#ea580c',
+            '#c2410c',
+            '#9a3412',
+            '#7c2d12',
         ],
     },
     components: {
@@ -68,13 +68,13 @@ createInertiaApp({
         ),
     setup({ el, App, props }) {
         if (import.meta.env.SSR) {
-            hydrateRoot(el, <MantineProvider theme={theme}>
+            hydrateRoot(el, <MantineProvider theme={theme} forceColorScheme="light">
                 <Notifications position="top-right" zIndex={2077} /><App {...props} />
             </MantineProvider>);
             return;
         }
 
-        createRoot(el).render(<MantineProvider theme={theme}>
+        createRoot(el).render(<MantineProvider theme={theme} forceColorScheme="light">
             <DatesProvider settings={{ locale: 'en', firstDayOfWeek: 0 }}>
                 <Notifications position="top-right" zIndex={2077} /><App {...props} />
             </DatesProvider>

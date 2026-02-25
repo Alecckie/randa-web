@@ -43,7 +43,7 @@ export interface Activity {
     action: string;
     user: string;
     time: string;
-    type: 'approval' | 'campaign' | 'payment' | 'system';
+    type: 'approval' | 'campaign' | 'payment' | 'system' | 'rider' | 'helmet' | 'assignment' | 'campaign_closed';
 }
 
 export interface Campaign {
@@ -74,6 +74,12 @@ export interface DashboardData {
     admin: {
         stats: StatCard[];
         recentActivity: Activity[];
+        quickLinks?: Array<{
+            name: string;
+            count: number;
+            route: string;
+            filter?: string;
+        }>;
     };
     rider: {
         stats: StatCard[];

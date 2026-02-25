@@ -79,10 +79,18 @@ export interface Transaction {
     type: 'earning' | 'withdrawal' | 'bonus' | 'deduction';
 }
 
+export interface QuickLink {
+    name: string;
+    count: number;
+    route: string;
+    filter: string;
+}
+
 export interface DashboardData {
     admin: {
         stats: StatCard[];
         recentActivity: Activity[];
+        quickLinks: QuickLink[];
     };
     rider: {
         stats: StatCard[];
