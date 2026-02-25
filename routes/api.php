@@ -34,7 +34,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/profile', [AuthController::class, 'profile']);
         Route::put('/profile', [AuthController::class, 'updateProfile']);
-        Route::patch('/profile', [AuthController::class, 'updateProfile']);
+        Route::put('/profile/password', [AuthController::class, 'updatePassword']);
+
 
         // Rider routes - only accessible by riders
         Route::prefix('rider')->middleware(['auth:sanctum', 'role:rider'])->group(function () {
@@ -50,11 +51,14 @@ Route::prefix('v1')->group(function () {
             Route::post('/profile/location', [RiderProfileController::class, 'storeLocation'])
                 ->name('rider.profile.location');
 
+            Route::post('/profile/update-location', [RiderProfileController::class, 'updateLocation'])
+                ->name('rider.profile.update-location');
+         
             //  Individual document upload endpoint
             Route::post('/profile/upload-document', [RiderProfileController::class, 'uploadSingleDocument'])
                 ->name('rider.profile.upload-document');
 
-            // NEW: Delete individual document
+            //  Delete individual document
             Route::post('/profile/delete-document', [RiderProfileController::class, 'deleteDocument'])
                 ->name('rider.profile.delete-document');
 

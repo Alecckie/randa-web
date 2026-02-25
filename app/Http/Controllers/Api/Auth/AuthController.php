@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Api\Auth\LoginRequest;
 use App\Http\Requests\Api\Auth\RegisterRequest;
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Http\Requests\UpdatePasswordRequest;
 use App\Models\User;
 use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
@@ -53,7 +54,6 @@ class AuthController extends BaseApiController
                 ],
                 'token' => $token,
             ], 'User registered successfully', 201);
-
         } catch (\Exception $e) {
             return $this->sendError('Registration failed', ['error' => $e->getMessage()], 500);
         }
@@ -64,7 +64,7 @@ class AuthController extends BaseApiController
      */
     public function login(LoginRequest $request): JsonResponse
     {
-       
+
         $user = $request->authenticateForApi();
 
         // Create token
@@ -111,7 +111,7 @@ class AuthController extends BaseApiController
     public function profile(Request $request): JsonResponse
     {
         $user = $request->user();
-        
+
         return $this->sendResponse([
             'user' => [
                 'id' => $user->id,
@@ -137,11 +137,8 @@ class AuthController extends BaseApiController
             $user = $request->user();
             $validated = $request->validated();
 
-            // Handle password change if provided
-            if (isset($validated['password'])) {
-                $validated['password'] = Hash::make($validated['password']);
-                unset($validated['current_password']); // Don't save this
-            }
+            // Exclude password fields from this endpoint
+            unset($validated['password'], $validated['current_password']);
 
             $user->update($validated);
 
@@ -158,9 +155,29 @@ class AuthController extends BaseApiController
                     'email_verified_at' => $user->email_verified_at,
                 ],
             ], 'Profile updated successfully');
-
         } catch (\Exception $e) {
             return $this->sendError('Profile update failed', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Update user password and revoke all tokens 
+     */
+    public function updatePassword(UpdatePasswordRequest $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $validated = $request->validated();
+
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            $user->tokens()->delete();
+
+            return $this->sendResponse([], 'Password updated successfully. Please log in again.');
+        } catch (\Exception $e) {
+            return $this->sendError('Password update failed', ['error' => $e->getMessage()], 500);
         }
     }
 }
