@@ -3,9 +3,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import { Drawer, Button, Modal, Text, Group, Alert } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { 
-    MapIcon, 
-    FilterIcon, 
+import {
+    MapIcon,
+    FilterIcon,
     ListIcon,
     AlertCircleIcon,
     DownloadIcon
@@ -15,8 +15,8 @@ import TrackingFilters from '@/Components/tracking/TrackingFilters';
 import TrackingStats from '@/Components/tracking/TrackingStats';
 import RiderList from '@/Components/tracking/RiderList';
 import TrackingService from '@/Services/TrackingService';
-import type { 
-    TrackingPageProps, 
+import type {
+    TrackingPageProps,
     TrackingFilters as Filters,
     EnrichedLocation,
     TrackingStats as Stats,
@@ -24,14 +24,20 @@ import type {
     RiderTrackingData
 } from '@/types/tracking';
 
-export default function Index({ 
-    stats: initialStats, 
-    campaigns, 
+// Leaflet uses z-index 400–1000 for its own layers and controls.
+// Mantine's default Modal z-index is 200, which falls beneath Leaflet.
+// Setting it to 2000 ensures it always renders on top.
+const MODAL_Z_INDEX = 2000;
+
+export default function Index({
+    stats: initialStats,
+    campaigns,
     riders: riderOptions,
-    initialData 
+    initialData
 }: TrackingPageProps) {
-    // State
-    const [locations, setLocations] = useState<EnrichedLocation[]>(initialData.locations);
+    const [locations, setLocations] = useState<EnrichedLocation[]>(
+        initialData?.locations ?? []
+    );
     const [stats, setStats] = useState<Stats>(initialStats);
     const [riders, setRiders] = useState<RiderListItem[]>([]);
     const [filters, setFilters] = useState<Filters>({
@@ -45,36 +51,30 @@ export default function Index({
     const [selectedRiderData, setSelectedRiderData] = useState<RiderTrackingData | null>(null);
     const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
-    // Drawers for mobile
     const [filtersOpened, { open: openFilters, close: closeFilters }] = useDisclosure(false);
     const [ridersOpened, { open: openRiders, close: closeRiders }] = useDisclosure(false);
     const [detailsOpened, { open: openDetails, close: closeDetails }] = useDisclosure(false);
 
-    // Responsive
     const isMobile = useMediaQuery('(max-width: 768px)');
     const isTablet = useMediaQuery('(max-width: 1024px)');
 
-    // Fetch tracking data
+    // ── Data fetching ──────────────────────────────────────────────────────────
+
     const fetchTrackingData = useCallback(async () => {
         try {
             setLoading(true);
-            
-            // Fetch live tracking data
-            const trackingData = await TrackingService.getLiveTracking(filters);
-            setLocations(trackingData.locations);
 
-            // Fetch updated stats
-            const updatedStats = await TrackingService.getDashboardStats(
-                filters.view_mode === 'live' ? 'today' : 'today'
-            );
+            const trackingData = await TrackingService.getLiveTracking(filters);
+            setLocations(trackingData?.locations ?? []);
+
+            const updatedStats = await TrackingService.getDashboardStats('today');
             setStats(updatedStats);
 
-            // Fetch riders list
             const ridersData = await TrackingService.getRidersList({
                 status: filters.view_mode === 'live' ? 'active' : 'all',
-                campaign_id: filters.campaign_id || undefined,
+                campaign_id: filters.campaign_id ?? undefined,
             });
-            setRiders(ridersData.data);
+            setRiders(ridersData?.data ?? []);
 
         } catch (error) {
             console.error('Failed to fetch tracking data:', error);
@@ -83,60 +83,64 @@ export default function Index({
         }
     }, [filters]);
 
-    // Initial load
     useEffect(() => {
         fetchTrackingData();
     }, [fetchTrackingData]);
 
-    // Auto-refresh for live view
     useEffect(() => {
-        if (filters.view_mode === 'live' && autoRefreshEnabled) {
-            const interval = setInterval(() => {
-                fetchTrackingData();
-            }, 30000); // 30 seconds
+        if (filters.view_mode !== 'live' || !autoRefreshEnabled) return;
 
-            return () => clearInterval(interval);
-        }
+        const interval = setInterval(fetchTrackingData, 30_000);
+        return () => clearInterval(interval);
     }, [filters.view_mode, autoRefreshEnabled, fetchTrackingData]);
 
-    // Handle filter changes
-    const handleFilterChange = (newFilters: Filters) => {
-        setFilters(newFilters);
-    };
+    // ── Handlers ───────────────────────────────────────────────────────────────
 
-    // Handle rider click
+    const handleFilterChange = (newFilters: Filters) => setFilters(newFilters);
+
     const handleRiderClick = async (riderId: number) => {
         try {
             setSelectedRiderId(riderId);
             const riderData = await TrackingService.getRiderTracking(riderId, filters.date);
-            setSelectedRiderData(riderData);
+            setSelectedRiderData(riderData ?? null);
             openDetails();
         } catch (error) {
             console.error('Failed to fetch rider data:', error);
         }
     };
 
-    // Handle marker click
     const handleMarkerClick = (location: EnrichedLocation) => {
-        handleRiderClick(location.rider_id);
+        if (location?.rider_id != null) {
+            handleRiderClick(location.rider_id);
+        }
     };
 
-    // Export data
     const handleExport = async () => {
         try {
             await TrackingService.exportTrackingData({
                 format: 'csv',
                 date_from: filters.date,
                 date_to: filters.date,
-                campaign_id: filters.campaign_id || undefined,
+                campaign_id: filters.campaign_id ?? undefined,
                 rider_ids: filters.rider_ids,
             });
-            // Show success message
             alert('Export request submitted. You will receive an email when ready.');
         } catch (error) {
             console.error('Export failed:', error);
         }
     };
+
+    // ── Derived values for the modal ───────────────────────────────────────────
+
+    const rider    = selectedRiderData?.rider;
+    const summary  = selectedRiderData?.summary;
+    const locations_ = selectedRiderData?.locations;
+
+    const avgSpeed = summary?.avg_speed;
+    const distance = summary?.distance;
+    const duration = summary?.duration;
+
+    // ── Render ─────────────────────────────────────────────────────────────────
 
     return (
         <AuthenticatedLayout
@@ -152,36 +156,19 @@ export default function Index({
                         </p>
                     </div>
 
-                    {/* Mobile Filter Buttons */}
                     {(isMobile || isTablet) && (
                         <Group>
-                            <Button
-                                variant="light"
-                                leftSection={<FilterIcon size={16} />}
-                                onClick={openFilters}
-                                size="sm"
-                            >
+                            <Button variant="light" leftSection={<FilterIcon size={16} />} onClick={openFilters} size="sm">
                                 Filters
                             </Button>
-                            <Button
-                                variant="light"
-                                leftSection={<ListIcon size={16} />}
-                                onClick={openRiders}
-                                size="sm"
-                            >
+                            <Button variant="light" leftSection={<ListIcon size={16} />} onClick={openRiders} size="sm">
                                 Riders
                             </Button>
                         </Group>
                     )}
 
-                    {/* Export Button - Desktop */}
                     {!isMobile && (
-                        <Button
-                            variant="light"
-                            leftSection={<DownloadIcon size={16} />}
-                            onClick={handleExport}
-                            size="sm"
-                        >
+                        <Button variant="light" leftSection={<DownloadIcon size={16} />} onClick={handleExport} size="sm">
                             Export Data
                         </Button>
                     )}
@@ -191,34 +178,22 @@ export default function Index({
             <Head title="Rider Tracking" />
 
             <div className="space-y-6">
-                {/* Stats Cards */}
                 <TrackingStats stats={stats} loading={loading} />
 
-                {/* Live View Alert */}
                 {filters.view_mode === 'live' && autoRefreshEnabled && (
-                    <Alert 
-                        icon={<AlertCircleIcon size={16} />} 
-                        color="green"
-                        variant="light"
-                    >
+                    <Alert icon={<AlertCircleIcon size={16} />} color="green" variant="light">
                         <Group justify="space-between">
                             <Text size="sm">
-                                Live tracking active - Auto-refreshing every 30 seconds
+                                Live tracking active — Auto-refreshing every 30 seconds
                             </Text>
-                            <Button
-                                size="xs"
-                                variant="subtle"
-                                onClick={() => setAutoRefreshEnabled(false)}
-                            >
+                            <Button size="xs" variant="subtle" onClick={() => setAutoRefreshEnabled(false)}>
                                 Pause
                             </Button>
                         </Group>
                     </Alert>
                 )}
 
-                {/* Main Content - Desktop Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Left Sidebar - Filters (Desktop Only) */}
                     {!isTablet && (
                         <div className="lg:col-span-3 space-y-4">
                             <TrackingFilters
@@ -229,7 +204,6 @@ export default function Index({
                                 onRefresh={fetchTrackingData}
                                 loading={loading}
                             />
-
                             <RiderList
                                 riders={riders}
                                 onRiderClick={handleRiderClick}
@@ -239,8 +213,12 @@ export default function Index({
                         </div>
                     )}
 
-                    {/* Map - Main Content */}
-                    <div className="lg:col-span-9">
+                    {/*
+                     * The map wrapper uses isolation: isolate to create its own
+                     * stacking context. This prevents Leaflet's internal z-indexes
+                     * from leaking out and competing with the Modal overlay.
+                     */}
+                    <div className="lg:col-span-9" style={{ isolation: 'isolate' }}>
                         <div style={{ height: '700px' }}>
                             <TrackingMap
                                 locations={locations}
@@ -251,100 +229,109 @@ export default function Index({
                     </div>
                 </div>
 
-                {/* Mobile Filters Drawer */}
-                <Drawer
-                    opened={filtersOpened}
-                    onClose={closeFilters}
-                    title="Filters"
-                    position="left"
-                    size="sm"
+                {/* ── Mobile drawers ─────────────────────────────────────────── */}
+
+                <Drawer opened={filtersOpened} onClose={closeFilters} title="Filters" position="left" size="sm"
+                    styles={{ inner: { zIndex: MODAL_Z_INDEX } }}
                 >
                     <TrackingFilters
                         campaigns={campaigns}
                         riders={riderOptions}
                         filters={filters}
-                        onFilterChange={(newFilters) => {
-                            handleFilterChange(newFilters);
-                            closeFilters();
-                        }}
+                        onFilterChange={(newFilters) => { handleFilterChange(newFilters); closeFilters(); }}
                         onRefresh={fetchTrackingData}
                         loading={loading}
                     />
                 </Drawer>
 
-                {/* Mobile Riders Drawer */}
-                <Drawer
-                    opened={ridersOpened}
-                    onClose={closeRiders}
-                    title="Active Riders"
-                    position="right"
-                    size="sm"
+                <Drawer opened={ridersOpened} onClose={closeRiders} title="Active Riders" position="right" size="sm"
+                    styles={{ inner: { zIndex: MODAL_Z_INDEX } }}
                 >
                     <RiderList
                         riders={riders}
-                        onRiderClick={(riderId) => {
-                            handleRiderClick(riderId);
-                            closeRiders();
-                        }}
+                        onRiderClick={(riderId) => { handleRiderClick(riderId); closeRiders(); }}
                         selectedRiderId={selectedRiderId}
                         loading={loading}
                     />
                 </Drawer>
 
-                {/* Rider Details Modal */}
+                {/* ── Rider details modal ────────────────────────────────────── */}
+
+                {/*
+                 * zIndex must exceed Leaflet's highest layer (1000).
+                 * portalProps.target defaults to document.body which is correct —
+                 * the modal is rendered outside the map's stacking context.
+                 */}
                 <Modal
                     opened={detailsOpened}
-                    onClose={closeDetails}
+                    onClose={() => { closeDetails(); setSelectedRiderData(null); }}
                     title="Rider Route Details"
                     size="lg"
                     centered
+                    zIndex={MODAL_Z_INDEX}
+                    styles={{
+                        overlay: { zIndex: MODAL_Z_INDEX - 1 },
+                        inner:   { zIndex: MODAL_Z_INDEX },
+                    }}
                 >
-                    {selectedRiderData && (
+                    {selectedRiderData ? (
                         <div className="space-y-4">
+
+                            {/* Rider name / email */}
                             <div>
                                 <Text size="lg" fw={600}>
-                                    {selectedRiderData.rider.name}
+                                    {rider?.name ?? 'Unknown Rider'}
                                 </Text>
-                                <Text size="sm" c="dimmed">
-                                    {selectedRiderData.rider.email}
-                                </Text>
+                                {rider?.email && (
+                                    <Text size="sm" c="dimmed">
+                                        {rider.email}
+                                    </Text>
+                                )}
                             </div>
 
-                            {selectedRiderData.summary && (
+                            {/* Summary grid */}
+                            {summary && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <Text size="xs" c="dimmed">Distance</Text>
                                         <Text size="lg" fw={600}>
-                                            {selectedRiderData.summary.distance.toFixed(1)} km
+                                            {distance != null ? distance.toFixed(1) : '—'} km
                                         </Text>
                                     </div>
                                     <div>
                                         <Text size="xs" c="dimmed">Duration</Text>
                                         <Text size="lg" fw={600}>
-                                            {Math.floor(selectedRiderData.summary.duration / 60)}h {selectedRiderData.summary.duration % 60}m
+                                            {duration != null
+                                                ? `${Math.floor(duration / 60)}h ${duration % 60}m`
+                                                : '—'}
                                         </Text>
                                     </div>
                                     <div>
                                         <Text size="xs" c="dimmed">Avg Speed</Text>
                                         <Text size="lg" fw={600}>
-                                            {selectedRiderData.summary.avg_speed.toFixed(1)} km/h
+                                            {avgSpeed != null ? `${avgSpeed.toFixed(1)} km/h` : '—'}
                                         </Text>
                                     </div>
                                     <div>
                                         <Text size="xs" c="dimmed">Coverage Areas</Text>
                                         <Text size="lg" fw={600}>
-                                            {selectedRiderData.summary.coverage_areas_count}
+                                            {summary.coverage_areas_count ?? '—'}
                                         </Text>
                                     </div>
                                 </div>
                             )}
 
-                            <div>
-                                <Text size="sm" fw={500} mb="xs">
-                                    Location Points: {selectedRiderData.locations.length}
-                                </Text>
-                            </div>
+                            {/* Location point count */}
+                            {locations_ != null && (
+                                <div>
+                                    <Text size="sm" fw={500}>
+                                        Location Points: {locations_.length}
+                                    </Text>
+                                </div>
+                            )}
                         </div>
+                    ) : (
+                        <Text size="sm" c="dimmed">No rider data available.</Text>
                     )}
                 </Modal>
             </div>

@@ -16,9 +16,6 @@ class RiderTrackingService
     // GPS RECORDING
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Record a new GPS point for a rider.
-     */
     public function recordLocation(int $riderId, array $locationData): RiderGpsPoint
     {
         try {
@@ -37,7 +34,7 @@ class RiderTrackingService
             $gpsPoint = RiderGpsPoint::create([
                 'rider_id'               => $riderId,
                 'check_in_id'            => $checkIn->id,
-                'campaign_assignment_id' => $checkIn->campaign_assignment_id,
+                'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
                 'latitude'               => $locationData['latitude'],
                 'longitude'              => $locationData['longitude'],
                 'accuracy'               => $locationData['accuracy'] ?? null,
@@ -54,23 +51,23 @@ class RiderTrackingService
             Cache::put("rider.{$riderId}.latest_gps_point", $gpsPoint, now()->addHours(24));
 
             Log::info('GPS point recorded', [
-                'rider_id'    => $riderId,
+                'rider_id'     => $riderId,
                 'gps_point_id' => $gpsPoint->id,
-                'lat'         => $gpsPoint->latitude,
-                'lng'         => $gpsPoint->longitude,
+                'lat'          => $gpsPoint->latitude,
+                'lng'          => $gpsPoint->longitude,
             ]);
 
             return $gpsPoint;
 
         } catch (\Exception $e) {
-            Log::error('Failed to record GPS point', ['rider_id' => $riderId, 'error' => $e->getMessage()]);
+            Log::error('Failed to record GPS point', [
+                'rider_id' => $riderId,
+                'error'    => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
 
-    /**
-     * Batch-record multiple GPS points.
-     */
     public function recordBatchLocations(int $riderId, array $locations): int
     {
         try {
@@ -83,7 +80,7 @@ class RiderTrackingService
             $records = collect($locations)->map(fn($loc) => [
                 'rider_id'               => $riderId,
                 'check_in_id'            => $checkIn->id,
-                'campaign_assignment_id' => $checkIn->campaign_assignment_id,
+                'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
                 'latitude'               => $loc['latitude'],
                 'longitude'              => $loc['longitude'],
                 'accuracy'               => $loc['accuracy'] ?? null,
@@ -111,12 +108,18 @@ class RiderTrackingService
                 }
             }
 
-            Log::info('Batch GPS points recorded', ['rider_id' => $riderId, 'count' => $count]);
+            Log::info('Batch GPS points recorded', [
+                'rider_id' => $riderId,
+                'count'    => $count,
+            ]);
 
             return $count;
 
         } catch (\Exception $e) {
-            Log::error('Failed to record batch GPS points', ['rider_id' => $riderId, 'error' => $e->getMessage()]);
+            Log::error('Failed to record batch GPS points', [
+                'rider_id' => $riderId,
+                'error'    => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
@@ -139,7 +142,7 @@ class RiderTrackingService
             $route = RiderRoute::firstOrCreate(
                 ['rider_id' => $riderId, 'check_in_id' => $checkIn->id, 'route_date' => today()],
                 [
-                    'campaign_assignment_id' => $checkIn->campaign_assignment_id,
+                    'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
                     'started_at'             => $checkIn->check_in_time,
                     'status'                 => 'active',
                     'tracking_status'        => 'active',
@@ -152,10 +155,17 @@ class RiderTrackingService
 
             $route->update(['tracking_status' => 'paused', 'last_paused_at' => now()]);
 
+            $currentLocation = $this->getCurrentLocation($riderId);
+
             $pauseHistory   = $route->pause_history ?? [];
             $pauseHistory[] = [
                 'paused_at' => now()->toIso8601String(),
-                'location'  => $this->getCurrentLocation($riderId)?->only(['latitude', 'longitude']),
+                'location'  => $currentLocation
+                    ? [
+                        'latitude'  => $currentLocation->latitude,
+                        'longitude' => $currentLocation->longitude,
+                    ]
+                    : null,
             ];
 
             $route->update(['pause_history' => $pauseHistory]);
@@ -191,7 +201,9 @@ class RiderTrackingService
                 throw new \Exception('Tracking is already active');
             }
 
-            $pauseDuration      = $route->last_paused_at ? now()->diffInMinutes($route->last_paused_at) : 0;
+            $pauseDuration      = $route->last_paused_at
+                ? now()->diffInMinutes($route->last_paused_at)
+                : 0;
             $totalPauseDuration = ($route->total_pause_duration ?? 0) + $pauseDuration;
 
             $route->update([
@@ -200,11 +212,12 @@ class RiderTrackingService
                 'total_pause_duration' => $totalPauseDuration,
             ]);
 
+            // Avoid reference bugs by using index-based access instead of &$ref
             $pauseHistory = $route->pause_history ?? [];
             if (!empty($pauseHistory)) {
-                $lastPause                      = &$pauseHistory[count($pauseHistory) - 1];
-                $lastPause['resumed_at']        = now()->toIso8601String();
-                $lastPause['duration_minutes']  = $pauseDuration;
+                $lastIndex                                    = count($pauseHistory) - 1;
+                $pauseHistory[$lastIndex]['resumed_at']       = now()->toIso8601String();
+                $pauseHistory[$lastIndex]['duration_minutes'] = $pauseDuration;
             }
 
             $route->update(['pause_history' => $pauseHistory]);
@@ -241,7 +254,7 @@ class RiderTrackingService
             return [
                 'is_active'       => true,
                 'tracking_status' => 'active',
-                'check_in_time'   => $checkIn->check_in_time->toIso8601String(),
+                'check_in_time'   => $checkIn->check_in_time?->toIso8601String(),
                 'message'         => 'Checked in, tracking active',
             ];
         }
@@ -249,22 +262,18 @@ class RiderTrackingService
         return [
             'is_active'            => true,
             'tracking_status'      => $route->tracking_status ?? 'active',
-            'check_in_time'        => $checkIn->check_in_time->toIso8601String(),
+            'check_in_time'        => $checkIn->check_in_time?->toIso8601String(),
             'last_paused_at'       => $route->last_paused_at?->toIso8601String(),
             'last_resumed_at'      => $route->last_resumed_at?->toIso8601String(),
             'total_pause_duration' => $route->total_pause_duration ?? 0,
             'locations_recorded'   => $route->location_points_count ?? 0,
-            'message'              => $route->tracking_status === 'paused' ? 'Tracking paused' : 'Tracking active',
+            'message'              => $route->tracking_status === 'paused'
+                ? 'Tracking paused'
+                : 'Tracking active',
         ];
     }
 
     /**
-     * Get dashboard statistics for the tracking overview page.
-     *
-     * Returns the shape expected by the TrackingStats React component:
-     *   active_riders, total_distance, total_locations,
-     *   active_campaigns, avg_speed, coverage_areas
-     *
      * @param  string  $period  'today' | 'week' | 'month'
      */
     public function getDashboardStats(string $period = 'today'): array
@@ -275,19 +284,17 @@ class RiderTrackingService
             default => today(),
         };
 
-        // Riders with an active check-in today (always "today" regardless of period)
         $activeRiders = DB::table('rider_check_ins')
             ->where('status', 'active')
             ->whereDate('check_in_date', today())
             ->count();
 
         $totalDistance = RiderRoute::where('route_date', '>=', $dateFilter)
-            ->sum('total_distance');
+            ->sum('total_distance') ?? 0;
 
         $totalLocations = RiderGpsPoint::where('recorded_at', '>=', $dateFilter)
             ->count();
 
-        // Active campaigns that have at least one rider checked in today
         $activeCampaigns = DB::table('campaigns')
             ->join('campaign_assignments', 'campaigns.id', '=', 'campaign_assignments.campaign_id')
             ->join('rider_check_ins', 'campaign_assignments.id', '=', 'rider_check_ins.campaign_assignment_id')
@@ -301,8 +308,6 @@ class RiderTrackingService
             ->whereNotNull('avg_speed')
             ->avg('avg_speed');
 
-        // coverage_areas is a JSON array cast on RiderRoute; flatten & deduplicate in PHP.
-        // For large datasets, consider a DB-native JSON query or a pivot table instead.
         $coverageAreas = RiderRoute::where('route_date', '>=', $dateFilter)
             ->whereNotNull('coverage_areas')
             ->pluck('coverage_areas')
@@ -311,12 +316,12 @@ class RiderTrackingService
             ->count();
 
         return [
-            'active_riders'    => $activeRiders,
-            'total_distance'   => round((float) $totalDistance, 2),
-            'total_locations'  => $totalLocations,
-            'active_campaigns' => $activeCampaigns,
+            'active_riders'    => $activeRiders ?? 0,
+            'total_distance'   => round((float) ($totalDistance ?? 0), 2),
+            'total_locations'  => $totalLocations ?? 0,
+            'active_campaigns' => $activeCampaigns ?? 0,
             'avg_speed'        => $avgSpeed ? round((float) $avgSpeed, 2) : 0.0,
-            'coverage_areas'   => $coverageAreas,
+            'coverage_areas'   => $coverageAreas ?? 0,
         ];
     }
 
@@ -332,21 +337,28 @@ class RiderTrackingService
             ->whereDate('check_in_date', $date)
             ->first();
 
-        $route = $this->getTodayRoute($riderId);
+        // Use an explicit date query so historical dates work correctly,
+        // not just today's route.
+        $route = RiderRoute::where('rider_id', $riderId)
+            ->whereDate('route_date', $date)
+            ->first();
+
+        $avgSpeed = $gpsPoints->avg('speed');
+        $maxSpeed = $gpsPoints->max('speed');
 
         return [
-            'date'                    => $date->toDateString(),
-            'checked_in'              => (bool) $checkIn,
-            'check_in_time'           => $checkIn?->check_in_time?->format('H:i:s'),
-            'check_out_time'          => $checkIn?->check_out_time?->format('H:i:s'),
-            'tracking_status'         => $route?->tracking_status ?? 'stopped',
+            'date'                     => $date->toDateString(),
+            'checked_in'               => (bool) $checkIn,
+            'check_in_time'            => $checkIn?->check_in_time?->format('H:i:s'),
+            'check_out_time'           => $checkIn?->check_out_time?->format('H:i:s'),
+            'tracking_status'          => $route?->tracking_status ?? 'stopped',
             'total_locations_recorded' => $gpsPoints->count(),
-            'total_pause_duration'    => $route?->total_pause_duration ?? 0,
-            'pause_count'             => count($route?->pause_history ?? []),
-            'first_location_time'     => $gpsPoints->first()?->recorded_at?->format('H:i:s'),
-            'last_location_time'      => $gpsPoints->last()?->recorded_at?->format('H:i:s'),
-            'average_speed'           => $gpsPoints->avg('speed') ? round($gpsPoints->avg('speed'), 2) : null,
-            'max_speed'               => $gpsPoints->max('speed') ? round($gpsPoints->max('speed'), 2) : null,
+            'total_pause_duration'     => $route?->total_pause_duration ?? 0,
+            'pause_count'              => count($route?->pause_history ?? []),
+            'first_location_time'      => $gpsPoints->first()?->recorded_at?->format('H:i:s'),
+            'last_location_time'       => $gpsPoints->last()?->recorded_at?->format('H:i:s'),
+            'average_speed'            => $avgSpeed ? round((float) $avgSpeed, 2) : null,
+            'max_speed'                => $maxSpeed ? round((float) $maxSpeed, 2) : null,
         ];
     }
 
@@ -354,12 +366,6 @@ class RiderTrackingService
     // LIVE TRACKING
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Return raw live-tracking data (latest GPS point per active rider).
-     *
-     * Controllers should call enrichLocation() on each item before returning
-     * to the client, so presentation logic stays out of the service.
-     */
     public function getLiveTrackingData(array $filters = []): array
     {
         try {
@@ -387,12 +393,14 @@ class RiderTrackingService
                 ->map(fn($points) => $points->sortByDesc('recorded_at')->first())
                 ->values();
 
+            $dateString = ($date instanceof Carbon ? $date : Carbon::parse($date))->toDateString();
+
             return [
-                'active_riders' => $latestPoints->count(),
-                'locations'     => $latestPoints,
-                'last_updated'  => now()->toIso8601String(),
+                'active_riders'   => $latestPoints->count(),
+                'locations'       => $latestPoints,
+                'last_updated'    => now()->toIso8601String(),
                 'filters_applied' => [
-                    'date'        => ($date instanceof \Carbon\Carbon ? $date : Carbon::parse($date))->toDateString(),
+                    'date'        => $dateString,
                     'campaign_id' => $filters['campaign_id'] ?? null,
                 ],
             ];
@@ -413,36 +421,47 @@ class RiderTrackingService
     }
 
     /**
-     * Transform a single RiderGpsPoint model into the enriched array shape
-     * used by both the Inertia page (via TrackingController) and the API
-     * (via AdminTrackingController).  Keeping this in the service means
-     * neither controller needs to know about the transformation.
+     * Transform a RiderGpsPoint into the enriched array used by both
+     * the Inertia page and the API. Every nested relationship access
+     * is null-safe so missing rider / user / campaign never causes an error.
      */
     public function enrichLocation(RiderGpsPoint $gpsPoint): array
     {
+        $rider              = $gpsPoint->rider;
+        $user               = $rider?->user;
+        $campaignAssignment = $gpsPoint->campaignAssignment;
+        $campaign           = $campaignAssignment?->campaign;
+        $recordedAt         = $gpsPoint->recorded_at;
+
         return [
-            'id'     => $gpsPoint->id,
+            'id'       => $gpsPoint->id,
             'rider_id' => $gpsPoint->rider_id,
-            'rider'  => [
-                'id'     => $gpsPoint->rider->id,
-                'name'   => $gpsPoint->rider->user->name,
-                'phone'  => $gpsPoint->rider->user->phone,
-                'status' => $gpsPoint->rider->status,
+
+            'rider' => [
+                'id'     => $rider?->id,
+                'name'   => $user?->name,
+                'phone'  => $user?->phone,
+                'status' => $rider?->status,
             ],
+
             'location' => [
-                'latitude'  => (float) $gpsPoint->latitude,
-                'longitude' => (float) $gpsPoint->longitude,
-                'accuracy'  => $gpsPoint->accuracy ? (float) $gpsPoint->accuracy : null,
-                'speed'     => $gpsPoint->speed    ? (float) $gpsPoint->speed    : null,
-                'heading'   => $gpsPoint->heading  ? (float) $gpsPoint->heading  : null,
+                'latitude'  => $gpsPoint->latitude  !== null ? (float) $gpsPoint->latitude  : null,
+                'longitude' => $gpsPoint->longitude !== null ? (float) $gpsPoint->longitude : null,
+                'accuracy'  => $gpsPoint->accuracy  !== null ? (float) $gpsPoint->accuracy  : null,
+                'speed'     => $gpsPoint->speed     !== null ? (float) $gpsPoint->speed     : null,
+                'heading'   => $gpsPoint->heading   !== null ? (float) $gpsPoint->heading   : null,
             ],
-            'campaign'    => $gpsPoint->campaignAssignment ? [
-                'id'   => $gpsPoint->campaignAssignment->campaign_id,
-                'name' => $gpsPoint->campaignAssignment->campaign->name,
-            ] : null,
-            'recorded_at' => $gpsPoint->recorded_at->toIso8601String(),
-            'time_ago'    => $gpsPoint->recorded_at->diffForHumans(),
-            'is_recent'   => $gpsPoint->is_recent,
+
+            'campaign' => ($campaignAssignment && $campaign)
+                ? [
+                    'id'   => $campaignAssignment->campaign_id,
+                    'name' => $campaign->name,
+                ]
+                : null,
+
+            'recorded_at' => $recordedAt?->toIso8601String(),
+            'time_ago'    => $recordedAt?->diffForHumans(),
+            'is_recent'   => $gpsPoint->is_recent ?? false,
         ];
     }
 
@@ -497,9 +516,13 @@ class RiderTrackingService
     private function updateRouteRecord(RiderCheckIn $checkIn, RiderGpsPoint $gpsPoint): void
     {
         $route = RiderRoute::firstOrCreate(
-            ['rider_id' => $checkIn->rider_id, 'check_in_id' => $checkIn->id, 'route_date' => today()],
             [
-                'campaign_assignment_id' => $checkIn->campaign_assignment_id,
+                'rider_id'    => $checkIn->rider_id,
+                'check_in_id' => $checkIn->id,
+                'route_date'  => today(),
+            ],
+            [
+                'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
                 'started_at'             => $checkIn->check_in_time,
                 'status'                 => 'active',
                 'tracking_status'        => 'active',

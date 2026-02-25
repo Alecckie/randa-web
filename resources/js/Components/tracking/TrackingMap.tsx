@@ -6,16 +6,15 @@ import 'leaflet/dist/leaflet.css';
 import { NavigationIcon, ClockIcon, GaugeIcon, MapPinIcon } from 'lucide-react';
 import type { EnrichedLocation, RouteLocation } from '@/types/tracking';
 
-// Rider colors for multiple riders
 const RIDER_COLORS = [
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#8B5CF6', // Purple
-    '#EC4899', // Pink
-    '#06B6D4', // Cyan
-    '#84CC16', // Lime
+    '#3B82F6',
+    '#10B981',
+    '#F59E0B',
+    '#EF4444',
+    '#8B5CF6',
+    '#EC4899',
+    '#06B6D4',
+    '#84CC16',
 ];
 
 interface TrackingMapProps {
@@ -27,28 +26,62 @@ interface TrackingMapProps {
     loading?: boolean;
 }
 
-// Component to handle map bounds fitting
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Safely extract a [lat, lng] tuple from an EnrichedLocation.
+ * Returns null when either coordinate is missing or non-finite so the caller
+ * can skip rendering rather than passing NaN to Leaflet.
+ */
+function safeLatLng(location: EnrichedLocation): [number, number] | null {
+    // Coordinates may live directly on the location object OR nested under location.location
+    const lat = location.latitude ?? location?.location?.latitude;
+    const lng = location.longitude ?? location?.location?.longitude;
+
+    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
+        return null;
+    }
+    return [lat, lng];
+}
+
+/**
+ * Safely extract [lat, lng] from a RouteLocation.
+ * Returns null when the coordinate is missing or non-finite.
+ */
+function safeRouteLatlng(loc: RouteLocation): [number, number] | null {
+    const lat = loc.latitude;
+    const lng = loc.longitude;
+    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
+        return null;
+    }
+    return [lat, lng];
+}
+
+// ── Map bounds handler ────────────────────────────────────────────────────────
+
 function MapBoundsHandler({ locations }: { locations: EnrichedLocation[] }) {
     const map = useMap();
 
     useEffect(() => {
-        if (locations.length > 0) {
-            // 1. Map to a simple array of number tuples
-            const points = locations.map(loc => [loc.latitude, loc.longitude] as [number, number]);
+        // Only use locations that have valid coordinates
+        const validPoints = locations
+            .map(safeLatLng)
+            .filter((p): p is [number, number] => p !== null);
 
-            if (points.length === 1) {
-                map.setView(points[0], 13);
-            } else {
-                // 2. Pass the points directly; Leaflet handles the conversion to bounds
-                map.fitBounds(points, { padding: [50, 50] });
-            }
+        if (validPoints.length === 0) return;
+
+        if (validPoints.length === 1) {
+            map.setView(validPoints[0], 13);
+        } else {
+            map.fitBounds(validPoints, { padding: [50, 50] });
         }
     }, [locations, map]);
 
     return null;
 }
 
-// Create custom marker icon
+// ── Marker icon ───────────────────────────────────────────────────────────────
+
 function createRiderIcon(color: string, isActive: boolean): DivIcon {
     return new DivIcon({
         className: 'custom-rider-marker',
@@ -77,28 +110,29 @@ function createRiderIcon(color: string, isActive: boolean): DivIcon {
     });
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function TrackingMap({
     locations,
     routes,
-    center = [-1.286389, 36.817223], // Nairobi default
+    center = [-1.286389, 36.817223],
     zoom = 12,
     onMarkerClick,
-    loading = false
+    loading = false,
 }: TrackingMapProps) {
     const [selectedLocation, setSelectedLocation] = useState<EnrichedLocation | null>(null);
 
-    // Get color for rider
-    const getRiderColor = (riderId: number): string => {
+    const getRiderColor = (riderId: number | null | undefined): string => {
+        if (riderId == null) return RIDER_COLORS[0];
         return RIDER_COLORS[riderId % RIDER_COLORS.length];
     };
 
-    // Handle marker click
     const handleMarkerClick = (location: EnrichedLocation) => {
         setSelectedLocation(location);
-        if (onMarkerClick) {
-            onMarkerClick(location);
-        }
+        onMarkerClick?.(location);
     };
+
+    // ── Loading state ──────────────────────────────────────────────────────────
 
     if (loading) {
         return (
@@ -111,28 +145,35 @@ export default function TrackingMap({
         );
     }
 
+    // Pre-filter to only locations with valid coordinates so nothing below
+    // ever receives a null/NaN position.
+    const validLocations = locations.filter((loc) => safeLatLng(loc) !== null);
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+
     return (
         <Card className="h-full p-0 overflow-hidden relative bg-white dark:bg-gray-800">
-            {/* Map Legend */}
+
+            {/* Legend */}
             <div className="absolute top-4 right-4 z-[1000] bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
                 <Text size="xs" fw={700} mb="xs">Legend</Text>
                 <div className="space-y-2">
                     <Group gap="xs">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
                         <Text size="xs">Active (&lt; 5 min)</Text>
                     </Group>
                     <Group gap="xs">
-                        <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                        <div className="w-3 h-3 rounded-full bg-gray-400" />
                         <Text size="xs">Inactive (&gt; 5 min)</Text>
                     </Group>
                 </div>
             </div>
 
-            {/* Location Count Badge */}
-            {locations.length > 0 && (
+            {/* Active rider count badge */}
+            {validLocations.length > 0 && (
                 <div className="absolute top-4 left-4 z-[1000]">
                     <Badge size="lg" variant="filled" color="blue">
-                        {locations.length} Active Rider{locations.length !== 1 ? 's' : ''}
+                        {validLocations.length} Active Rider{validLocations.length !== 1 ? 's' : ''}
                     </Badge>
                 </div>
             )}
@@ -149,90 +190,101 @@ export default function TrackingMap({
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 />
 
-                {/* Fit bounds to show all markers */}
-                <MapBoundsHandler locations={locations} />
+                <MapBoundsHandler locations={validLocations} />
 
-                {/* Render rider markers */}
-                {locations.map((location) => {
-                    const color = getRiderColor(location.rider_id);
-                    const markerIcon = createRiderIcon(color, location.is_recent);
+                {/* Rider markers */}
+                {validLocations.map((location) => {
+                    const coords = safeLatLng(location)!; // safe: filtered above
+                    const color  = getRiderColor(location.rider_id);
+                    const isActive = location.is_recent ?? false;
+
+                    // Safely resolve nested speed / heading / accuracy.
+                    // The API may return these directly on the location object
+                    // or nested under location.location depending on the endpoint.
+                    const speed    = location.speed    ?? location?.location?.speed    ?? null;
+                    const heading  = location.heading  ?? location?.location?.heading  ?? null;
+                    const accuracy = location.accuracy ?? location?.location?.accuracy ?? null;
+
+                    const riderName  = location.rider?.name   ?? 'Unknown Rider';
+                    const riderPhone = location.rider?.phone  ?? null;
+                    const timeAgo    = location.time_ago      ?? null;
+                    const address    = location.address       ?? null;
+                    const campaign   = location.campaign      ?? null;
 
                     return (
                         <Marker
-                            key={location.id}
-                            position={[location.latitude, location.longitude] as LatLngExpression}
-                            icon={markerIcon}
-                            eventHandlers={{
-                                click: () => handleMarkerClick(location)
-                            }}
+                            key={location.id ?? `${coords[0]}-${coords[1]}`}
+                            position={coords as LatLngExpression}
+                            icon={createRiderIcon(color, isActive)}
+                            eventHandlers={{ click: () => handleMarkerClick(location) }}
                         >
                             <Popup>
                                 <div className="p-2 min-w-[250px]">
-                                    {/* Rider Info */}
+
+                                    {/* Rider info */}
                                     <div className="mb-3">
                                         <Text size="sm" fw={700} className="text-gray-900">
-                                            {location.rider.name}
+                                            {riderName}
                                         </Text>
-                                        <Text size="xs" c="dimmed">
-                                            {location.rider.phone}
-                                        </Text>
+                                        {riderPhone && (
+                                            <Text size="xs" c="dimmed">
+                                                {riderPhone}
+                                            </Text>
+                                        )}
                                     </div>
 
-                                    {/* Campaign */}
-                                    {location.campaign && (
+                                    {/* Campaign badge */}
+                                    {campaign?.name && (
                                         <div className="mb-3">
                                             <Badge size="sm" variant="light" color="blue">
-                                                {location.campaign.name}
+                                                {campaign.name}
                                             </Badge>
                                         </div>
                                     )}
 
-                                    {/* Location Details */}
+                                    {/* Location details */}
                                     <div className="space-y-2">
-                                        {location.speed !== null && (
+                                        {speed != null && isFinite(speed) && (
                                             <Group gap="xs">
                                                 <GaugeIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
-                                                    {location.speed.toFixed(1)} km/h
+                                                    {speed.toFixed(1)} km/h
                                                 </Text>
                                             </Group>
                                         )}
 
-                                        {location.heading !== null && (
+                                        {heading != null && isFinite(heading) && (
                                             <Group gap="xs">
                                                 <NavigationIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
-                                                    Heading: {location.heading.toFixed(0)}°
+                                                    Heading: {heading.toFixed(0)}°
                                                 </Text>
                                             </Group>
                                         )}
 
-                                        {location.accuracy !== null && (
+                                        {accuracy != null && isFinite(accuracy) && (
                                             <Group gap="xs">
                                                 <MapPinIcon size={14} className="text-gray-500" />
                                                 <Text size="xs">
-                                                    ±{location.accuracy.toFixed(0)}m accuracy
+                                                    ±{accuracy.toFixed(0)}m accuracy
                                                 </Text>
                                             </Group>
                                         )}
 
-                                        <Group gap="xs">
-                                            <ClockIcon size={14} className="text-gray-500" />
-                                            <Text size="xs">
-                                                {location.time_ago}
-                                            </Text>
-                                        </Group>
+                                        {timeAgo && (
+                                            <Group gap="xs">
+                                                <ClockIcon size={14} className="text-gray-500" />
+                                                <Text size="xs">{timeAgo}</Text>
+                                            </Group>
+                                        )}
 
-                                        {location.address && (
+                                        {address && (
                                             <div className="mt-2 pt-2 border-t border-gray-200">
-                                                <Text size="xs" c="dimmed">
-                                                    {location.address}
-                                                </Text>
+                                                <Text size="xs" c="dimmed">{address}</Text>
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* View Details Button */}
                                     <Button
                                         size="xs"
                                         variant="light"
@@ -248,18 +300,23 @@ export default function TrackingMap({
                     );
                 })}
 
-                {/* Render routes if provided */}
+                {/* Route polylines */}
                 {routes && Array.from(routes.entries()).map(([riderId, routeLocations]) => {
-                    const color = getRiderColor(riderId);
-                    const positions = routeLocations.map(loc => [loc.latitude, loc.longitude] as LatLngExpression);
+                    // Drop any points with invalid coordinates before passing to Leaflet
+                    const positions = routeLocations
+                        .map(safeRouteLatlng)
+                        .filter((p): p is [number, number] => p !== null) as LatLngExpression[];
+
+                    // Nothing to draw if fewer than 2 valid points
+                    if (positions.length < 2) return null;
 
                     return (
                         <Polyline
                             key={riderId}
                             positions={positions}
                             pathOptions={{
-                                color: color,
-                                weight: 4,
+                                color:   getRiderColor(riderId),
+                                weight:  4,
                                 opacity: 0.7,
                             }}
                         />
@@ -267,8 +324,8 @@ export default function TrackingMap({
                 })}
             </MapContainer>
 
-            {/* No Data Message */}
-            {locations.length === 0 && !loading && (
+            {/* No data overlay */}
+            {validLocations.length === 0 && !loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-800/80 z-[1000]">
                     <div className="text-center">
                         <div className="text-6xl mb-4">📍</div>
@@ -280,15 +337,10 @@ export default function TrackingMap({
                 </div>
             )}
 
-            {/* Add pulse animation styles */}
             <style>{`
                 @keyframes pulse {
-                    0%, 100% {
-                        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
-                    }
-                    50% {
-                        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
-                    }
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+                    50%       { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
                 }
             `}</style>
         </Card>

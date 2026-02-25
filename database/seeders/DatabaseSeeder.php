@@ -16,13 +16,14 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'admin',
-            'email' => 'admin@gmail.com',
-            'password' => Hash::make('password')
-        ]);
+        // User::factory()->create([
+        //     'name' => 'admin4',
+        //     'email' => 'admin3@gmail.com',
+        //     'password' => Hash::make('password')
+        // ]);
 
         //  LocationSeeder::class;
         $this->call(CoverageAreasSeeder::class);
+        $this->call(RiderTrackingSeeder::class);
     }
 }
