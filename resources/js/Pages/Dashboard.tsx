@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import type { 
     User,
     StatCard, 
@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 
 export default function Dashboard() {
-    const { auth } = usePage<PageProps>().props;
+    const { auth, dashboardData } = usePage<PageProps & { dashboardData: any }>().props;
     const user: User = auth?.user || { 
         id: 1, 
         name: 'User', 
@@ -23,19 +23,24 @@ export default function Dashboard() {
         updated_at: ''
     };
     
-    const dashboardData: DashboardData = {
+    const realDashboardData: DashboardData = {
         admin: {
             stats: [
-                { name: 'Active Campaigns', value: '12', change: '+2.5%', trend: 'up', icon: '🎯' },
-                { name: 'Total Riders', value: '248', change: '+12%', trend: 'up', icon: '🏍️' },
-                { name: 'Helmets Deployed', value: '186', change: '+8.2%', trend: 'up', icon: '🪖' },
+                { name: 'Active Campaigns', value: dashboardData?.activeCampaigns?.toString() || '0', change: '+2.5%', trend: 'up', icon: '🎯' },
+                { name: 'Total Riders', value: dashboardData?.totalRiders?.toString() || '0', change: '+12%', trend: 'up', icon: '🏍️' },
+                { name: 'Total Helmets', value: dashboardData?.totalHelmets?.toString() || '0', change: '+8.2%', trend: 'up', icon: '🪖' },
                 { name: 'Total Payments', value: 'KSh 40,000', change: '+15.3%', trend: 'up', icon: '💰' },
             ],
-            recentActivity: [
+            recentActivity: dashboardData?.recentActivities || [
                 { id: 1, action: 'New rider application approved', user: 'John Doe', time: '2 hours ago', type: 'approval' },
                 { id: 2, action: 'Campaign "City Mall Promo" completed', user: 'Metro Ads', time: '4 hours ago', type: 'campaign' },
                 { id: 3, action: 'Payment processed', user: 'Jane Smith', time: '6 hours ago', type: 'payment' },
                 { id: 4, action: 'New helmet registered', user: 'System', time: '1 day ago', type: 'system' },
+            ],
+            quickLinks: [
+                { name: 'Riders awaiting approval', count: dashboardData?.ridersAwaitingApproval || 0, route: 'riders.index', filter: 'pending' },
+                { name: 'Campaigns awaiting approval', count: dashboardData?.campaignsAwaitingApproval || 0, route: 'campaigns.index', filter: 'pending' },
+                { name: 'Riders awaiting disbursement', count: dashboardData?.ridersAwaitingDisbursement || 0, route: 'riders.index', filter: 'disbursement' },
             ]
         },
         rider: {
@@ -67,7 +72,7 @@ export default function Dashboard() {
         }
     };
 
-    const currentData = dashboardData[user.role] || dashboardData.admin;
+    const currentData = realDashboardData[user.role] || realDashboardData.admin;
     
     // Type guards for role-specific data
     const hasCurrentCampaign = (data: typeof currentData): data is { stats: StatCard[]; currentCampaign: CurrentCampaign } => {
@@ -128,34 +133,77 @@ export default function Dashboard() {
             <div className="space-y-6">
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    {currentData.stats.map((stat, index) => (
-                        <div
-                            key={index}
-                            className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300"
-                        >
-                            <div className="p-4 sm:p-6">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                                            {stat.name}
-                                        </p>
-                                        <div className="mt-2 flex items-baseline">
-                                            <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                                {stat.value}
-                                            </p>
-                                            <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
-                                                <span className="mr-1">{getTrendIcon(stat.trend)}</span>
-                                                {stat.change}
-                                            </p>
+                    {currentData.stats.map((stat, index) => {
+                        const getStatRoute = (statName: string) => {
+                            if (statName.includes('Campaign')) return 'campaigns.index';
+                            if (statName.includes('Rider')) return 'riders.index';
+                            if (statName.includes('Helmet')) return 'helmets.index';
+                            return null;
+                        };
+                        
+                        const statRoute = getStatRoute(stat.name);
+                        
+                        if (statRoute) {
+                            return (
+                                <Link
+                                    key={index}
+                                    href={route(statRoute)}
+                                    className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300 cursor-pointer"
+                                >
+                                    <div className="p-4 sm:p-6">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
+                                                    {stat.name}
+                                                </p>
+                                                <div className="mt-2 flex items-baseline">
+                                                    <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                                                        {stat.value}
+                                                    </p>
+                                                    <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
+                                                        <span className="mr-1">{getTrendIcon(stat.trend)}</span>
+                                                        {stat.change}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
+                                                {stat.icon}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
-                                        {stat.icon}
+                                </Link>
+                            );
+                        } else {
+                            return (
+                                <div
+                                    key={index}
+                                    className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300"
+                                >
+                                    <div className="p-4 sm:p-6">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
+                                                    {stat.name}
+                                                </p>
+                                                <div className="mt-2 flex items-baseline">
+                                                    <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                                                        {stat.value}
+                                                    </p>
+                                                    <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
+                                                        <span className="mr-1">{getTrendIcon(stat.trend)}</span>
+                                                        {stat.change}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
+                                                {stat.icon}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    ))}
+                            );
+                        }
+                    })}
                 </div>
 
                 {/* Role-specific Content */}
@@ -169,7 +217,7 @@ export default function Dashboard() {
                                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Activity</h3>
                                 </div>
                                 <div className="p-4 sm:p-6">
-                                    <div className="flow-root">
+                                    <div className="flow-root max-h-96 overflow-y-auto">
                                         <ul className="-mb-8">
                                             {hasRecentActivity(currentData) && currentData.recentActivity.map((activity, index) => (
                                                 <li key={activity.id}>
@@ -180,8 +228,12 @@ export default function Dashboard() {
                                                         <div className="relative flex space-x-3">
                                                             <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
                                                                 <span className="text-white text-xs">
-                                                                    {activity.type === 'approval' && '✓'}
+                                                                    {activity.type === 'rider' && '👤'}
                                                                     {activity.type === 'campaign' && '🎯'}
+                                                                    {activity.type === 'helmet' && '🪖'}
+                                                                    {activity.type === 'assignment' && '🔗'}
+                                                                    {activity.type === 'campaign_closed' && '✅'}
+                                                                    {activity.type === 'approval' && '✓'}
                                                                     {activity.type === 'payment' && '💰'}
                                                                     {activity.type === 'system' && '⚙️'}
                                                                 </span>
@@ -205,29 +257,25 @@ export default function Dashboard() {
                                 </div>
                             </div>
 
-                            {/* Quick Actions */}
+                            {/* Quick Links */}
                             <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
                                 <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h3>
+                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quick Links</h3>
                                 </div>
                                 <div className="p-4 sm:p-6">
-                                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                                        <button className="flex flex-col items-center p-3 sm:p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">
-                                            <span className="text-xl sm:text-2xl mb-2">🎯</span>
-                                            <span className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white text-center">New Campaign</span>
-                                        </button>
-                                        <button className="flex flex-col items-center p-3 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors">
-                                            <span className="text-xl sm:text-2xl mb-2">👤</span>
-                                            <span className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white text-center">Add Rider</span>
-                                        </button>
-                                        <button className="flex flex-col items-center p-3 sm:p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
-                                            <span className="text-xl sm:text-2xl mb-2">🪖</span>
-                                            <span className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white text-center">Add Helmet</span>
-                                        </button>
-                                        <button className="flex flex-col items-center p-3 sm:p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors">
-                                            <span className="text-xl sm:text-2xl mb-2">📊</span>
-                                            <span className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white text-center">New Advertiser</span>
-                                        </button>
+                                    <div className="space-y-3">
+                                        {hasRecentActivity(currentData) && 'quickLinks' in currentData && Array.isArray((currentData as any).quickLinks) && (currentData as any).quickLinks.map((link: any, index: number) => (
+                                            <Link
+                                                key={index}
+                                                href={route(link.route, link.filter ? { status: link.filter } : {})}
+                                                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+                                            >
+                                                <span className="text-sm font-medium text-gray-900 dark:text-white">{link.name}</span>
+                                                <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                                                    {link.count}
+                                                </span>
+                                            </Link>
+                                        ))}
                                     </div>
                                 </div>
                             </div>

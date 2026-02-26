@@ -20,7 +20,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get rider's check-in overview
-     * 
+     *
      * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
@@ -50,7 +50,7 @@ class RiderCheckInController extends Controller
                         'daily_rate' => 'KSh ' . number_format($rider->daily_rate, 2),
                     ]
                 ]
-            ]);
+            ],200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -62,7 +62,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Process check-in via QR code
-     * 
+     *
      * @param Request $request
      * @return JsonResponse
      */
@@ -110,7 +110,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Process check-out
-     * 
+     *
      * @return JsonResponse
      */
     public function checkOut(Request $request): JsonResponse
@@ -155,7 +155,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Validate QR code before check-in
-     * 
+     *
      * @param Request $request
      * @return JsonResponse
      */
@@ -199,7 +199,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get today's check-in status
-     * 
+     *
      * @return JsonResponse
      */
     public function getTodayStatus(Request $request): JsonResponse
@@ -231,7 +231,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get check-in history with pagination
-     * 
+     *
      * @param Request $request
      * @return JsonResponse
      */
@@ -275,7 +275,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get check-in statistics
-     * 
+     *
      * @return JsonResponse
      */
     public function stats(Request $request): JsonResponse
@@ -307,7 +307,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get check-in details by ID
-     * 
+     *
      * @param int $id
      * @return JsonResponse
      */
@@ -369,7 +369,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Force check-out (admin only or emergency)
-     * 
+     *
      * @param Request $request
      * @return JsonResponse
      */
@@ -439,7 +439,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get current active assignment for rider
-     * 
+     *
      * @return JsonResponse
      */
     public function currentAssignment(): JsonResponse
@@ -498,7 +498,7 @@ class RiderCheckInController extends Controller
 
     /**
      * Get monthly earnings summary
-     * 
+     *
      * @param Request $request
      * @return JsonResponse
      */

@@ -6,6 +6,7 @@ use App\Http\Requests\StoreRiderRequest;
 use App\Models\Rider;
 use App\Models\User;
 use App\Services\LocationService;
+use App\Services\NotificationService;
 use App\Services\RiderService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,13 +15,17 @@ class RiderController extends Controller
 {
 
     protected RiderService $riderService;
-
     protected LocationService $locationService;
+    protected NotificationService $notificationService;
 
-    public function __construct(RiderService $riderService, LocationService $locationService)
-    {
+    public function __construct(
+        RiderService $riderService, 
+        LocationService $locationService,
+        NotificationService $notificationService
+    ) {
         $this->riderService = $riderService;
         $this->locationService = $locationService;
+        $this->notificationService = $notificationService;
     }
     /**
      * Display a listing of the resource.
@@ -40,6 +45,28 @@ class RiderController extends Controller
         $riders = $this->riderService->getRidersPaginated($filters, $request->get('per_page', 15));
         $stats = $this->riderService->getRiderStats();
         $users = User::select('id', 'name', 'email')->get();
+
+        // Transform the data to match frontend expectations
+        $transformedRiders = $riders->getCollection()->map(function ($user) {
+            return [
+                'id' => $user->rider_id ?? null,
+                'user_id' => $user->id,
+                'national_id' => $user->national_id,
+                'mpesa_number' => $user->mpesa_number,
+                'status' => $user->rider_status,
+                'daily_rate' => $user->daily_rate,
+                'wallet_balance' => $user->wallet_balance ?? '0.00',
+                'created_at' => $user->rider_created_at ?? $user->created_at,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                ],
+            ];
+        });
+
+        $riders->setCollection($transformedRiders);
 
         return Inertia::render('Riders/Index', [
             'riders' => $riders,
@@ -127,5 +154,23 @@ class RiderController extends Controller
     public function destroy(Rider $rider)
     {
         //
+    }
+
+    /**
+     * Notify rider to complete profile
+     */
+    public function notifyRider(User $user)
+    {
+        try {
+            $results = $this->notificationService->sendProfileCompletionReminder($user);
+            
+            return redirect()
+                ->back()
+                ->with('success', 'Notification sent to rider successfully.');
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to send notification: ' . $e->getMessage());
+        }
     }
 }

@@ -24,9 +24,7 @@ class RiderTrackingController extends Controller
     public function __construct(
         private RiderTrackingService $trackingService,
         private RiderService $riderService
-    ) {
-        $this->middleware(['auth:sanctum', 'role:rider']);
-    }
+    ) {}
 
     /**
      * Record a single GPS location point
