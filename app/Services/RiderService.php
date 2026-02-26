@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Campaign;
 use App\Models\CampaignAssignment;
+use App\Models\Helmet;
 use App\Models\Rider;
 use App\Models\RiderLocation;
 use App\Models\RiderLocationChangeLog;
@@ -35,9 +36,9 @@ class RiderService
             ->where('role', 'rider')
             ->leftJoin('riders', 'users.id', '=', 'riders.user_id')
             ->with([
-                'rider.currentAssignment.campaign:id,name', 
-                'rider.currentLocation.county', 
-                'rider.currentLocation.subcounty', 
+                'rider.currentAssignment.campaign:id,name',
+                'rider.currentLocation.county',
+                'rider.currentLocation.subcounty',
                 'rider.currentLocation.ward'
             ])
             ->select(
@@ -63,14 +64,14 @@ class RiderService
 
         if (!empty($filters['search'])) {
             $search = $filters['search'];
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('users.first_name', 'like', "%{$search}%")
-                  ->orWhere('users.last_name', 'like', "%{$search}%")
-                  ->orWhere('users.name', 'like', "%{$search}%")
-                  ->orWhere('users.email', 'like', "%{$search}%")
-                  ->orWhere('users.phone', 'like', "%{$search}%")
-                  ->orWhere('riders.national_id', 'like', "%{$search}%")
-                  ->orWhere('riders.mpesa_number', 'like', "%{$search}%");
+                    ->orWhere('users.last_name', 'like', "%{$search}%")
+                    ->orWhere('users.name', 'like', "%{$search}%")
+                    ->orWhere('users.email', 'like', "%{$search}%")
+                    ->orWhere('users.phone', 'like', "%{$search}%")
+                    ->orWhere('riders.national_id', 'like', "%{$search}%")
+                    ->orWhere('riders.mpesa_number', 'like', "%{$search}%");
             });
         }
 
@@ -92,7 +93,7 @@ class RiderService
     {
         $totalRiderUsers = User::where('role', 'rider')->count();
         $incompleteProfiles = User::where('role', 'rider')->whereDoesntHave('rider')->count();
-        
+
         return [
             'total_riders' => $totalRiderUsers,
             'incomplete_profiles' => $incompleteProfiles,
@@ -157,14 +158,14 @@ class RiderService
                 try {
                     // Validate file
                     $this->documentService->validateDocument($field, $data[$field]);
-                    
+
                     // Upload and get path
                     $path = $this->documentService->uploadDocument(
                         $rider,
                         $field,
                         $data[$field]
                     );
-                    
+
                     // Update database immediately (separate transaction per file)
                     DB::transaction(function () use ($rider, $field, $path) {
                         $rider->update([$field => $path]);
@@ -175,14 +176,13 @@ class RiderService
                         'field' => $field,
                         'path' => $path
                     ]);
-
                 } catch (\Exception $e) {
                     Log::error("Failed to upload document", [
                         'rider_id' => $rider->id,
                         'field' => $field,
                         'error' => $e->getMessage()
                     ]);
-                    
+
                     // Don't throw - allow partial uploads
                     // The validation will catch missing required documents
                 }
@@ -221,7 +221,6 @@ class RiderService
                 'missing_documents' => $this->getMissingDocuments($rider),
                 'has_all_documents' => $this->hasDocuments($rider),
             ];
-
         } catch (\Exception $e) {
             Log::error("Failed to upload single document", [
                 'rider_id' => $rider->id,
@@ -250,7 +249,6 @@ class RiderService
                 'uploaded_documents' => $this->getUploadedDocumentsStatus($rider),
                 'missing_documents' => $this->getMissingDocuments($rider),
             ];
-
         } catch (\Exception $e) {
             Log::error("Failed to delete document", [
                 'rider_id' => $rider->id,
@@ -981,7 +979,7 @@ class RiderService
             'can_work' => $rider->canWork(),
             // 'profile_completion' => $rider->getProfileCompletionPercentage(),
             // 'next_step' => $rider->getNextIncompleteStep(),
-            
+
             // User information
             'user' => [
                 'id' => $rider->user->id,
@@ -1091,5 +1089,13 @@ class RiderService
                 ],
             ] : null,
         ];
+    }
+
+
+    public function getActiveHelmet(Rider $rider): Helmet
+    {
+        $assignment = $rider->currentAssignment()->with('helmet')->first();
+
+        return $assignment?->helmet ?? null;
     }
 }

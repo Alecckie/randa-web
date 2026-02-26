@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Helmet;
+use App\Models\Rider;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class HelmetService
@@ -84,14 +86,14 @@ class HelmetService
     public function getRidersWithoutHelmets(): \Illuminate\Database\Eloquent\Collection
     {
         try {
-            return \App\Models\Rider::whereDoesntHave('assignments', function($query) {
+            return Rider::whereDoesntHave('assignments', function($query) {
                 $query->where('status', 'active');
             })
             ->where('status', 'approved')
             ->with('user')
             ->get();
         } catch (\Exception $e) {
-            \Log::error('Error getting riders without helmets: ' . $e->getMessage());
+            Log::error('Error getting riders without helmets: ' . $e->getMessage());
             return collect(); // Return empty collection on error
         }
     }
@@ -102,7 +104,7 @@ class HelmetService
             throw new \Exception('Helmet is not available for assignment.');
         }
 
-        $rider = \App\Models\Rider::findOrFail($riderId);
+        $rider = Rider::findOrFail($riderId);
         
         if ($rider->currentAssignment) {
             throw new \Exception('Rider already has an active assignment.');

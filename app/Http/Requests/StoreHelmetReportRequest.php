@@ -19,7 +19,6 @@ class StoreHelmetReportRequest extends FormRequest
             'helmet_image'       => ['required', 'image', 'mimes:jpeg,jpg,png', 'max:10240'],
             'status_description' => ['required', 'string', 'min:10', 'max:2000'],
             'priority_level'     => ['required', 'string', 'in:low,medium,high'],
-            'helmet_id'          => ['nullable', 'integer', 'exists:helmets,id'],
         ];
     }
 
@@ -34,7 +33,6 @@ class StoreHelmetReportRequest extends FormRequest
             'status_description.min'      => 'The description must be at least 10 characters.',
             'priority_level.required'     => 'Please select a priority level.',
             'priority_level.in'           => 'Priority level must be low, medium, or high.',
-            'helmet_id.exists'            => 'The selected helmet does not exist.',
         ];
     }
 }

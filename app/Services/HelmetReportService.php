@@ -13,17 +13,23 @@ use Illuminate\Support\Facades\Storage;
 
 class HelmetReportService
 {
+
+    public function __construct(
+        private RiderService $riderService,
+    ) {}
     /**
      * Create a new helmet status report submitted by a rider.
      */
     public function createReport(Rider $rider, array $data): HelmetReport
     {
         return DB::transaction(function () use ($rider, $data) {
+            $helmetId =  $rider->currentAssignment?->helmet_id ?? null;
+
+            if (!$helmetId) {
+                throw new \RuntimeException('No helmet is currently assigned to you.');
+            }
             // Upload helmet image
             $imagePath = $this->uploadHelmetImage($rider, $data['helmet_image']);
-
-            // Attempt to resolve the helmet from the rider's current assignment
-            $helmetId = $data['helmet_id'] ?? $rider->currentAssignment?->helmet_id ?? null;
 
             $report = HelmetReport::create([
                 'rider_id'           => $rider->id,
@@ -39,6 +45,7 @@ class HelmetReportService
                 'rider_id'  => $rider->id,
                 'report_id' => $report->id,
                 'priority'  => $data['priority_level'],
+                'helmet_id' => $helmetId,
             ]);
 
             return $report->load(['rider.user', 'helmet']);
