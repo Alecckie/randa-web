@@ -168,6 +168,7 @@ class CheckInService
             ->whereDate('check_in_date', Carbon::today())
             ->with(['campaignAssignment.campaign', 'campaignAssignment.helmet'])
             ->first();
+        
 
         if (!$checkIn) {
             return null;
@@ -181,8 +182,8 @@ class CheckInService
             'worked_hours' => $checkIn->worked_hours,
             'paused_hours' => $checkIn->paused_hours,
             'daily_earning' => $checkIn->formatted_daily_earning,
-            'campaign_name' => $checkIn->campaignAssignment->campaign->name ?? 'N/A',
-            'helmet_code' => $checkIn->campaignAssignment->helmet->helmet_code ?? 'N/A',
+            // 'campaign_name' => $checkIn->campaignAssignment->campaign->name ?? 'N/A',
+            // 'helmet_code' => $checkIn->campaignAssignment->helmet->helmet_code ?? 'N/A',
         ];
     }
 
@@ -205,15 +206,15 @@ class CheckInService
     {
         $totalCheckIns = RiderCheckIn::where('rider_id', $riderId)->count();
         $completedCheckIns = RiderCheckIn::where('rider_id', $riderId)
-            ->where('status', 'completed')
+            ->where('status', 'ended')
             ->count();
 
         $totalEarnings = RiderCheckIn::where('rider_id', $riderId)
-            ->where('status', 'completed')
+            ->where('status', 'ended')
             ->sum('daily_earning');
 
         $totalHours = RiderCheckIn::where('rider_id', $riderId)
-            ->where('status', 'completed')
+            ->where('status', 'ended')
             ->get()
             ->sum(function ($checkIn) {
                 return $checkIn->worked_hours ?? 0;
@@ -222,13 +223,13 @@ class CheckInService
         $thisMonthCheckIns = RiderCheckIn::where('rider_id', $riderId)
             ->whereMonth('check_in_date', Carbon::now()->month)
             ->whereYear('check_in_date', Carbon::now()->year)
-            ->where('status', 'completed')
+            ->where('status', 'ended')
             ->count();
 
         $thisMonthEarnings = RiderCheckIn::where('rider_id', $riderId)
             ->whereMonth('check_in_date', Carbon::now()->month)
             ->whereYear('check_in_date', Carbon::now()->year)
-            ->where('status', 'completed')
+            ->where('status', 'ended')
             ->sum('daily_earning');
 
         return [
