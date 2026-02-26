@@ -43,8 +43,8 @@ class RiderTrackingController extends Controller
                 'altitude' => $request->altitude,
                 'speed' => $request->speed,
                 'heading' => $request->heading,
-                'recorded_at' => $request->recorded_at 
-                    ? Carbon::parse($request->recorded_at) 
+                'recorded_at' => $request->recorded_at
+                    ? Carbon::parse($request->recorded_at)
                     : now(),
                 'source' => $this->getSource($request),
                 'metadata' => $request->metadata,
@@ -58,7 +58,6 @@ class RiderTrackingController extends Controller
                 'latitude' => (float) $gpsPoint->latitude,
                 'longitude' => (float) $gpsPoint->longitude,
             ], 'Location recorded successfully', 201);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage(), $e->getCode() ?: 400);
         }
@@ -75,7 +74,7 @@ class RiderTrackingController extends Controller
             $rider = $this->getRider();
 
             $count = $this->trackingService->recordBatchLocations(
-                $rider->id, 
+                $rider->id,
                 $request->locations
             );
 
@@ -83,7 +82,6 @@ class RiderTrackingController extends Controller
                 'recorded_count' => $count,
                 'timestamp' => now()->toIso8601String(),
             ], "{$count} locations recorded successfully", 201);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage(), $e->getCode() ?: 400);
         }
@@ -98,7 +96,7 @@ class RiderTrackingController extends Controller
     {
         try {
             $rider = $this->getRider();
-            
+
             $gpsPoint = $this->trackingService->getCurrentLocation($rider->id);
 
             if (!$gpsPoint) {
@@ -116,7 +114,6 @@ class RiderTrackingController extends Controller
                 'time_ago' => $gpsPoint->recorded_at->diffForHumans(),
                 'is_recent' => $gpsPoint->is_recent,
             ]);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -131,7 +128,7 @@ class RiderTrackingController extends Controller
     {
         try {
             $rider = $this->getRider();
-            
+
             $stats = $this->trackingService->getRiderStats($rider->id, today());
 
             return $this->success([
@@ -144,7 +141,6 @@ class RiderTrackingController extends Controller
                 'average_speed' => $stats['average_speed'],
                 'max_speed' => $stats['max_speed'],
             ]);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -184,7 +180,6 @@ class RiderTrackingController extends Controller
                     'recorded_at' => $point->recorded_at->toIso8601String(),
                 ]),
             ]);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -199,14 +194,13 @@ class RiderTrackingController extends Controller
     {
         try {
             $rider = $this->getRider();
-            
+
             // Implementation depends on your RiderRoute relationship
             // For now, return basic route info
-            
+
             return $this->success([
                 'message' => 'Route details feature coming soon'
             ]);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -230,7 +224,6 @@ class RiderTrackingController extends Controller
             $stats = $this->trackingService->getRiderStats($rider->id, $date);
 
             return $this->success($stats);
-
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -246,39 +239,39 @@ class RiderTrackingController extends Controller
         try {
             $rider = $this->getRider();
 
-            $route = $this->trackingService->pauseTracking($rider->id);
+            $result = $this->trackingService->pauseTracking($rider->id);
+
+            $check_in = $result['check_in']; 
+            $pauseEvent = $result['pause_event'];
 
             return $this->success([
-                'route_id' => $route->id,
-                'tracking_status' => $route->tracking_status,
-                'paused_at' => $route->last_paused_at?->toIso8601String(),
-                'total_pause_duration' => $route->total_pause_duration,
-            ], 'Tracking paused successfully');
-
+                'check_in_id'           => $check_in->id,
+                'status'                => $check_in->status,
+                'paused_at'             => $pauseEvent->paused_at?->toIso8601String(),
+                'pause_latitude'        => $pauseEvent->pause_latitude,
+                'pause_longitude'       => $pauseEvent->pause_longitude,
+            ], $result['message']);
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
     }
 
-    /**
-     * Resume location tracking
-     * 
-     * POST /api/rider/tracking/resume
-     */
     public function resume(): JsonResponse
     {
         try {
             $rider = $this->getRider();
 
-            $route = $this->trackingService->resumeTracking($rider->id);
+            $result = $this->trackingService->resumeTracking($rider->id);
+
+            $checkIn    = $result['check_in'];
+            $pauseEvent = $result['pause_event'];
 
             return $this->success([
-                'route_id' => $route->id,
-                'tracking_status' => $route->tracking_status,
-                'resumed_at' => $route->last_resumed_at?->toIso8601String(),
-                'total_pause_duration' => $route->total_pause_duration,
-            ], 'Tracking resumed successfully');
-
+                'check_in_id'           => $checkIn->id,
+                'status'                => $checkIn->status,
+                'resumed_at'            => $pauseEvent->resumed_at?->toIso8601String(),
+                'duration_minutes'      => $pauseEvent->duration_minutes,
+            ], $result['message']);
         } catch (Exception $e) {
             return $this->error($e->getMessage());
         }
@@ -324,11 +317,10 @@ class RiderTrackingController extends Controller
      * Success response
      */
     private function success(
-        mixed $data = null, 
-        string $message = 'Success', 
+        mixed $data = null,
+        string $message = 'Success',
         int $code = 200
-    ): JsonResponse 
-    {
+    ): JsonResponse {
         return response()->json([
             'success' => true,
             'message' => $message,
@@ -340,10 +332,9 @@ class RiderTrackingController extends Controller
      * Error response
      */
     private function error(
-        string $message = 'An error occurred', 
+        string $message = 'An error occurred',
         int $code = 400
-    ): JsonResponse 
-    {
+    ): JsonResponse {
         return response()->json([
             'success' => false,
             'message' => $message,

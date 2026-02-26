@@ -10,6 +10,14 @@ class RiderCheckIn extends Model
 {
     use HasFactory;
 
+    // Status constants
+    const STATUS_STARTED = 'started';
+    const STATUS_PAUSED = 'paused';
+    const STATUS_RESUMED = 'resumed';
+    const STATUS_ENDED = 'ended';
+    
+    const HOURLY_RATE = 7; // KSh 7 per hour
+
     protected $fillable = [
         'rider_id',
         'campaign_assignment_id',
@@ -17,7 +25,7 @@ class RiderCheckIn extends Model
         'check_in_time',
         'check_out_time',
         'daily_earning',
-        'status',
+        'status', // started | paused | resumed | ended
         'check_in_latitude',
         'check_in_longitude',
         'check_out_latitude',
@@ -45,16 +53,36 @@ class RiderCheckIn extends Model
     {
         return $this->belongsTo(CampaignAssignment::class);
     }
+    
+    public function route()
+    {
+        return $this->hasOne(RiderRoute::class, 'check_in_id');
+    }
+    
+    public function pauseEvents()
+    {
+        return $this->hasMany(RiderPauseEvent::class, 'check_in_id');
+    }
 
     // Scopes
+    public function scopeTracking($query)
+    {
+        return $query->whereIn('status', [self::STATUS_STARTED, self::STATUS_RESUMED]);
+    }
+    
+    public function scopeOnBreak($query)
+    {
+        return $query->where('status', self::STATUS_PAUSED);
+    }
+
     public function scopeActive($query)
     {
-        return $query->where('status', 'active');
+        return $query->where('status', '!=', self::STATUS_ENDED);
     }
 
     public function scopeCompleted($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('status', self::STATUS_ENDED);
     }
 
     public function scopeToday($query)
@@ -67,13 +95,50 @@ class RiderCheckIn extends Model
         return $query->where('rider_id', $riderId);
     }
 
+    // Helper methods
+    public function isTracking(): bool
+    {
+        return in_array($this->status, [self::STATUS_STARTED, self::STATUS_RESUMED]);
+    }
+    
+    public function isPaused(): bool
+    {
+        return $this->status === self::STATUS_PAUSED;
+    }
+    
+    public function isEnded(): bool
+    {
+        return $this->status === self::STATUS_ENDED;
+    }
+
     // Accessors
-    public function getWorkedHoursAttribute(): ?float
+    public function getTotalHoursAttribute(): ?float
     {
         if ($this->check_in_time && $this->check_out_time) {
-            return $this->check_in_time->diffInHours($this->check_out_time, true);
+            return $this->check_in_time->diffInMinutes($this->check_out_time) / 60;
         }
         return null;
+    }
+    
+    public function getPausedMinutesAttribute(): int
+    {
+        return $this->pauseEvents()
+            ->whereNotNull('resumed_at')
+            ->sum('duration_minutes');
+    }
+    
+    public function getPausedHoursAttribute(): float
+    {
+        return $this->paused_minutes / 60;
+    }
+    
+    public function getWorkedHoursAttribute(): ?float
+    {
+        if (!$this->total_hours) {
+            return null;
+        }
+        
+        return max(0, $this->total_hours - $this->paused_hours);
     }
 
     public function getFormattedCheckInTimeAttribute(): string

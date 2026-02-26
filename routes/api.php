@@ -142,6 +142,7 @@ Route::prefix('v1')->group(function () {
                 ->name('resume');
 
 
+
             //Selfie Prompt
             Route::prefix('selfie-prompts')->group(function () {
                 Route::post('/',                 [SelfieController::class, 'storePrompt'])->name('rider.selfie-prompts.store');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\RiderGpsPoint;
 use App\Models\RiderCheckIn;
+use App\Models\RiderPauseEvent;
 use App\Models\RiderRoute;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -126,102 +127,110 @@ class RiderTrackingService
     // TRACKING PAUSE / RESUME
     // ──────────────────────────────────────────────────────────────────────────
 
-    public function pauseTracking(int $riderId): RiderRoute
+    public function pauseTracking(int $riderId): array
     {
-        try {
-            DB::beginTransaction();
+        DB::beginTransaction();
 
+        try {
             $checkIn = $this->getActiveCheckIn($riderId);
 
             if (!$checkIn) {
                 throw new \Exception('No active check-in found');
             }
 
-            $route = RiderRoute::firstOrCreate(
-                ['rider_id' => $riderId, 'check_in_id' => $checkIn->id, 'route_date' => today()],
-                [
-                    'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
-                    'started_at'             => $checkIn->check_in_time,
-                    'status'                 => 'active',
-                    'tracking_status'        => 'active',
-                ]
-            );
-
-            if ($route->tracking_status === 'paused') {
+            if ($checkIn->isPaused()) {
                 throw new \Exception('Tracking is already paused');
             }
 
-            $route->update(['tracking_status' => 'paused', 'last_paused_at' => now()]);
+            // Update check-in status
+            $checkIn->update(['status' => RiderCheckIn::STATUS_PAUSED]);
 
+            // Get or create route
+            $route = $this->getTodayRoute($riderId);
+            if (!$route) {
+                $route = RiderRoute::create([
+                    'rider_id' => $riderId,
+                    'check_in_id' => $checkIn->id,
+                    'campaign_assignment_id' => $checkIn->campaign_assignment_id,
+                    'route_date' => today(),
+                    'started_at' => $checkIn->check_in_time,
+                ]);
+            }
+
+            // Get current location
             $currentLocation = $this->getCurrentLocation($riderId);
 
-            $pauseHistory   = $route->pause_history ?? [];
-            $pauseHistory[] = [
-                'paused_at' => now()->toIso8601String(),
-                'location'  => $currentLocation
-                    ? [
-                        'latitude'  => $currentLocation->latitude,
-                        'longitude' => $currentLocation->longitude,
-                    ]
-                    : null,
-            ];
-
-            $route->update(['pause_history' => $pauseHistory]);
+            // Create new pause event
+            $pauseEvent = RiderPauseEvent::create([
+                'rider_id' => $riderId,
+                'check_in_id' => $checkIn->id,
+                'route_id' => $route->id,
+                'paused_at' => now(),
+                'pause_latitude' => $currentLocation?->latitude,
+                'pause_longitude' => $currentLocation?->longitude,
+                'reason' => 'break',
+            ]);
 
             DB::commit();
 
-            return $route->fresh();
+            return [
+                'check_in' => $checkIn->fresh(),
+                'pause_event' => $pauseEvent,
+                'message' => 'Tracking paused successfully',
+            ];
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
         }
     }
 
-    public function resumeTracking(int $riderId): RiderRoute
+    public function resumeTracking(int $riderId): array
     {
-        try {
-            DB::beginTransaction();
+        DB::beginTransaction();
 
+        try {
             $checkIn = $this->getActiveCheckIn($riderId);
 
             if (!$checkIn) {
                 throw new \Exception('No active check-in found');
             }
 
-            $route = $this->getTodayRoute($riderId);
-
-            if (!$route) {
-                throw new \Exception('No route found to resume');
+            if (!$checkIn->isPaused()) {
+                throw new \Exception('Tracking is not paused');
             }
 
-            if ($route->tracking_status === 'active') {
-                throw new \Exception('Tracking is already active');
+            // Find active pause event
+            $pauseEvent = RiderPauseEvent::where('rider_id', $riderId)
+                ->whereNull('resumed_at')
+                ->latest('paused_at')
+                ->first();
+
+            if (!$pauseEvent) {
+                throw new \Exception('No active pause found');
             }
 
-            $pauseDuration      = $route->last_paused_at
-                ? now()->diffInMinutes($route->last_paused_at)
-                : 0;
-            $totalPauseDuration = ($route->total_pause_duration ?? 0) + $pauseDuration;
+            // Update check-in status
+            $checkIn->update(['status' => RiderCheckIn::STATUS_RESUMED]);
 
-            $route->update([
-                'tracking_status'      => 'active',
-                'last_resumed_at'      => now(),
-                'total_pause_duration' => $totalPauseDuration,
+            // Complete pause event
+            $duration = $pauseEvent->calculateDuration();
+            $pauseEvent->update([
+                'resumed_at' => now(),
+                'duration_minutes' => $duration,
             ]);
 
-            // Avoid reference bugs by using index-based access instead of &$ref
-            $pauseHistory = $route->pause_history ?? [];
-            if (!empty($pauseHistory)) {
-                $lastIndex                                    = count($pauseHistory) - 1;
-                $pauseHistory[$lastIndex]['resumed_at']       = now()->toIso8601String();
-                $pauseHistory[$lastIndex]['duration_minutes'] = $pauseDuration;
+            // Update route summary
+            if ($pauseEvent->route) {
+                $pauseEvent->route->updatePauseSummary();
             }
-
-            $route->update(['pause_history' => $pauseHistory]);
 
             DB::commit();
 
-            return $route->fresh();
+            return [
+                'check_in' => $checkIn->fresh(),
+                'pause_event' => $pauseEvent->fresh(),
+                'message' => 'Tracking resumed successfully',
+            ];
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -444,7 +453,7 @@ class RiderTrackingService
     public function enrichLocation(RiderGpsPoint $gpsPoint): array
     {
 
-       // dd($gpsPoint);
+        // dd($gpsPoint);
         $rider              = $gpsPoint->rider;
         $user               = $rider?->user;
         $campaignAssignment = $gpsPoint->campaignAssignment;
@@ -567,7 +576,7 @@ class RiderTrackingService
             "rider.{$riderId}.active_checkin",
             now()->addMinutes(5),
             fn() => RiderCheckIn::where('rider_id', $riderId)
-                ->where('status', 'active')
+                ->where('status', 'started')
                 ->whereDate('check_in_date', today())
                 ->latest()
                 ->first()

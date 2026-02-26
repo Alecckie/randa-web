@@ -6,6 +6,8 @@ use App\Models\CampaignAssignment;
 use App\Models\Helmet;
 use App\Models\Rider;
 use App\Models\RiderCheckIn;
+use App\Models\RiderPauseEvent;
+use App\Models\RiderRoute;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Exception;
@@ -50,7 +52,7 @@ class CheckInService
             // Check if rider already checked in today
             $existingCheckIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
-                ->where('status', 'active')
+                ->where('status', 'started')
                 ->first();
 
             if ($existingCheckIn) {
@@ -65,7 +67,7 @@ class CheckInService
                 'check_in_time' => Carbon::now(),
                 'check_out_time' => null,
                 'daily_earning' => $rider->daily_rate ?? 70.00,
-                'status' => 'active',
+                'status' => 'started',
                 'check_in_latitude' => $latitude,
                 'check_in_longitude' => $longitude
             ]);
@@ -85,41 +87,74 @@ class CheckInService
     /**
      * Process rider check-out
      */
+    /**
+     * Process rider check-out with accurate earnings calculation
+     */
     public function checkOut(int $riderId, ?float $latitude = null, ?float $longitude = null): array
     {
         return DB::transaction(function () use ($riderId, $latitude, $longitude) {
             // Find today's active check-in
             $checkIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
-                ->where('status', 'active')
+                ->where('status', '!=', RiderCheckIn::STATUS_ENDED)
                 ->first();
 
             if (!$checkIn) {
-                throw new Exception('No active check-in found for today. Please check in first.');
+                throw new Exception('No active check-in found for today.');
             }
 
-            // Update check-out time
+            // Calculate time and earnings
+            $checkOutTime = Carbon::now();
+            $totalMinutes = $checkIn->check_in_time->diffInMinutes($checkOutTime);
+            $totalHours = $totalMinutes / 60;
+
+            // Get total paused time from pause events
+            $pausedMinutes = RiderPauseEvent::where('check_in_id', $checkIn->id)
+                ->whereNotNull('resumed_at')
+                ->sum('duration_minutes');
+
+            $pausedHours = $pausedMinutes / 60;
+            $workedHours = max(0, $totalHours - $pausedHours);
+
+            // Calculate earnings: KSh 7 per hour worked
+            $dailyEarning = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
+
+            // Update check-in
             $checkIn->update([
-                'check_out_time' => Carbon::now(),
-                'status' => 'completed',
+                'check_out_time' => $checkOutTime,
+                'status' => RiderCheckIn::STATUS_ENDED,
+                'daily_earning' => $dailyEarning,
                 'check_out_latitude' => $latitude,
                 'check_out_longitude' => $longitude
             ]);
 
             // Update rider's wallet balance
             $rider = Rider::findOrFail($riderId);
-            $rider->increment('wallet_balance', $checkIn->daily_earning);
+            $rider->increment('wallet_balance', $dailyEarning);
 
-            $workedHours = $checkIn->worked_hours;
+            // Finalize route if exists
+            $route = RiderRoute::where('check_in_id', $checkIn->id)->first();
+            if ($route) {
+                $route->update([
+                    'ended_at' => $checkOutTime,
+                ]);
+                $route->updatePauseSummary();
+            }
 
             return [
                 'success' => true,
                 'message' => 'Check-out successful! Your earnings have been added to your wallet.',
-                'check_in' => $checkIn->fresh(),
-                'check_out_time' => $checkIn->formatted_check_out_time,
-                'worked_hours' => round($workedHours, 2),
-                'daily_earning' => $checkIn->formatted_daily_earning,
-                'new_wallet_balance' => 'KSh ' . number_format($rider->wallet_balance, 2)
+                'data' => [
+                    'check_out_time' => $checkIn->formatted_check_out_time,
+                    'total_hours' => round($totalHours, 2),
+                    'worked_hours' => round($workedHours, 2),
+                    'paused_hours' => round($pausedHours, 2),
+                    'paused_minutes' => $pausedMinutes,
+                    'pause_count' => RiderPauseEvent::where('check_in_id', $checkIn->id)->count(),
+                    'hourly_rate' => RiderCheckIn::HOURLY_RATE,
+                    'daily_earning' => $checkIn->formatted_daily_earning,
+                    'new_wallet_balance' => 'KSh ' . number_format($rider->wallet_balance, 2)
+                ]
             ];
         });
     }
@@ -144,10 +179,10 @@ class CheckInService
             'check_in_time' => $checkIn->formatted_check_in_time,
             'check_out_time' => $checkIn->formatted_check_out_time,
             'worked_hours' => $checkIn->worked_hours,
+            'paused_hours' => $checkIn->paused_hours,
             'daily_earning' => $checkIn->formatted_daily_earning,
             'campaign_name' => $checkIn->campaignAssignment->campaign->name ?? 'N/A',
             'helmet_code' => $checkIn->campaignAssignment->helmet->helmet_code ?? 'N/A',
-            'can_check_out' => $checkIn->status === 'active'
         ];
     }
 
