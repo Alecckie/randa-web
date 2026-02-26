@@ -2,12 +2,14 @@
 
 use App\Http\Controllers\Api\AdvertiserDashboardController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\HelmetReportController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MpesaCallbackController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\RiderCheckInController;
 use App\Http\Controllers\Api\RiderProfileController;
 use App\Http\Controllers\Api\RiderTrackingController;
+use App\Http\Controllers\Api\SelfieController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -47,13 +49,13 @@ Route::prefix('v1')->group(function () {
             Route::get('/profile/details', [RiderProfileController::class, 'show'])
                 ->name('rider.profile.show');
 
-            // Step-by-step profile completion endpoints
+            // Step-by-step rider profile completion endpoints
             Route::post('/profile/location', [RiderProfileController::class, 'storeLocation'])
                 ->name('rider.profile.location');
 
             Route::post('/profile/update-location', [RiderProfileController::class, 'updateLocation'])
                 ->name('rider.profile.update-location');
-         
+
             //  Individual document upload endpoint
             Route::post('/profile/upload-document', [RiderProfileController::class, 'uploadSingleDocument'])
                 ->name('rider.profile.upload-document');
@@ -138,6 +140,21 @@ Route::prefix('v1')->group(function () {
 
             Route::post('/tracking/resume', [RiderTrackingController::class, 'resume'])
                 ->name('resume');
+
+
+            //Selfie Prompt
+            Route::prefix('selfie-prompts')->group(function () {
+                Route::post('/',                 [SelfieController::class, 'storePrompt'])->name('rider.selfie-prompts.store');
+                Route::get('/active',            [SelfieController::class, 'activePrompt'])->name('rider.selfie-prompts.active');
+                Route::patch('/{prompt}/accept', [SelfieController::class, 'acceptPrompt'])->name('rider.selfie-prompts.accept');
+                Route::post('/{prompt}/submit',  [SelfieController::class, 'submitSelfie'])->name('rider.selfie-prompts.submit');
+            });
+
+            //Helmet Report
+            Route::prefix('helmet-reports')->group(function () {
+                Route::post('/',        [HelmetReportController::class, 'store'])->name('rider.helmet-reports.store');
+                Route::get('/{report}', [HelmetReportController::class, 'show'])->name('rider.helmet-reports.show');
+            });
         });
 
         // Advertiser routes - only accessible by advertisers
