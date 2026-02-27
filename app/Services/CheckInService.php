@@ -44,9 +44,9 @@ class CheckInService
                 throw new Exception('No active campaign assignment found for this helmet and rider.');
             }
 
-            // Check if campaign is active
-            if ($assignment->campaign->status !== 'paid') {
-                throw new Exception('The campaign associated with this helmet is not active.');
+            // Check if campaign is active or paid
+            if (!in_array($assignment->campaign->status, ['active', 'paid'])) {
+                throw new Exception('The campaign associated with this helmet is not active or paid.');
             }
 
             if (Carbon::now()->hour < RiderCheckIn::EARLIEST_CHECK_IN_HOUR) {
@@ -249,6 +249,166 @@ class CheckInService
                 : 0
         ];
     }
+    public function getCampaignSummary(int $riderId): array
+    {
+        $assignment = \App\Models\CampaignAssignment::with([
+            'campaign:id,name,description,start_date,end_date,helmet_count,status',
+            'helmet:id,helmet_code',
+        ])
+            ->where('rider_id', $riderId)
+            ->where('status', 'active')
+            ->latest('assigned_at')
+            ->first();
+
+        if (! $assignment) {
+            throw new \Exception('No active campaign assignment found for this rider.');
+        }
+
+        $campaign    = $assignment->campaign;
+        $campaignId  = $campaign->id;
+        $startDate   = \Carbon\Carbon::parse($campaign->start_date)->startOfDay();
+        $endDate     = \Carbon\Carbon::parse($campaign->end_date)->endOfDay();
+        $today       = \Carbon\Carbon::today();
+        $now         = \Carbon\Carbon::now();
+
+        $stats = RiderCheckIn::query()
+            ->join(
+                'campaign_assignments',
+                'rider_check_ins.campaign_assignment_id',
+                '=',
+                'campaign_assignments.id'
+            )
+            ->where('rider_check_ins.rider_id', $riderId)
+            ->where('campaign_assignments.campaign_id', $campaignId)
+            ->where('rider_check_ins.status', 'ended')
+            ->selectRaw('
+            COUNT(*)                        AS total_days_worked,
+            COALESCE(SUM(daily_earning), 0) AS total_earnings,
+            COALESCE(
+                SUM(
+                    TIMESTAMPDIFF(
+                        MINUTE,
+                        check_in_time,
+                        check_out_time
+                    )
+                ) / 60.0,
+                0
+            )                               AS total_hours_worked
+        ')
+            ->first();
+
+        $todayCheckIn = RiderCheckIn::query()
+            ->join(
+                'campaign_assignments',
+                'rider_check_ins.campaign_assignment_id',
+                '=',
+                'campaign_assignments.id'
+            )
+            ->where('rider_check_ins.rider_id', $riderId)
+            ->where('campaign_assignments.campaign_id', $campaignId)
+            ->whereDate('rider_check_ins.check_in_date', $today)
+            ->select('rider_check_ins.*')
+            ->latest('rider_check_ins.check_in_time')
+            ->first();
+
+        $campaignDurationDays = (int) $startDate->diffInDays($endDate) + 1; // inclusive
+        $dayOfCampaign        = (int) $startDate->diffInDays($today) + 1;   // e.g. "3rd day"
+        $dayOfCampaign        = max(1, min($dayOfCampaign, $campaignDurationDays));
+
+        // Remaining days = days from tomorrow to end_date (inclusive)
+        $tomorrow        = $today->copy()->addDay()->startOfDay();
+        $remainingDays   = max(0, (int) $tomorrow->diffInDays($endDate->copy()->startOfDay()) + 1);
+
+        // If campaign has already ended or today is last day, remaining = 0
+        if ($endDate->isPast() && ! $endDate->isToday()) {
+            $remainingDays = 0;
+        }
+
+        $todayEarning = 0.0;
+
+        if ($todayCheckIn) {
+            if ($todayCheckIn->status === 'ended') {
+                $todayEarning = (float) $todayCheckIn->daily_earning;
+            } else {
+                // Check-in is still active — estimate earnings so far
+                $pausedMinutes = RiderPauseEvent::where('check_in_id', $todayCheckIn->id)
+                    ->whereNotNull('resumed_at')
+                    ->sum('duration_minutes');
+
+                $elapsedMinutes  = $todayCheckIn->check_in_time->diffInMinutes($now);
+                $workedMinutes   = max(0, $elapsedMinutes - $pausedMinutes);
+                $workedHours     = $workedMinutes / 60.0;
+                $todayEarning    = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
+            }
+        }
+
+
+        $hoursPerDay             = 13;   // 6 AM to 7 PM
+        $hourlyRate              = RiderCheckIn::HOURLY_RATE; // 7
+        $expectedDailyEarning    = $hoursPerDay * $hourlyRate;
+        $expectedRemainingEarnings = $remainingDays * $expectedDailyEarning;
+
+        // ── Ordinal helper ──────────────────────────────────────────────────────
+        $ordinal = static function (int $n): string {
+            $suffix = match (true) {
+                ($n % 100 >= 11 && $n % 100 <= 13) => 'th',
+                ($n % 10 === 1)                     => 'st',
+                ($n % 10 === 2)                     => 'nd',
+                ($n % 10 === 3)                     => 'rd',
+                default                             => 'th',
+            };
+            return "{$n}{$suffix}";
+        };
+
+        // ── Assemble response ───────────────────────────────────────────────────
+        return [
+            'campaign' => [
+                'id'          => $campaign->id,
+                'name'        => $campaign->name,
+                'description' => $campaign->description,
+                'status'      => $campaign->status,
+                'start_date'  => $startDate->toDateString(),
+                'end_date'    => $endDate->toDateString(),
+                'duration_days' => $campaignDurationDays,
+            ],
+
+            'progress' => [
+                'day_of_campaign'       => $dayOfCampaign,
+                'day_of_campaign_label' => $ordinal($dayOfCampaign) . ' day of the campaign',
+                'remaining_days'        => $remainingDays,
+                'campaign_duration_days' => $campaignDurationDays,
+            ],
+
+            'earnings' => [
+                'today'                     => round($todayEarning, 2),
+                'today_formatted'           => 'KSh ' . number_format($todayEarning, 2),
+                'total_campaign'            => round((float) $stats->total_earnings, 2),
+                'total_campaign_formatted'  => 'KSh ' . number_format((float) $stats->total_earnings, 2),
+                'expected_remaining'        => $expectedRemainingEarnings,
+                'expected_remaining_formatted' => 'KSh ' . number_format($expectedRemainingEarnings, 2),
+                'expected_remaining_note'   => "Based on working {$hoursPerDay} hrs/day (6AM–7PM) × KSh {$hourlyRate}/hr for {$remainingDays} remaining day(s)",
+                'hourly_rate'               => $hourlyRate,
+            ],
+
+            'work_summary' => [
+                'total_days_worked'   => (int) $stats->total_days_worked,
+                'total_hours_worked'  => round((float) $stats->total_hours_worked, 2),
+                'today_checked_in'    => ! is_null($todayCheckIn),
+                'today_check_in_time' => $todayCheckIn?->check_in_time?->format('h:i A'),
+                'today_status'        => $todayCheckIn?->status ?? 'not_checked_in',
+            ],
+
+            'assignment' => [
+                'id'          => $assignment->id,
+                'helmet_code' => $assignment->helmet?->helmet_code,
+                'assigned_at' => $assignment->assigned_at?->toDateTimeString(),
+            ],
+        ];
+    }
+
+
+
+
 
     /**
      * Validate QR code and get assignment info

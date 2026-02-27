@@ -50,7 +50,7 @@ class RiderCheckInController extends Controller
                         'daily_rate' => 'KSh ' . number_format($rider->daily_rate, 2),
                     ]
                 ]
-            ],200);
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -149,6 +149,33 @@ class RiderCheckInController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    public function campaignSummary(Request $request): JsonResponse
+    {
+        try {
+            $rider = $request->user()->rider;
+
+            if (! $rider) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rider profile not found.',
+                ], 404);
+            }
+
+            $summary = $this->checkInService->getCampaignSummary($rider->id);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $summary,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error'   => config('app.debug') ? $e->getTraceAsString() : null,
             ], 400);
         }
     }

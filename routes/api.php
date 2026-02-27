@@ -76,6 +76,7 @@ Route::prefix('v1')->group(function () {
 
 
             Route::name('rider')->group(function () {
+
                 Route::get('/rider_checkins', [RiderCheckInController::class, 'index'])
                     ->name('rider_checkins');
 
@@ -84,6 +85,9 @@ Route::prefix('v1')->group(function () {
 
                 Route::get('/stats', [RiderCheckInController::class, 'stats'])
                     ->name('stats');
+
+                Route::get('/rider_campaign_summary', [RiderCheckInController::class, 'campaignSummary'])
+                    ->name('rider_campaign_summary');
 
                 Route::get('/history', [RiderCheckInController::class, 'history'])
                     ->name('history');
@@ -220,13 +224,13 @@ Route::prefix('v1')->group(function () {
         Route::prefix('helmets')->name('api.helmets.')->group(function () {
             Route::get('/', [\App\Http\Controllers\Api\HelmetController::class, 'index'])
                 ->name('index');
-            
+
             Route::get('/{helmet}', [\App\Http\Controllers\Api\HelmetController::class, 'show'])
                 ->name('show');
-            
+
             Route::get('/riders/available', [\App\Http\Controllers\Api\HelmetController::class, 'availableRiders'])
                 ->name('riders.available');
-            
+
             Route::post('/{helmet}/assign', [\App\Http\Controllers\Api\HelmetController::class, 'assignToRider'])
                 ->name('assign');
         });
