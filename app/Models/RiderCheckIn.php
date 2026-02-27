@@ -15,8 +15,10 @@ class RiderCheckIn extends Model
     const STATUS_PAUSED = 'paused';
     const STATUS_RESUMED = 'resumed';
     const STATUS_ENDED = 'ended';
-    
-    const HOURLY_RATE = 7; // KSh 7 per hour
+
+    const HOURLY_RATE = 7;
+
+    const EARLIEST_CHECK_IN_HOUR = 6;
 
     protected $fillable = [
         'rider_id',
@@ -53,12 +55,12 @@ class RiderCheckIn extends Model
     {
         return $this->belongsTo(CampaignAssignment::class);
     }
-    
+
     public function route()
     {
         return $this->hasOne(RiderRoute::class, 'check_in_id');
     }
-    
+
     public function pauseEvents()
     {
         return $this->hasMany(RiderPauseEvent::class, 'check_in_id');
@@ -69,7 +71,7 @@ class RiderCheckIn extends Model
     {
         return $query->whereIn('status', [self::STATUS_STARTED, self::STATUS_RESUMED]);
     }
-    
+
     public function scopeOnBreak($query)
     {
         return $query->where('status', self::STATUS_PAUSED);
@@ -100,12 +102,12 @@ class RiderCheckIn extends Model
     {
         return in_array($this->status, [self::STATUS_STARTED, self::STATUS_RESUMED]);
     }
-    
+
     public function isPaused(): bool
     {
         return $this->status === self::STATUS_PAUSED;
     }
-    
+
     public function isEnded(): bool
     {
         return $this->status === self::STATUS_ENDED;
@@ -119,25 +121,25 @@ class RiderCheckIn extends Model
         }
         return null;
     }
-    
+
     public function getPausedMinutesAttribute(): int
     {
         return $this->pauseEvents()
             ->whereNotNull('resumed_at')
             ->sum('duration_minutes');
     }
-    
+
     public function getPausedHoursAttribute(): float
     {
         return $this->paused_minutes / 60;
     }
-    
+
     public function getWorkedHoursAttribute(): ?float
     {
         if (!$this->total_hours) {
             return null;
         }
-        
+
         return max(0, $this->total_hours - $this->paused_hours);
     }
 

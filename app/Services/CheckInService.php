@@ -49,6 +49,11 @@ class CheckInService
                 throw new Exception('The campaign associated with this helmet is not active.');
             }
 
+            if (Carbon::now()->hour < RiderCheckIn::EARLIEST_CHECK_IN_HOUR) {
+                $earliest = Carbon::today()->setHour(RiderCheckIn::EARLIEST_CHECK_IN_HOUR)->format('h:i A');
+                throw new Exception("Check-in is not allowed before {$earliest}.");
+            }
+
             // Check if rider already checked in today
             $existingCheckIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
@@ -168,7 +173,7 @@ class CheckInService
             ->whereDate('check_in_date', Carbon::today())
             ->with(['campaignAssignment.campaign', 'campaignAssignment.helmet'])
             ->first();
-        
+
 
         if (!$checkIn) {
             return null;
