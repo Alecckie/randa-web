@@ -343,7 +343,7 @@ class CheckInService
         }
 
 
-        $hoursPerDay             = 13;   // 6 AM to 7 PM
+        $hoursPerDay             = 12;   // 6 AM to 7 PM
         $hourlyRate              = RiderCheckIn::HOURLY_RATE; // 7
         $expectedDailyEarning    = $hoursPerDay * $hourlyRate;
         $expectedRemainingEarnings = $remainingDays * $expectedDailyEarning;
@@ -386,7 +386,7 @@ class CheckInService
                 'total_campaign_formatted'  => 'KSh ' . number_format((float) $stats->total_earnings, 2),
                 'expected_remaining'        => $expectedRemainingEarnings,
                 'expected_remaining_formatted' => 'KSh ' . number_format($expectedRemainingEarnings, 2),
-                'expected_remaining_note'   => "Based on working {$hoursPerDay} hrs/day (6AM–7PM) × KSh {$hourlyRate}/hr for {$remainingDays} remaining day(s)",
+                'expected_remaining_note'   => "Based on working {$hoursPerDay} hrs/day (6AM–6PM) × KSh {$hourlyRate}/hr for {$remainingDays} remaining day(s)",
                 'hourly_rate'               => $hourlyRate,
             ],
 
