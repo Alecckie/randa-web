@@ -5,27 +5,36 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 
-class SelfiePrompt extends Model
+class SelfieSubmission extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'selfie_prompt_id',
         'rider_id',
         'user_id',
-        'prompt_sent_at',
-        'responded_at',
+        'selfie_image',
+        'latitude',
+        'longitude',
+        'submitted_at',
         'status',
-        'device_token',
+        'review_notes',
     ];
 
     protected $casts = [
-        'prompt_sent_at'      => 'datetime',
-        'responded_at'        => 'datetime',
+        'latitude'     => 'decimal:7',
+        'longitude'    => 'decimal:7',
+        'submitted_at' => 'datetime',
     ];
 
     // ─── Relationships ────────────────────────────────────────────────────────
+
+    public function selfiePrompt(): BelongsTo
+    {
+        return $this->belongsTo(SelfiePrompt::class);
+    }
 
     public function rider(): BelongsTo
     {
@@ -37,47 +46,27 @@ class SelfiePrompt extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function submission(): HasOne
+    // ─── Accessors ────────────────────────────────────────────────────────────
+
+    public function getSelfieImageUrlAttribute(): ?string
     {
-        return $this->hasOne(SelfieSubmission::class);
+        return $this->selfie_image ? Storage::url($this->selfie_image) : null;
     }
 
     // ─── Scopes ───────────────────────────────────────────────────────────────
 
-    public function scopePending($query)
+    public function scopePendingReview($query)
     {
-        return $query->where('status', 'pending');
+        return $query->where('status', 'pending_review');
     }
 
-    public function scopeCompleted($query)
+    public function scopeApproved($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('status', 'approved');
     }
 
-    public function scopeExpired($query)
+    public function scopeRejected($query)
     {
-        return $query->where('status', 'expired');
-    }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    public function isPending(): bool
-    {
-        return $this->status === 'pending';
-    }
-
-    public function isAccepted(): bool
-    {
-        return $this->status === 'accepted';
-    }
-
-    public function isCompleted(): bool
-    {
-        return $this->status === 'completed';
-    }
-
-    public function isExpired(): bool
-    {
-        return $this->status === 'expired';
+        return $query->where('status', 'rejected');
     }
 }
