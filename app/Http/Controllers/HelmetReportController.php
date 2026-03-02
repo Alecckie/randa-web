@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Requests\Api\StoreHelmetReportRequest;
+use App\Http\Requests\StoreHelmetReportRequest;
 use App\Models\HelmetReport;
 use App\Services\HelmetReportService;
 use App\Services\RiderService;
