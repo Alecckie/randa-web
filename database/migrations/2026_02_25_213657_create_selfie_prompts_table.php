@@ -17,7 +17,7 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id');
             $table->dateTime('prompt_sent_at');
             $table->dateTime('responded_at')->nullable();
-            $table->enum('status', ['pending', 'accepted', 'completed', 'expired', 'declined'])
+            $table->enum('status', ['pending', 'accepted','expired', 'rejected'])
                 ->default('pending');
             $table->string('device_token')->nullable();
             $table->index(['rider_id', 'status']);

@@ -16,16 +16,18 @@ return new class extends Migration
             $table->unsignedBigInteger('selfie_prompt_id');
             $table->unsignedBigInteger('rider_id');
             $table->unsignedBigInteger('user_id');
-            $table->string('selfie_image');
+            $table->unsignedBigInteger('helmet_id'); 
+            $table->string('qr_code');                    
             $table->decimal('latitude', 10, 7);
             $table->decimal('longitude', 10, 7);
             $table->dateTime('submitted_at');
             $table->enum('status', ['pending_review', 'approved', 'rejected'])->default('pending_review');
             $table->text('review_notes')->nullable();
+            $table->timestamps();
+
             $table->index(['rider_id', 'status']);
             $table->index('selfie_prompt_id');
-            $table->softDeletes();
-            $table->timestamps();
+            $table->index('helmet_id');
         });
     }
 

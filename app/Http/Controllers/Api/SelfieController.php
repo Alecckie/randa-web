@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Requests\Api\StoreSelfiePromptRequest;
-use App\Http\Requests\Api\SubmitSelfieRequest;
+use App\Http\Requests\SubmitSelfieRequest;
 use App\Models\SelfiePrompt;
 use App\Services\RiderService;
 use App\Services\SelfieService;
@@ -18,6 +17,9 @@ class SelfieController extends BaseApiController
     ) {}
 
 
+    /**
+     * POST /api/rider/selfie-prompts
+     */
     public function storePrompt(): JsonResponse
     {
         try {
@@ -27,15 +29,11 @@ class SelfieController extends BaseApiController
                 return $this->sendError('Rider profile not found.', [], 404);
             }
 
-            // if (!$rider->canWork()) {
-            //     return $this->sendError('Your account is not active.', [], 403);
-            // }
-
             $prompt = $this->selfieService->createPrompt($rider);
 
             return $this->sendResponse(
                 ['prompt' => $this->selfieService->formatPrompt($prompt)],
-                'Selfie prompt saved successfully.',
+                'Prompt saved successfully.',
                 201
             );
         } catch (\Exception $e) {
@@ -44,6 +42,9 @@ class SelfieController extends BaseApiController
     }
 
 
+    /**
+     * PATCH /api/rider/selfie-prompts/{prompt}/accept
+     */
     public function acceptPrompt(SelfiePrompt $prompt): JsonResponse
     {
         try {
@@ -53,7 +54,7 @@ class SelfieController extends BaseApiController
 
             return $this->sendResponse(
                 ['prompt' => $this->selfieService->formatPrompt($prompt)],
-                'Prompt accepted. Please take your selfie.'
+                'Prompt accepted. Please scan your helmet QR code.'
             );
         } catch (\RuntimeException $e) {
             return $this->sendError($e->getMessage(), [], 422);
@@ -62,21 +63,42 @@ class SelfieController extends BaseApiController
         }
     }
 
-    // ─── Step 3: Rider submits the selfie ─────────────────────────────────────
+
+     /**
+     * PATCH /api/rider/selfie-prompts/{prompt}/reject
+     */
+    public function rejectPrompt(SelfiePrompt $prompt): JsonResponse
+    {
+        try {
+            $this->authorizePromptOwnership($prompt);
+
+            $prompt = $this->selfieService->rejectPrompt($prompt);
+
+            return $this->sendResponse(
+                ['prompt' => $this->selfieService->formatPrompt($prompt)],
+                'Prompt rejected. Please scan your helmet QR code.'
+            );
+        } catch (\RuntimeException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to reject prompt: ' . $e->getMessage(), [], 500);
+        }
+    }
+
 
     /**
      * POST /api/rider/selfie-prompts/{prompt}/submit
      *
-     * Body (multipart/form-data): { selfie_image, latitude, longitude }
+     * Body (JSON): { qr_code, latitude, longitude }
      */
-    public function submitSelfie(SubmitSelfieRequest $request, SelfiePrompt $prompt): JsonResponse
+    public function submitQr(SubmitSelfieRequest $request, SelfiePrompt $prompt): JsonResponse
     {
         try {
             $this->authorizePromptOwnership($prompt);
 
             if (!$prompt->isAccepted()) {
                 return $this->sendError(
-                    'You must accept the prompt before submitting a selfie.',
+                    'You must accept the prompt before submitting a QR scan.',
                     [],
                     422
                 );
@@ -87,25 +109,26 @@ class SelfieController extends BaseApiController
             $submission = $this->selfieService->submitSelfie(
                 $prompt,
                 $rider,
-                array_merge($request->validated(), ['selfie_image' => $request->file('selfie_image')])
+                $request->validated()   // qr_code, latitude, longitude — all plain values
             );
 
             return $this->sendResponse(
                 ['submission' => $this->selfieService->formatSubmission($submission)],
-                'Selfie submitted successfully!',
+                'QR code submitted successfully!',
                 201
             );
+        } catch (\RuntimeException $e) {
+            // Covers: QR code does not match the rider's assigned helmet
+            return $this->sendError($e->getMessage(), [], 403);
         } catch (\Exception $e) {
-            return $this->sendError('Failed to submit selfie: ' . $e->getMessage(), [], 500);
+            return $this->sendError('Failed to submit QR scan: ' . $e->getMessage(), [], 500);
         }
     }
 
-    // ─── Read: Active prompt for rider ────────────────────────────────────────
+    // ─── Read: Active prompt for rider ───────────────────────────────────────
 
     /**
      * GET /api/rider/selfie-prompts/active
-     *
-     * Returns the current pending/accepted prompt so the app can re-display it after a restart.
      */
     public function activePrompt(): JsonResponse
     {
@@ -127,7 +150,7 @@ class SelfieController extends BaseApiController
         }
     }
 
-    // ─── Read: Prompt history for rider ───────────────────────────────────────
+    // ─── Read: Prompt history for rider ──────────────────────────────────────
 
     /**
      * GET /api/rider/selfie-prompts
@@ -143,13 +166,13 @@ class SelfieController extends BaseApiController
 
             $prompts = $this->selfieService->getPromptsForRider($rider, request()->all());
 
-            return $this->sendResponse($prompts, 'Selfie prompts retrieved.');
+            return $this->sendResponse($prompts, 'Prompts retrieved.');
         } catch (\Exception $e) {
             return $this->sendError($e->getMessage(), [], 500);
         }
     }
 
-    // ─── Private helpers ──────────────────────────────────────────────────────
+    // ─── Private helpers ─────────────────────────────────────────────────────
 
     private function authorizePromptOwnership(SelfiePrompt $prompt): void
     {

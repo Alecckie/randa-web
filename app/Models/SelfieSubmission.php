@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class SelfieSubmission extends Model
 {
@@ -15,7 +14,8 @@ class SelfieSubmission extends Model
         'selfie_prompt_id',
         'rider_id',
         'user_id',
-        'selfie_image',
+        'helmet_id',
+        'qr_code',
         'latitude',
         'longitude',
         'submitted_at',
@@ -46,11 +46,9 @@ class SelfieSubmission extends Model
         return $this->belongsTo(User::class);
     }
 
-    // ─── Accessors ────────────────────────────────────────────────────────────
-
-    public function getSelfieImageUrlAttribute(): ?string
+    public function helmet(): BelongsTo
     {
-        return $this->selfie_image ? Storage::url($this->selfie_image) : null;
+        return $this->belongsTo(Helmet::class);
     }
 
     // ─── Scopes ───────────────────────────────────────────────────────────────
@@ -60,9 +58,9 @@ class SelfieSubmission extends Model
         return $query->where('status', 'pending_review');
     }
 
-    public function scopeApproved($query)
+    public function scopeAccepted($query)
     {
-        return $query->where('status', 'approved');
+        return $query->where('status', 'accepted');
     }
 
     public function scopeRejected($query)

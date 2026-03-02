@@ -148,11 +148,11 @@ Route::prefix('v1')->group(function () {
 
 
             //Selfie Prompt
-            Route::prefix('selfie-prompts')->group(function () {
-                Route::post('/',                 [SelfieController::class, 'storePrompt'])->name('rider.selfie-prompts.store');
-                Route::get('/active',            [SelfieController::class, 'activePrompt'])->name('rider.selfie-prompts.active');
-                Route::patch('/{prompt}/accept', [SelfieController::class, 'acceptPrompt'])->name('rider.selfie-prompts.accept');
-                Route::post('/{prompt}/submit',  [SelfieController::class, 'submitSelfie'])->name('rider.selfie-prompts.submit');
+            Route::prefix('qr-prompt')->group(function () {
+                Route::post('/',                 [SelfieController::class, 'storePrompt'])->name('rider.qr-prompt.store');
+                Route::get('/active',            [SelfieController::class, 'activePrompt'])->name('rider.qr-prompt.active');
+                Route::patch('/{prompt}/reject', [SelfieController::class, 'rejectPrompt'])->name('rider.qr-prompt.accept');
+                Route::post('/{prompt}/submit',  [SelfieController::class, 'submitQr'])->name('rider.qr-prompt.submit');
             });
 
             //Helmet Report
