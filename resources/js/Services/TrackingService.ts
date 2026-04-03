@@ -1,112 +1,132 @@
 import axios from 'axios';
-import type { 
-    LiveTrackingData, 
-    RiderTrackingData, 
+import type {
+    LiveTrackingData,
+    RiderTrackingData,
     TrackingStats,
     RiderListItem,
-    TrackingFilters 
+    TrackingFilters,
 } from '@/types/tracking';
 
+/**
+ * All admin tracking API calls.
+ *
+ * Base URL is /admin/tracking — make sure your Laravel routes are
+ * registered under that prefix in routes/api.php.
+ */
 class TrackingService {
-    /**
-     * Get live tracking data for all active riders
-     */
-    async getLiveTracking(filters: Partial<TrackingFilters> = {}): Promise<LiveTrackingData> {
+    private readonly base = '/admin/tracking';
+
+    // ── Live tracking ─────────────────────────────────────────────────────────
+
+    async getLiveTracking(
+        filters: Partial<TrackingFilters> = {}
+    ): Promise<LiveTrackingData> {
         const params = new URLSearchParams();
-        
+
         if (filters.campaign_id) {
             params.append('campaign_id', filters.campaign_id.toString());
         }
-        
+
         if (filters.rider_ids && filters.rider_ids.length > 0) {
-            filters.rider_ids.forEach(id => params.append('rider_ids[]', id.toString()));
+            filters.rider_ids.forEach((id) =>
+                params.append('rider_ids[]', id.toString())
+            );
         }
-        
-        const response = await axios.get('/admin/tracking/live', { params });
-        return response.data.data;
+
+        const response = await axios.get(`${this.base}/live`, { params });
+        return response.data.data as LiveTrackingData;
     }
 
-    /**
-     * Get tracking data for a specific rider
-     */
-    async getRiderTracking(riderId: number, date?: string): Promise<RiderTrackingData> {
+    // ── Rider tracking ────────────────────────────────────────────────────────
+
+    async getRiderTracking(
+        riderId: number,
+        date?: string
+    ): Promise<RiderTrackingData> {
         const params = date ? { date } : {};
-        const response = await axios.get(`/admin/tracking/rider/${riderId}`, { params });
-        return response.data.data;
-    }
-
-    /**
-     * Get dashboard statistics
-     */
-    async getDashboardStats(period: 'today' | 'week' | 'month' = 'today'): Promise<TrackingStats> {
-        const response = await axios.get('/admin/tracking/dashboard-stats', {
-            params: { period }
+        const response = await axios.get(`${this.base}/rider/${riderId}`, {
+            params,
         });
-        return response.data.data;
+        return response.data.data as RiderTrackingData;
     }
 
-    /**
-     * Get list of riders with tracking status
-     */
-    async getRidersList(filters: {
-        status?: 'active' | 'inactive' | 'all';
-        campaign_id?: number;
-        search?: string;
-        per_page?: number;
-    } = {}): Promise<{ data: RiderListItem[]; pagination: any }> {
-        const response = await axios.get('/admin/tracking/riders', { params: filters });
+    // ── Dashboard stats ───────────────────────────────────────────────────────
+
+    async getDashboardStats(
+        period: 'today' | 'week' | 'month' = 'today'
+    ): Promise<TrackingStats> {
+        const response = await axios.get(`${this.base}/dashboard-stats`, {
+            params: { period },
+        });
+        return response.data.data as TrackingStats;
+    }
+
+    // ── Riders list ───────────────────────────────────────────────────────────
+
+    async getRidersList(
+        filters: {
+            status?: 'active' | 'inactive' | 'all';
+            campaign_id?: number;
+            search?: string;
+            per_page?: number;
+        } = {}
+    ): Promise<{ data: RiderListItem[]; pagination: unknown }> {
+        const response = await axios.get(`${this.base}/riders`, {
+            params: filters,
+        });
         return {
-            data: response.data.data,
-            pagination: response.data.pagination
+            data: response.data.data as RiderListItem[],
+            pagination: response.data.pagination,
         };
     }
 
-    /**
-     * Get campaign tracking data
-     */
-    async getCampaignTracking(campaignId: number, options: {
-        date?: string;
-        live?: boolean;
-    } = {}): Promise<any> {
-        const response = await axios.get(`/admin/tracking/campaign/${campaignId}`, {
-            params: options
+    // ── Campaign tracking ─────────────────────────────────────────────────────
+
+    async getCampaignTracking(
+        campaignId: number,
+        options: { date?: string; live?: boolean } = {}
+    ): Promise<unknown> {
+        const response = await axios.get(
+            `${this.base}/campaign/${campaignId}`,
+            { params: options }
+        );
+        return response.data.data;
+    }
+
+    // ── Route details ─────────────────────────────────────────────────────────
+
+    async getRouteDetails(routeId: number): Promise<unknown> {
+        const response = await axios.get(`${this.base}/routes/${routeId}`);
+        return response.data.data;
+    }
+
+    // ── Heatmap ───────────────────────────────────────────────────────────────
+
+    async getHeatmapData(
+        filters: {
+            campaign_id?: number;
+            date_from?: string;
+            date_to?: string;
+            county_id?: number;
+            intensity_threshold?: number;
+        } = {}
+    ): Promise<unknown> {
+        const response = await axios.get(`${this.base}/heatmap`, {
+            params: filters,
         });
         return response.data.data;
     }
 
-    /**
-     * Get route details by route ID
-     */
-    async getRouteDetails(routeId: number): Promise<any> {
-        const response = await axios.get(`/admin/tracking/routes/${routeId}`);
-        return response.data.data;
-    }
+    // ── Export ────────────────────────────────────────────────────────────────
 
-    /**
-     * Get heatmap data for coverage visualization
-     */
-    async getHeatmapData(filters: {
-        campaign_id?: number;
-        date_from?: string;
-        date_to?: string;
-        county_id?: number;
-        intensity_threshold?: number;
-    } = {}): Promise<any> {
-        const response = await axios.get('/admin/tracking/heatmap', { params: filters });
-        return response.data.data;
-    }
-
-    /**
-     * Export tracking data
-     */
     async exportTrackingData(filters: {
         format: 'csv' | 'json' | 'excel';
         date_from: string;
         date_to: string;
         campaign_id?: number;
         rider_ids?: number[];
-    }): Promise<any> {
-        const response = await axios.post('/admin/tracking/export', filters);
+    }): Promise<unknown> {
+        const response = await axios.post(`${this.base}/export`, filters);
         return response.data;
     }
 }

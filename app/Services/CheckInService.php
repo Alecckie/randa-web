@@ -14,6 +14,13 @@ use Exception;
 
 class CheckInService
 {
+
+
+    //  constructor:
+    public function __construct(
+        private AreaVisitService $areaVisitService
+    ) {}
+
     /**
      * Process rider check-in via QR code scan
      */
@@ -95,74 +102,87 @@ class CheckInService
     /**
      * Process rider check-out with accurate earnings calculation
      */
-    public function checkOut(int $riderId, ?float $latitude = null, ?float $longitude = null): array
-    {
-        return DB::transaction(function () use ($riderId, $latitude, $longitude) {
-            // Find today's active check-in
-            $checkIn = RiderCheckIn::where('rider_id', $riderId)
-                ->whereDate('check_in_date', Carbon::today())
-                ->where('status', '!=', RiderCheckIn::STATUS_ENDED)
-                ->first();
-
-            if (!$checkIn) {
-                throw new Exception('No active check-in found for today.');
-            }
-
-            // Calculate time and earnings
-            $checkOutTime = Carbon::now();
-            $totalMinutes = $checkIn->check_in_time->diffInMinutes($checkOutTime);
-            $totalHours = $totalMinutes / 60;
-
-            // Get total paused time from pause events
-            $pausedMinutes = RiderPauseEvent::where('check_in_id', $checkIn->id)
-                ->whereNotNull('resumed_at')
-                ->sum('duration_minutes');
-
-            $pausedHours = $pausedMinutes / 60;
-            $workedHours = max(0, $totalHours - $pausedHours);
-
-            // Calculate earnings: KSh 7 per hour worked
-            $dailyEarning = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
-
-            // Update check-in
-            $checkIn->update([
-                'check_out_time' => $checkOutTime,
-                'status' => RiderCheckIn::STATUS_ENDED,
-                'daily_earning' => $dailyEarning,
-                'check_out_latitude' => $latitude,
-                'check_out_longitude' => $longitude
+   public function checkOut(int $riderId, ?float $latitude = null, ?float $longitude = null): array
+{
+    return DB::transaction(function () use ($riderId, $latitude, $longitude) {
+        $checkIn = RiderCheckIn::where('rider_id', $riderId)
+            ->whereDate('check_in_date', Carbon::today())
+            ->where('status', '!=', RiderCheckIn::STATUS_ENDED)
+            ->first();
+ 
+        if (!$checkIn) {
+            throw new Exception('No active check-in found for today.');
+        }
+ 
+        $checkOutTime  = Carbon::now();
+        $totalMinutes  = $checkIn->check_in_time->diffInMinutes($checkOutTime);
+        $totalHours    = $totalMinutes / 60;
+ 
+        $pausedMinutes = RiderPauseEvent::where('check_in_id', $checkIn->id)
+            ->whereNotNull('resumed_at')
+            ->sum('duration_minutes');
+ 
+        $pausedHours  = $pausedMinutes / 60;
+        $workedHours  = max(0, $totalHours - $pausedHours);
+        $dailyEarning = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
+ 
+        $checkIn->update([
+            'check_out_time'      => $checkOutTime,
+            'status'              => RiderCheckIn::STATUS_ENDED,
+            'daily_earning'       => $dailyEarning,
+            'check_out_latitude'  => $latitude,
+            'check_out_longitude' => $longitude,
+        ]);
+ 
+        $rider = Rider::findOrFail($riderId);
+        $rider->increment('wallet_balance', $dailyEarning);
+ 
+        // Finalise route
+        $route = RiderRoute::where('check_in_id', $checkIn->id)->first();
+        if ($route) {
+            $route->update([
+                'ended_at'        => $checkOutTime,
+                'tracking_status' => 'completed',
+                'status'          => 'completed',
+                'total_duration'  => $totalMinutes,
             ]);
-
-            // Update rider's wallet balance
-            $rider = Rider::findOrFail($riderId);
-            $rider->increment('wallet_balance', $dailyEarning);
-
-            // Finalize route if exists
-            $route = RiderRoute::where('check_in_id', $checkIn->id)->first();
-            if ($route) {
-                $route->update([
-                    'ended_at' => $checkOutTime,
-                ]);
-                $route->updatePauseSummary();
+            $route->updatePauseSummary();
+        }
+ 
+        // ── Detect area visits ────────────────────────────────────────────
+        // Runs after the transaction commits via a deferred closure so that
+        // any failure here does NOT roll back the check-out itself.
+        $checkInId = $checkIn->id;
+        $areaVisitService = $this->areaVisitService;
+ 
+        DB::afterCommit(function () use ($checkInId, $areaVisitService) {
+            try {
+                $areaVisitService->processCheckInVisits($checkInId);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error(
+                    'Area visit detection failed after check-out',
+                    ['check_in_id' => $checkInId, 'error' => $e->getMessage()]
+                );
             }
-
-            return [
-                'success' => true,
-                'message' => 'Check-out successful! Your earnings have been added to your wallet.',
-                'data' => [
-                    'check_out_time' => $checkIn->formatted_check_out_time,
-                    'total_hours' => round($totalHours, 2),
-                    'worked_hours' => round($workedHours, 2),
-                    'paused_hours' => round($pausedHours, 2),
-                    'paused_minutes' => $pausedMinutes,
-                    'pause_count' => RiderPauseEvent::where('check_in_id', $checkIn->id)->count(),
-                    'hourly_rate' => RiderCheckIn::HOURLY_RATE,
-                    'daily_earning' => $checkIn->formatted_daily_earning,
-                    'new_wallet_balance' => 'KSh ' . number_format($rider->wallet_balance, 2)
-                ]
-            ];
         });
-    }
+ 
+        return [
+            'success' => true,
+            'message' => 'Check-out successful! Your earnings have been added to your wallet.',
+            'data'    => [
+                'check_out_time'     => $checkIn->formatted_check_out_time,
+                'total_hours'        => round($totalHours, 2),
+                'worked_hours'       => round($workedHours, 2),
+                'paused_hours'       => round($pausedHours, 2),
+                'paused_minutes'     => $pausedMinutes,
+                'pause_count'        => RiderPauseEvent::where('check_in_id', $checkIn->id)->count(),
+                'hourly_rate'        => RiderCheckIn::HOURLY_RATE,
+                'daily_earning'      => $checkIn->formatted_daily_earning,
+                'new_wallet_balance' => 'KSh ' . number_format($rider->wallet_balance, 2),
+            ],
+        ];
+    });
+}
 
     /**
      * Get today's check-in status for a rider

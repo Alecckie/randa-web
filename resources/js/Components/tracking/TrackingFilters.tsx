@@ -1,33 +1,74 @@
 import { useState } from 'react';
-import { 
-    Card, 
-    Select, 
-    MultiSelect, 
-    Button, 
-    Group, 
+import {
+    Card,
+    Select,
+    MultiSelect,
+    Button,
+    Group,
     SegmentedControl,
     Badge,
-    Text
+    Text,
+    Divider,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { 
-    FilterIcon, 
-    RefreshCwIcon, 
-    XIcon,
-    CalendarIcon,
-    RadioIcon,
-    MapIcon
+import {
+    Filter,
+    RefreshCw,
+    X,
+    Calendar,
+    Radio,
+    Map,
 } from 'lucide-react';
-import type { TrackingFilters as Filters } from '@/types/tracking';
+import type { TrackingFilters as Filters, SelectOption } from '@/types/tracking';
 
 interface TrackingFiltersProps {
-    campaigns: Array<{ value: string; label: string }>;
-    riders: Array<{ value: string; label: string }>;
+    campaigns: SelectOption[];
+    riders: SelectOption[];
     filters: Filters;
     onFilterChange: (filters: Filters) => void;
     onRefresh: () => void;
     loading?: boolean;
 }
+
+// ── Date preset helpers ───────────────────────────────────────────────────────
+
+function datePresetValue(preset: string): string {
+    const now = new Date();
+    switch (preset) {
+        case 'yesterday': {
+            const d = new Date(now);
+            d.setDate(d.getDate() - 1);
+            return d.toISOString().split('T')[0];
+        }
+        case '7days': {
+            const d = new Date(now);
+            d.setDate(d.getDate() - 7);
+            return d.toISOString().split('T')[0];
+        }
+        case '30days': {
+            const d = new Date(now);
+            d.setDate(d.getDate() - 30);
+            return d.toISOString().split('T')[0];
+        }
+        default:
+            return now.toISOString().split('T')[0];
+    }
+}
+
+function parseDate(str: string): Date {
+    // Construct in local time to avoid UTC offset shifting the day
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+function formatDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function TrackingFilters({
     campaigns,
@@ -35,251 +76,237 @@ export default function TrackingFilters({
     filters,
     onFilterChange,
     onRefresh,
-    loading = false
+    loading = false,
 }: TrackingFiltersProps) {
-    const [localFilters, setLocalFilters] = useState<Filters>(filters);
+    const [local, setLocal] = useState<Filters>(filters);
 
-    const datePresets = [
-        { label: 'Today', value: 'today' },
-        { label: 'Yesterday', value: 'yesterday' },
-        { label: 'Last 7 Days', value: '7days' },
-        { label: 'Last 30 Days', value: '30days' },
-    ];
-
-    const handleDatePreset = (preset: string) => {
-        const today = new Date();
-        let date = today;
-
-        switch (preset) {
-            case 'yesterday':
-                date = new Date(today.setDate(today.getDate() - 1));
-                break;
-            case '7days':
-                date = new Date(today.setDate(today.getDate() - 7));
-                break;
-            case '30days':
-                date = new Date(today.setDate(today.getDate() - 30));
-                break;
-            default:
-                date = new Date();
-        }
-
-        const newFilters = {
-            ...localFilters,
-            date: date.toISOString().split('T')[0],
-        };
-        setLocalFilters(newFilters);
-        onFilterChange(newFilters);
+    const apply = (patch: Partial<Filters>) => {
+        const next = { ...local, ...patch };
+        setLocal(next);
+        onFilterChange(next);
     };
 
-    const handleViewModeChange = (mode: 'live' | 'historical') => {
-        const newFilters = {
-            ...localFilters,
-            view_mode: mode,
-            date: mode === 'live' ? new Date().toISOString().split('T')[0] : localFilters.date,
-        };
-        setLocalFilters(newFilters);
-        onFilterChange(newFilters);
-    };
+    const hasActive =
+        local.campaign_id !== null || local.rider_ids.length > 0;
 
-    const handleCampaignChange = (value: string | null) => {
-        const newFilters = {
-            ...localFilters,
-            campaign_id: value ? parseInt(value) : null,
-        };
-        setLocalFilters(newFilters);
-        onFilterChange(newFilters);
-    };
-
-    const handleRidersChange = (values: string[]) => {
-        const newFilters = {
-            ...localFilters,
-            rider_ids: values.map(v => parseInt(v)),
-        };
-        setLocalFilters(newFilters);
-        onFilterChange(newFilters);
-    };
-
-    const handleDateChange = (date: Date | null) => {
-        if (!date) return;
-        
-        const newFilters = {
-            ...localFilters,
-            date: date.toISOString().split('T')[0],
-        };
-        setLocalFilters(newFilters);
-        onFilterChange(newFilters);
-    };
-
-    const handleClearFilters = () => {
-        const defaultFilters: Filters = {
-            campaign_id: null,
-            rider_ids: [],
-            date: new Date().toISOString().split('T')[0],
-            view_mode: 'live',
-        };
-        setLocalFilters(defaultFilters);
-        onFilterChange(defaultFilters);
-    };
-
-    const hasActiveFilters = 
-        localFilters.campaign_id !== null || 
-        localFilters.rider_ids.length > 0;
+    const today = new Date().toISOString().split('T')[0];
 
     return (
-        <Card className="bg-white dark:bg-gray-800" padding="md">
-            {/* View Mode Toggle */}
+        <Card
+            padding="md"
+            radius="lg"
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
+        >
+            {/* ── View mode ── */}
             <div className="mb-4">
-                <Text size="sm" fw={500} mb="xs">View Mode</Text>
+                <Text size="xs" fw={600} tt="uppercase" c="dimmed" mb={6}>
+                    View mode
+                </Text>
                 <SegmentedControl
                     fullWidth
-                    value={localFilters.view_mode}
-                    onChange={(value) => handleViewModeChange(value as 'live' | 'historical')}
+                    size="sm"
+                    value={local.view_mode}
+                    onChange={(v) =>
+                        apply({
+                            view_mode: v as 'live' | 'historical',
+                            date: v === 'live' ? today : local.date,
+                        })
+                    }
                     data={[
-                        { 
+                        {
                             label: (
-                                <Group gap="xs" justify="center">
-                                    <RadioIcon size={16} />
+                                <Group gap={6} justify="center">
+                                    <Radio size={14} />
                                     <span>Live</span>
-                                    <Badge size="xs" variant="light" color="green">Auto</Badge>
+                                    <Badge size="xs" color="green" variant="dot">
+                                        auto
+                                    </Badge>
                                 </Group>
-                            ), 
-                            value: 'live' 
+                            ),
+                            value: 'live',
                         },
-                        { 
+                        {
                             label: (
-                                <Group gap="xs" justify="center">
-                                    <CalendarIcon size={16} />
+                                <Group gap={6} justify="center">
+                                    <Calendar size={14} />
                                     <span>Historical</span>
                                 </Group>
-                            ), 
-                            value: 'historical' 
+                            ),
+                            value: 'historical',
                         },
                     ]}
                     disabled={loading}
                 />
             </div>
 
-            {/* Date Selection */}
+            {/* ── Date ── */}
             <div className="mb-4">
-                <Text size="sm" fw={500} mb="xs">Date</Text>
-                
-                {localFilters.view_mode === 'live' ? (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
-                        <Group gap="xs">
-                            <RadioIcon size={16} className="text-green-600 animate-pulse" />
-                            <Text size="sm" c="green" fw={500}>
-                                Live tracking active - Today's data
-                            </Text>
-                        </Group>
+                <Text size="xs" fw={600} tt="uppercase" c="dimmed" mb={6}>
+                    Date
+                </Text>
+
+                {local.view_mode === 'live' ? (
+                    <div className="flex items-center gap-2 rounded-lg px-3 py-2
+                                    bg-green-50 dark:bg-green-900/20
+                                    border border-green-200 dark:border-green-800">
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                        <Text size="xs" c="green" fw={500}>
+                            Live — showing today's data
+                        </Text>
                     </div>
                 ) : (
                     <>
-                        <Group mb="xs">
-                            {datePresets.map((preset) => (
+                        <Group gap={6} mb={8} wrap="wrap">
+                            {[
+                                { label: 'Today', value: 'today' },
+                                { label: 'Yesterday', value: 'yesterday' },
+                                { label: 'Last 7 days', value: '7days' },
+                                { label: 'Last 30 days', value: '30days' },
+                            ].map((p) => (
                                 <Button
-                                    key={preset.value}
+                                    key={p.value}
                                     size="xs"
-                                    variant="light"
-                                    onClick={() => handleDatePreset(preset.value)}
+                                    variant={local.date === datePresetValue(p.value) ? 'filled' : 'light'}
+                                    color="blue"
+                                    onClick={() => apply({ date: datePresetValue(p.value) })}
                                     disabled={loading}
                                 >
-                                    {preset.label}
+                                    {p.label}
                                 </Button>
                             ))}
                         </Group>
+
                         <DatePickerInput
-                            value={new Date(localFilters.date)}
-                            leftSection={<CalendarIcon size={16} />}
+                            value={parseDate(local.date)}
+                            onChange={(d) => {
+                                if (d) apply({ date: formatDate(d) });
+                            }}
+                            leftSection={<Calendar size={14} />}
                             placeholder="Select date"
                             maxDate={new Date()}
+                            size="sm"
+                            radius="md"
                             disabled={loading}
                         />
                     </>
                 )}
             </div>
 
-            {/* Campaign Filter */}
+            <Divider my="sm" />
+
+            {/* ── Campaign ── */}
             <div className="mb-4">
                 <Select
-                    label="Campaign"
-                    placeholder="All Campaigns"
-                    leftSection={<MapIcon size={16} />}
-                    data={[
-                        { value: '', label: 'All Campaigns' },
-                        ...campaigns
-                    ]}
-                    value={localFilters.campaign_id?.toString() || ''}
-                    onChange={handleCampaignChange}
+                    label={
+                        <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                            Campaign
+                        </Text>
+                    }
+                    placeholder="All campaigns"
+                    leftSection={<Map size={14} />}
+                    data={campaigns}
+                    value={local.campaign_id?.toString() ?? null}
+                    onChange={(v) =>
+                        apply({ campaign_id: v ? parseInt(v) : null })
+                    }
                     clearable
                     searchable
+                    size="sm"
+                    radius="md"
                     disabled={loading}
                 />
             </div>
 
-            {/* Rider Filter */}
+            {/* ── Riders ── */}
             <div className="mb-4">
                 <MultiSelect
-                    label="Riders"
-                    placeholder="All Riders"
+                    label={
+                        <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                            Riders
+                        </Text>
+                    }
+                    placeholder="All riders"
                     data={riders}
-                    value={localFilters.rider_ids.map(id => id.toString())}
-                    onChange={handleRidersChange}
+                    value={local.rider_ids.map(String)}
+                    onChange={(vals) =>
+                        apply({ rider_ids: vals.map(Number) })
+                    }
                     clearable
                     searchable
-                    disabled={loading}
+                    size="sm"
+                    radius="md"
                     maxValues={10}
                     hidePickedOptions
+                    disabled={loading}
                 />
-                {localFilters.rider_ids.length > 0 && (
-                    <Text size="xs" c="dimmed" mt="xs">
-                        {localFilters.rider_ids.length} rider(s) selected
+                {local.rider_ids.length > 0 && (
+                    <Text size="xs" c="dimmed" mt={4}>
+                        {local.rider_ids.length} rider
+                        {local.rider_ids.length !== 1 ? 's' : ''} selected
                     </Text>
                 )}
             </div>
 
-            {/* Action Buttons */}
-            <Group justify="space-between">
+            {/* ── Actions ── */}
+            <Group justify="space-between" mt="sm">
                 <Button
                     variant="light"
-                    leftSection={<RefreshCwIcon size={16} />}
+                    leftSection={<RefreshCw size={14} />}
                     onClick={onRefresh}
                     loading={loading}
                     size="sm"
+                    radius="md"
                 >
                     Refresh
                 </Button>
-                
-                {hasActiveFilters && (
+
+                {hasActive && (
                     <Button
                         variant="subtle"
                         color="red"
-                        leftSection={<XIcon size={16} />}
-                        onClick={handleClearFilters}
+                        leftSection={<X size={14} />}
+                        onClick={() => {
+                            const reset: Filters = {
+                                campaign_id: null,
+                                rider_ids: [],
+                                date: today,
+                                view_mode: local.view_mode,
+                            };
+                            setLocal(reset);
+                            onFilterChange(reset);
+                        }}
                         disabled={loading}
                         size="sm"
+                        radius="md"
                     >
                         Clear
                     </Button>
                 )}
             </Group>
 
-            {/* Active Filters Summary */}
-            {hasActiveFilters && (
-                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-                    <Text size="xs" fw={500} mb="xs">Active Filters:</Text>
-                    <div className="flex flex-wrap gap-2">
-                        {localFilters.campaign_id && (
-                            <Badge size="sm" variant="light">
-                                Campaign: {campaigns.find(c => c.value === localFilters.campaign_id?.toString())?.label}
+            {/* ── Active filter chips ── */}
+            {hasActive && (
+                <div className="mt-3 p-2.5 rounded-lg
+                                bg-blue-50 dark:bg-blue-900/20
+                                border border-blue-200 dark:border-blue-800">
+                    <Text size="xs" fw={600} c="blue" mb={6}>
+                        Active filters
+                    </Text>
+                    <Group gap={6} wrap="wrap">
+                        {local.campaign_id && (
+                            <Badge size="sm" variant="light" color="blue">
+                                {campaigns.find(
+                                    (c) => c.value === local.campaign_id?.toString()
+                                )?.label ?? `Campaign #${local.campaign_id}`}
                             </Badge>
                         )}
-                        {localFilters.rider_ids.length > 0 && (
-                            <Badge size="sm" variant="light">
-                                {localFilters.rider_ids.length} Rider(s)
+                        {local.rider_ids.length > 0 && (
+                            <Badge size="sm" variant="light" color="indigo">
+                                {local.rider_ids.length} rider
+                                {local.rider_ids.length !== 1 ? 's' : ''}
                             </Badge>
                         )}
-                    </div>
+                    </Group>
                 </div>
             )}
         </Card>

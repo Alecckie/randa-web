@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -19,14 +20,23 @@ class CoverageArea extends Model
         'county_id',
         'sub_county_id',
         'ward_id',
-       
+        // Spatial columns added by migration
+        'center_latitude',
+        'center_longitude',
+        'radius_metres',
     ];
 
- 
-
-    protected $dates = [
-        'deleted_at',
+    protected $casts = [
+        'center_latitude'  => 'float',
+        'center_longitude' => 'float',
+        'radius_metres'    => 'integer',
     ];
+
+    protected $dates = ['deleted_at'];
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Relationships
+    // ──────────────────────────────────────────────────────────────────────
 
     public function county(): BelongsTo
     {
@@ -45,14 +55,65 @@ class CoverageArea extends Model
 
     public function campaigns(): BelongsToMany
     {
-        return $this->belongsToMany(Campaign::class, 'campaign_coverage_areas', 'coverage_area_id', 'campaign_id');
+        return $this->belongsToMany(
+            Campaign::class,
+            'campaign_coverage_areas',
+            'coverage_area_id',
+            'campaign_id'
+        );
     }
 
+    public function areaVisits(): HasMany
+    {
+        return $this->hasMany(RiderAreaVisit::class, 'coverage_area_id');
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Spatial helpers
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Whether this area has a center point + radius defined.
+     * Areas without geometry are skipped during visit detection.
+     */
+    public function hasGeometry(): bool
+    {
+        return $this->center_latitude !== null
+            && $this->center_longitude !== null
+            && $this->radius_metres > 0;
+    }
+
+    /**
+     * Check whether a GPS coordinate falls inside this area's geo-fence.
+     * Uses the Haversine formula — same as GpsPathSimplifier::haversine().
+     *
+     * @param  float  $lat  GPS point latitude
+     * @param  float  $lng  GPS point longitude
+     */
+    public function containsPoint(float $lat, float $lng): bool
+    {
+        if (! $this->hasGeometry()) {
+            return false;
+        }
+
+        $earthRadius = 6_371_000.0;
+
+        $dLat = deg2rad($lat - $this->center_latitude);
+        $dLng = deg2rad($lng - $this->center_longitude);
+
+        $a = sin($dLat / 2) ** 2
+           + cos(deg2rad($this->center_latitude))
+           * cos(deg2rad($lat))
+           * sin($dLng / 2) ** 2;
+
+        $distanceMetres = 2 * $earthRadius * asin(sqrt($a));
+
+        return $distanceMetres <= $this->radius_metres;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // Scopes
-    // public function scopeActive($query)
-    // {
-    //     return $query->where('is_active', true);
-    // }
+    // ──────────────────────────────────────────────────────────────────────
 
     public function scopeByCounty($query, $countyId)
     {
@@ -69,12 +130,22 @@ class CoverageArea extends Model
         return $query->where('ward_id', $wardId);
     }
 
+    /**
+     * Only areas that have geometry defined — used by AreaVisitService
+     * to skip areas that haven't been configured yet.
+     */
+    public function scopeWithGeometry($query)
+    {
+        return $query->whereNotNull('center_latitude')
+                     ->whereNotNull('center_longitude')
+                     ->where('radius_metres', '>', 0);
+    }
+
     public function scopeSearch($query, $search)
     {
         return $query->where(function ($q) use ($search) {
             $q->where('name', 'like', "%{$search}%")
-              ->orWhere('area_code', 'like', "%{$search}%")
-              ->orWhere('description', 'like', "%{$search}%");
+              ->orWhere('area_code', 'like', "%{$search}%");
         });
     }
 
@@ -83,14 +154,17 @@ class CoverageArea extends Model
         return $query->with(['county', 'subCounty', 'ward']);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
     // Accessors
+    // ──────────────────────────────────────────────────────────────────────
+
     public function getFullNameAttribute(): string
     {
         $parts = array_filter([
             $this->name,
             $this->ward?->name,
             $this->subCounty?->name,
-            $this->county?->name
+            $this->county?->name,
         ]);
 
         return implode(', ', $parts);
@@ -100,19 +174,15 @@ class CoverageArea extends Model
     {
         return [
             'coverage_area' => $this->name,
-            'ward' => $this->ward?->name,
-            'sub_county' => $this->subCounty?->name,
-            'county' => $this->county?->name,
+            'ward'          => $this->ward?->name,
+            'sub_county'    => $this->subCounty?->name,
+            'county'        => $this->county?->name,
         ];
     }
 
     public function getShortNameAttribute(): string
     {
-        $parts = array_filter([
-            $this->name,
-            $this->county?->name
-        ]);
-
+        $parts = array_filter([$this->name, $this->county?->name]);
         return implode(', ', $parts);
     }
 
@@ -126,38 +196,36 @@ class CoverageArea extends Model
         return $this->campaigns()->count();
     }
 
-    public function setNameAttribute($value)
+    // ──────────────────────────────────────────────────────────────────────
+    // Mutators
+    // ──────────────────────────────────────────────────────────────────────
+
+    public function setNameAttribute($value): void
     {
         $this->attributes['name'] = trim($value);
     }
 
-    public function setDescriptionAttribute($value)
-    {
-        $this->attributes['description'] = $value ? trim($value) : null;
-    }
+    // ──────────────────────────────────────────────────────────────────────
+    // Static helpers
+    // ──────────────────────────────────────────────────────────────────────
 
-    // Static methods
     public static function generateAreaCode(string $name, ?int $countyId = null): string
     {
-        // Start with base code from name
         $baseCode = strtoupper(Str::slug($name, '_'));
-        
-        // Add county prefix if available
+
         if ($countyId) {
             $county = County::find($countyId);
             if ($county) {
                 $countyCode = strtoupper(substr($county->name, 0, 3));
-                $baseCode = $countyCode . '_' . $baseCode;
+                $baseCode   = $countyCode . '_' . $baseCode;
             }
         }
 
-        // Ensure uniqueness by adding a number suffix
-        $counter = 1;
+        $counter   = 1;
         $finalCode = $baseCode;
-        
+
         while (self::where('area_code', $finalCode)->exists()) {
-            $finalCode = $baseCode . '_' . $counter;
-            $counter++;
+            $finalCode = $baseCode . '_' . $counter++;
         }
 
         return $finalCode;
@@ -165,8 +233,11 @@ class CoverageArea extends Model
 
     public static function createWithCode(array $data): self
     {
-        if (!isset($data['area_code']) || empty($data['area_code'])) {
-            $data['area_code'] = self::generateAreaCode($data['name'], $data['county_id'] ?? null);
+        if (empty($data['area_code'])) {
+            $data['area_code'] = self::generateAreaCode(
+                $data['name'],
+                $data['county_id'] ?? null
+            );
         }
 
         return self::create($data);
@@ -177,148 +248,88 @@ class CoverageArea extends Model
         return self::where('area_code', $areaCode)->first();
     }
 
-    public static function getActiveByCounty(int $countyId): \Illuminate\Database\Eloquent\Collection
-    {
-        return self::active()
-            ->byCounty($countyId)
-            ->orderBy('name')
-            ->get();
-    }
-
-    public static function getPopularAreas(int $limit = 10): \Illuminate\Database\Eloquent\Collection
-    {
-        return self::withCount(['campaigns' => function ($query) {
-            $query->where('status', 'active');
-        }])
-        ->active()
-        ->orderByDesc('campaigns_count')
-        ->limit($limit)
-        ->get();
-    }
-
-    // public function activate(): bool
-    // {
-    //     return $this->update(['is_active' => true]);
-    // }
-
-    // public function deactivate(): bool
-    // {
-    //     return $this->update(['is_active' => false]);
-    // }
-
-    public function isInCounty(int $countyId): bool
-    {
-        return $this->county_id === $countyId;
-    }
-
-    public function hasActiveCampaigns(): bool
-    {
-        return $this->campaigns()->where('status', 'active')->exists();
-    }
-
-    public function canBeDeleted(): bool
-    {
-        return !$this->hasActiveCampaigns();
-    }
-
     public function getLocationPath(): string
     {
         $path = [];
-        
-        if ($this->county) {
-            $path[] = $this->county->name;
-        }
-        
-        if ($this->subCounty) {
-            $path[] = $this->subCounty->name;
-        }
-        
-        if ($this->ward) {
-            $path[] = $this->ward->name;
-        }
-        
+        if ($this->county)    $path[] = $this->county->name;
+        if ($this->subCounty) $path[] = $this->subCounty->name;
+        if ($this->ward)      $path[] = $this->ward->name;
         $path[] = $this->name;
-        
         return implode(' > ', $path);
     }
 
     public function getCampaignStats(): array
     {
         $campaigns = $this->campaigns();
-        
         return [
-            'total_campaigns' => $campaigns->count(),
-            'active_campaigns' => $campaigns->where('status', 'active')->count(),
+            'total_campaigns'     => $campaigns->count(),
+            'active_campaigns'    => $campaigns->where('status', 'active')->count(),
             'completed_campaigns' => $campaigns->where('status', 'completed')->count(),
-            'draft_campaigns' => $campaigns->where('status', 'draft')->count(),
+            'draft_campaigns'     => $campaigns->where('status', 'draft')->count(),
         ];
     }
 
-    protected static function boot()
+    public function canBeDeleted(): bool
     {
-        parent::boot();
-
-        static::creating(function ($model) {
-            if (!$model->area_code) {
-                $model->area_code = self::generateAreaCode($model->name, $model->county_id);
-            }
-        });
-
-        static::updating(function ($model) {
-            // Regenerate area code if name or county changed
-            if ($model->isDirty(['name', 'county_id'])) {
-                $model->area_code = self::generateAreaCode($model->name, $model->county_id);
-            }
-        });
-
-        static::deleting(function ($model) {
-            if ($model->hasActiveCampaigns()) {
-                throw new \Exception('Cannot delete coverage area with active campaigns. Please complete or cancel all active campaigns first.');
-            }
-        });
-    }
-
-    public function scopeWithCampaignStats($query)
-    {
-        return $query->withCount([
-            'campaigns',
-            'campaigns as active_campaigns_count' => function ($query) {
-                $query->where('status', 'active');
-            },
-            'campaigns as completed_campaigns_count' => function ($query) {
-                $query->where('status', 'completed');
-            }
-        ]);
-    }
-
-    public function scopeOrderByPopularity($query)
-    {
-        return $query->withCount(['campaigns' => function ($query) {
-            $query->where('status', 'active');
-        }])->orderByDesc('campaigns_count');
-    }
-
-    public function toArray(): array
-    {
-        $array = parent::toArray();
-        
-        $array['full_name'] = $this->full_name;
-        $array['location_hierarchy'] = $this->location_hierarchy;
-        $array['location_path'] = $this->getLocationPath();
-        
-        return $array;
+        return ! $this->campaigns()->where('status', 'active')->exists();
     }
 
     public function toSelectOption(): array
     {
         return [
-            'value' => $this->id,
-            'label' => $this->full_name,
-            'area_code' => $this->area_code,
-            'county' => $this->county?->name,
-            'sub_county' => $this->subCounty?->name,
-            'ward' => $this->ward?->name,
+            'value'           => $this->id,
+            'label'           => $this->full_name,
+            'area_code'       => $this->area_code,
+            'county'          => $this->county?->name,
+            'sub_county'      => $this->subCounty?->name,
+            'ward'            => $this->ward?->name,
+            'has_geometry'    => $this->hasGeometry(),
             'campaigns_count' => $this->total_campaigns_count,
         ];
+    }
+
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+        $array['full_name']           = $this->full_name;
+        $array['location_hierarchy']  = $this->location_hierarchy;
+        $array['location_path']       = $this->getLocationPath();
+        $array['has_geometry']        = $this->hasGeometry();
+        return $array;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Lifecycle hooks
+    // ──────────────────────────────────────────────────────────────────────
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (! $model->area_code) {
+                $model->area_code = self::generateAreaCode(
+                    $model->name,
+                    $model->county_id
+                );
+            }
+        });
+
+        static::updating(function ($model) {
+            if ($model->isDirty(['name', 'county_id'])) {
+                $model->area_code = self::generateAreaCode(
+                    $model->name,
+                    $model->county_id
+                );
+            }
+        });
+
+        static::deleting(function ($model) {
+            if ($model->campaigns()->where('status', 'active')->exists()) {
+                throw new \Exception(
+                    'Cannot delete a coverage area with active campaigns.'
+                );
+            }
+        });
     }
 }

@@ -1,25 +1,58 @@
-
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Card, Badge, Text, Group, Button, Loader } from '@mantine/core';
-import { DivIcon, LatLngExpression } from 'leaflet';
+import { useEffect, useRef, useState } from 'react';
+import {
+    MapContainer,
+    TileLayer,
+    Marker,
+    Popup,
+    Polyline,
+    useMap,
+} from 'react-leaflet';
+import type { Map as LeafletMap, DivIcon } from 'leaflet';
+import { Badge, Text, Button, Loader } from '@mantine/core';
 import 'leaflet/dist/leaflet.css';
-import { NavigationIcon, ClockIcon, GaugeIcon, MapPinIcon } from 'lucide-react';
+import {
+    Navigation,
+    Clock,
+    Gauge,
+    MapPin,
+    AlertCircle,
+} from 'lucide-react';
 import type { EnrichedLocation, RouteLocation } from '@/types/tracking';
+import type { LatLngExpression } from 'leaflet';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NAIROBI_CENTER: [number, number] = [-1.286389, 36.817223];
 
 const RIDER_COLORS = [
-    '#3B82F6', // Blue
-    '#10B981', // Green
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#8B5CF6', // Purple
-    '#EC4899', // Pink
-    '#06B6D4', // Cyan
-    '#84CC16', // Lime
+    '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+    '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16',
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Leaflet dynamic import
+// Leaflet mutates `window` and `document` on import — it must never run
+// during SSR. We import it once after mount and cache the module reference.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let leafletModule: typeof import('leaflet') | null = null;
+
+async function getLeaflet(): Promise<typeof import('leaflet')> {
+    if (!leafletModule) {
+        leafletModule = await import('leaflet');
+    }
+    return leafletModule;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface TrackingMapProps {
-    locations: EnrichedLocation[];
+    locations?: EnrichedLocation[];
     routes?: Map<number, RouteLocation[]>;
     center?: [number, number];
     zoom?: number;
@@ -27,82 +60,46 @@ interface TrackingMapProps {
     loading?: boolean;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Coordinate helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Safely extract a [lat, lng] tuple from an EnrichedLocation.
- * Handles both flat structure and nested location.location structure
- */
-function safeLatLng(location: EnrichedLocation): [number, number] | null {
-    // Try direct properties first
-    let lat: number | null | undefined = location.latitude;
-    let lng: number | null | undefined = location.longitude;
-    
-    // If not found or null, try nested location object (from API)
-    if ((lat == null) && location.location) {
-        lat = location.location.latitude ?? undefined;
-        lng = location.location.longitude ?? undefined;
-    }
-
-    // Validate coordinates - convert null to undefined for consistency
-    const finalLat = lat ?? undefined;
-    const finalLng = lng ?? undefined;
-
-    if (finalLat == null || finalLng == null || !isFinite(finalLat) || !isFinite(finalLng)) {
-        console.warn('Invalid coordinates for location:', location);
-        return null;
-    }
-    
-    return [finalLat, finalLng];
-}
-
-/**
- * Safely extract [lat, lng] from a RouteLocation
- */
-function safeRouteLatLng(loc: RouteLocation): [number, number] | null {
-    const lat = loc.latitude;
-    const lng = loc.longitude;
-    
-    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
-        console.warn('Invalid route coordinates:', loc);
-        return null;
-    }
-    
+function safeLatLng(loc: EnrichedLocation): [number, number] | null {
+    const lat = loc.latitude ?? loc.location?.latitude;
+    const lng = loc.longitude ?? loc.location?.longitude;
+    if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) return null;
     return [lat, lng];
 }
 
-/**
- * Safely extract numeric value, handling both null and undefined
- */
-function safeNumber(value: number | null | undefined): number | null {
-    if (value == null || !isFinite(value)) {
-        return null;
-    }
-    return value;
+function safeRouteLatLng(loc: RouteLocation): [number, number] | null {
+    if (loc.latitude == null || loc.longitude == null) return null;
+    if (!isFinite(loc.latitude) || !isFinite(loc.longitude)) return null;
+    return [loc.latitude, loc.longitude];
 }
 
-// ── Map bounds handler ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Map auto-bounds handler
+// ─────────────────────────────────────────────────────────────────────────────
 
 function MapBoundsHandler({ locations }: { locations: EnrichedLocation[] }) {
     const map = useMap();
+    const prevCount = useRef(0);
 
     useEffect(() => {
-        // Only use locations with valid coordinates
-        const validPoints = locations
+        const points = locations
             .map(safeLatLng)
             .filter((p): p is [number, number] => p !== null);
 
-        if (validPoints.length === 0) return;
+        if (points.length === 0 || points.length === prevCount.current) return;
+        prevCount.current = points.length;
 
-        if (validPoints.length === 1) {
-            map.setView(validPoints[0], 13);
+        if (points.length === 1) {
+            map.setView(points[0], 14);
         } else {
             try {
-                map.fitBounds(validPoints, { padding: [50, 50] });
-            } catch (error) {
-                console.error('Error fitting bounds:', error);
-                // Fallback to center on first point
-                map.setView(validPoints[0], 12);
+                map.fitBounds(points, { padding: [60, 60], maxZoom: 16 });
+            } catch {
+                map.setView(points[0], 13);
             }
         }
     }, [locations, map]);
@@ -110,215 +107,325 @@ function MapBoundsHandler({ locations }: { locations: EnrichedLocation[] }) {
     return null;
 }
 
-// ── Marker icon ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Icon factory
+//
+// FIX: Instead of `new L.DivIcon(...)` (which TypeScript can't verify has a
+// construct signature when L is dynamically imported), we use the Leaflet
+// factory function `L.divIcon(...)` which is a plain function call.
+// This resolves both:
+//   - "Expected 1 arguments, but got 0"   (ts 2554)
+//   - "'new' expression implicitly has 'any' type"  (ts 7009)
+// ─────────────────────────────────────────────────────────────────────────────
 
-function createRiderIcon(color: string, isActive: boolean): DivIcon {
-    return new DivIcon({
-        className: 'custom-rider-marker',
-        html: `
+function buildDivIconHtml(color: string, isActive: boolean): string {
+    const ripple = isActive
+        ? `<div style="
+                position:absolute;inset:0;
+                border-radius:50%;
+                background:${color};
+                opacity:.2;
+                animation:ripple 2s ease-out infinite;
+           "></div>`
+        : '';
+
+    return `
+        <div style="position:relative;width:36px;height:36px;">
+            ${ripple}
             <div style="
-                background-color: ${color};
-                width: 32px;
-                height: 32px;
-                border-radius: 50%;
-                border: 3px solid white;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                ${isActive ? 'animation: pulse 2s infinite;' : ''}
+                position:absolute;inset:4px;
+                background:${color};
+                border-radius:50%;
+                border:2.5px solid #fff;
+                box-shadow:0 2px 8px rgba(0,0,0,.25);
+                display:flex;
+                align-items:center;
+                justify-content:center;
             ">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
+                <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14'
+                     viewBox='0 0 24 24' fill='none' stroke='#fff'
+                     stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'>
+                    <path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/>
+                    <circle cx='12' cy='7' r='4'/>
                 </svg>
             </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16],
+        </div>`;
+}
+
+/**
+ * Create a Leaflet DivIcon using the factory function L.divIcon() rather
+ * than the class constructor new L.DivIcon().
+ * Both produce identical results — the factory is just a typed wrapper.
+ */
+function createRiderIcon(
+    L: typeof import('leaflet'),
+    color: string,
+    isActive: boolean
+): DivIcon {
+    // L.divIcon() is the correct factory — no `new` needed, fully typed
+    return L.divIcon({
+        className: '',
+        html: buildDivIconHtml(color, isActive),
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -20],
     });
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function TrackingMap({
-    locations = [], // Default to empty array
+    locations = [],
     routes,
-    center = [-1.286389, 36.817223], // Nairobi default
+    center = NAIROBI_CENTER,
     zoom = 12,
     onMarkerClick,
     loading = false,
 }: TrackingMapProps) {
-    const [selectedLocation, setSelectedLocation] = useState<EnrichedLocation | null>(null);
+    // We store the resolved Leaflet module so icons can be built synchronously
+    // during render once it has loaded.
+    const [L, setL] = useState<typeof import('leaflet') | null>(null);
 
-    const getRiderColor = (riderId: number | null | undefined): string => {
-        if (riderId == null || !isFinite(riderId)) {
-            return RIDER_COLORS[0];
-        }
-        return RIDER_COLORS[riderId % RIDER_COLORS.length];
-    };
+    useEffect(() => {
+        getLeaflet().then(setL);
+    }, []);
 
-    const handleMarkerClick = (location: EnrichedLocation) => {
-        setSelectedLocation(location);
-        onMarkerClick?.(location);
-    };
+    const getRiderColor = (riderId: number | null | undefined): string =>
+        riderId != null && isFinite(riderId)
+            ? RIDER_COLORS[Math.abs(riderId) % RIDER_COLORS.length]
+            : RIDER_COLORS[0];
 
-    // ── Loading state ──────────────────────────────────────────────────────────
+    const validLocations = locations.filter((l) => safeLatLng(l) !== null);
 
-    if (loading) {
+    // ── Loading / not ready ────────────────────────────────────────────────────
+
+    if (loading || !L) {
         return (
-            <Card className="h-full flex items-center justify-center bg-white dark:bg-gray-800">
-                <div className="text-center">
-                    <Loader size="lg" />
-                    <Text size="sm" c="dimmed" mt="md">Loading map...</Text>
+            <div className="h-full w-full flex items-center justify-center
+                            bg-gray-50 dark:bg-gray-900 rounded-xl border
+                            border-gray-200 dark:border-gray-700">
+                <div className="text-center space-y-3">
+                    <Loader size="lg" color="blue" />
+                    <Text size="sm" c="dimmed">Loading map…</Text>
                 </div>
-            </Card>
+            </div>
         );
     }
 
-    // Pre-filter to only locations with valid coordinates
-    const validLocations = locations.filter((loc) => safeLatLng(loc) !== null);
+    // ── Empty overlay ──────────────────────────────────────────────────────────
+
+    const emptyOverlay = validLocations.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center
+                        bg-white/80 dark:bg-gray-900/80 z-[900] rounded-xl backdrop-blur-sm">
+            <div className="text-center space-y-3 p-8">
+                <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800
+                                flex items-center justify-center mx-auto">
+                    <AlertCircle size={28} className="text-gray-400" />
+                </div>
+                <Text size="lg" fw={600} c="dimmed">No active riders</Text>
+                <Text size="sm" c="dimmed" maw={280} ta="center">
+                    No location data for the selected filters.
+                    Try adjusting the date or campaign.
+                </Text>
+            </div>
+        </div>
+    );
 
     // ── Render ─────────────────────────────────────────────────────────────────
 
     return (
-        <Card className="h-full p-0 overflow-hidden relative bg-white dark:bg-gray-800">
+        <div className="relative h-full w-full rounded-xl overflow-hidden
+                        border border-gray-200 dark:border-gray-700 shadow-sm">
 
-            {/* Legend */}
-            <div className="absolute top-4 right-4 z-[1000] bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
-                <Text size="xs" fw={700} mb="xs">Legend</Text>
-                <div className="space-y-2">
-                    <Group gap="xs">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                        <Text size="xs">Active (&lt; 5 min)</Text>
-                    </Group>
-                    <Group gap="xs">
-                        <div className="w-3 h-3 rounded-full bg-gray-400" />
-                        <Text size="xs">Inactive (&gt; 5 min)</Text>
-                    </Group>
-                </div>
+            {/* Live badge */}
+            <div className="absolute top-3 left-3 z-[800]">
+                <Badge
+                    size="md"
+                    variant="filled"
+                    color={validLocations.length > 0 ? 'blue' : 'gray'}
+                    leftSection={
+                        validLocations.length > 0
+                            ? <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
+                            : undefined
+                    }
+                >
+                    {validLocations.length} active rider
+                    {validLocations.length !== 1 ? 's' : ''}
+                </Badge>
             </div>
 
-            {/* Active rider count badge */}
-            {validLocations.length > 0 && (
-                <div className="absolute top-4 left-4 z-[1000]">
-                    <Badge size="lg" variant="filled" color="blue">
-                        {validLocations.length} Active Rider{validLocations.length !== 1 ? 's' : ''}
-                    </Badge>
+            {/* Legend */}
+            <div className="absolute top-3 right-3 z-[800]
+                            bg-white dark:bg-gray-800 rounded-lg shadow-md
+                            border border-gray-200 dark:border-gray-700
+                            px-3 py-2 text-xs space-y-1.5">
+                <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Legend</p>
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                    Active (&lt; 5 min)
                 </div>
-            )}
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block" />
+                    Inactive
+                </div>
+                {routes && routes.size > 0 && (
+                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                        <span className="w-4 h-0.5 bg-blue-500 inline-block" />
+                        Route trail
+                    </div>
+                )}
+            </div>
 
             <MapContainer
                 center={center as LatLngExpression}
                 zoom={zoom}
-                className="h-full w-full"
-                style={{ minHeight: '500px' }}
-                scrollWheelZoom={true}
+                style={{ height: '100%', width: '100%' }}
+                scrollWheelZoom
+                zoomControl={false}
             >
                 <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
 
                 <MapBoundsHandler locations={validLocations} />
 
-                {/* Rider markers */}
+                {/* ── Route polylines ── */}
+                {routes &&
+                    Array.from(routes.entries()).map(([riderId, routePoints]) => {
+                        const positions = routePoints
+                            .map(safeRouteLatLng)
+                            .filter((p): p is [number, number] => p !== null);
+
+                        if (positions.length < 2) return null;
+
+                        return (
+                            <Polyline
+                                key={`route-${riderId}`}
+                                positions={positions as LatLngExpression[]}
+                                pathOptions={{
+                                    color: getRiderColor(riderId),
+                                    weight: 4,
+                                    opacity: 0.75,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }}
+                            />
+                        );
+                    })}
+
+                {/* ── Rider markers ── */}
                 {validLocations.map((location) => {
                     const coords = safeLatLng(location);
-                    if (!coords) return null; // Extra safety check
+                    if (!coords) return null;
 
-                    // Safely get rider info (handle both flat and nested structures)
-                    const riderId = location.rider_id ?? location.rider?.id;
-                    const riderName = location.rider?.name ?? 'Unknown Rider';
-                    const riderPhone = location.rider?.phone ?? null;
-                    
-                    const color = getRiderColor(riderId);
+                    const riderId  = location.rider_id ?? location.rider?.id;
+                    const name     = location.rider?.name ?? 'Unknown Rider';
+                    const phone    = location.rider?.phone ?? null;
+                    const color    = getRiderColor(riderId);
                     const isActive = location.is_recent ?? false;
 
-                    // Safely resolve speed / heading / accuracy from either structure
-                    // Use safeNumber to handle null/undefined properly
-                    const speed = safeNumber(location.speed ?? location.location?.speed);
-                    const heading = safeNumber(location.heading ?? location.location?.heading);
-                    const accuracy = safeNumber(location.accuracy ?? location.location?.accuracy);
+                    // Use the Leaflet module that is now guaranteed non-null here
+                    const icon = createRiderIcon(L, color, isActive);
 
-                    const timeAgo = location.time_ago ?? null;
-                    const address = location.address ?? location.location?.address ?? null;
+                    const speed    = location.speed    ?? location.location?.speed    ?? null;
+                    const heading  = location.heading  ?? location.location?.heading  ?? null;
+                    const accuracy = location.accuracy ?? location.location?.accuracy ?? null;
+                    const timeAgo  = location.time_ago ?? null;
                     const campaign = location.campaign ?? null;
-
-                    // Generate unique key
-                    const markerKey = location.id ?? `marker-${riderId}-${coords[0]}-${coords[1]}`;
 
                     return (
                         <Marker
-                            key={markerKey}
+                            key={location.id ?? `m-${riderId}-${coords[0]}-${coords[1]}`}
                             position={coords as LatLngExpression}
-                            icon={createRiderIcon(color, isActive)}
-                            eventHandlers={{ click: () => handleMarkerClick(location) }}
+                            icon={icon}
+                            eventHandlers={{ click: () => onMarkerClick?.(location) }}
                         >
-                            <Popup>
-                                <div className="p-2 min-w-[250px]">
+                            <Popup minWidth={240} maxWidth={300}>
+                                <div className="py-1 space-y-3">
 
-                                    {/* Rider info */}
-                                    <div className="mb-3">
-                                        <Text size="sm" fw={700} className="text-gray-900">
-                                            {riderName}
-                                        </Text>
-                                        {riderPhone && (
-                                            <Text size="xs" c="dimmed">
-                                                {riderPhone}
-                                            </Text>
-                                        )}
+                                    {/* Header */}
+                                    <div className="flex items-center gap-2">
+                                        <div
+                                            style={{
+                                                background: color,
+                                                width: 32,
+                                                height: 32,
+                                                borderRadius: '50%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#fff',
+                                                fontSize: 12,
+                                                fontWeight: 700,
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            {name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="font-semibold text-sm text-gray-900 truncate">
+                                                {name}
+                                            </p>
+                                            {phone && (
+                                                <p className="text-xs text-gray-500 truncate">{phone}</p>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    {/* Campaign badge */}
+                                    {/* Status badge */}
+                                    <div>
+                                        <span className={`inline-flex items-center gap-1 text-xs
+                                            px-2 py-0.5 rounded-full font-medium
+                                            ${isActive
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-gray-100 text-gray-600'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full
+                                                ${isActive
+                                                    ? 'bg-green-500 animate-pulse'
+                                                    : 'bg-gray-400'
+                                                }`}
+                                            />
+                                            {isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </div>
+
+                                    {/* Campaign */}
                                     {campaign?.name && (
-                                        <div className="mb-3">
-                                            <Badge size="sm" variant="light" color="blue">
-                                                {campaign.name}
-                                            </Badge>
+                                        <div className="text-xs text-blue-600 font-medium
+                                                        bg-blue-50 px-2 py-1 rounded truncate">
+                                            {campaign.name}
                                         </div>
                                     )}
 
-                                    {/* Location details */}
-                                    <div className="space-y-2">
-                                        {speed !== null && (
-                                            <Group gap="xs">
-                                                <GaugeIcon size={14} className="text-gray-500" />
-                                                <Text size="xs">
-                                                    {speed.toFixed(1)} km/h
-                                                </Text>
-                                            </Group>
+                                    {/* Stats */}
+                                    <div className="space-y-1.5 border-t border-gray-100 pt-2">
+                                        {speed != null && (
+                                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                <Gauge size={12} />
+                                                <span>{Number(speed).toFixed(1)} km/h</span>
+                                            </div>
                                         )}
-
-                                        {heading !== null && (
-                                            <Group gap="xs">
-                                                <NavigationIcon size={14} className="text-gray-500" />
-                                                <Text size="xs">
-                                                    Heading: {heading.toFixed(0)}°
-                                                </Text>
-                                            </Group>
+                                        {heading != null && (
+                                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                <Navigation size={12} />
+                                                <span>Heading {Number(heading).toFixed(0)}°</span>
+                                            </div>
                                         )}
-
-                                        {accuracy !== null && (
-                                            <Group gap="xs">
-                                                <MapPinIcon size={14} className="text-gray-500" />
-                                                <Text size="xs">
-                                                    ±{accuracy.toFixed(0)}m accuracy
-                                                </Text>
-                                            </Group>
+                                        {accuracy != null && (
+                                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                <MapPin size={12} />
+                                                <span>±{Number(accuracy).toFixed(0)} m accuracy</span>
+                                            </div>
                                         )}
-
                                         {timeAgo && (
-                                            <Group gap="xs">
-                                                <ClockIcon size={14} className="text-gray-500" />
-                                                <Text size="xs">{timeAgo}</Text>
-                                            </Group>
-                                        )}
-
-                                        {address && (
-                                            <div className="mt-2 pt-2 border-t border-gray-200">
-                                                <Text size="xs" c="dimmed">{address}</Text>
+                                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                <Clock size={12} />
+                                                <span>{timeAgo}</span>
                                             </div>
                                         )}
                                     </div>
@@ -327,67 +434,25 @@ export default function TrackingMap({
                                         size="xs"
                                         variant="light"
                                         fullWidth
-                                        mt="md"
-                                        onClick={() => handleMarkerClick(location)}
+                                        onClick={() => onMarkerClick?.(location)}
                                     >
-                                        View Full Route
+                                        View full route
                                     </Button>
                                 </div>
                             </Popup>
                         </Marker>
                     );
                 })}
-
-                {/* Route polylines */}
-                {routes && Array.from(routes.entries()).map(([riderId, routeLocations]) => {
-                    // Drop any points with invalid coordinates
-                    const positions = routeLocations
-                        .map(safeRouteLatLng)
-                        .filter((p): p is [number, number] => p !== null);
-
-                    // Need at least 2 valid points to draw a line
-                    if (positions.length < 2) return null;
-
-                    const polylineKey = `polyline-${riderId}`;
-
-                    return (
-                        <Polyline
-                            key={polylineKey}
-                            positions={positions as LatLngExpression[]}
-                            pathOptions={{
-                                color: getRiderColor(riderId),
-                                weight: 4,
-                                opacity: 0.7,
-                            }}
-                        />
-                    );
-                })}
             </MapContainer>
 
-            {/* No data overlay */}
-            {validLocations.length === 0 && !loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-800/80 z-[1000]">
-                    <div className="text-center">
-                        <div className="text-6xl mb-4">📍</div>
-                        <Text size="lg" fw={500} mb="xs">No Active Riders</Text>
-                        <Text size="sm" c="dimmed">
-                            No location data available for the selected filters
-                        </Text>
-                    </div>
-                </div>
-            )}
+            {emptyOverlay}
 
-            {/* Pulse animation */}
             <style>{`
-                @keyframes pulse {
-                    0%, 100% { 
-                        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); 
-                    }
-                    50% { 
-                        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); 
-                    }
+                @keyframes ripple {
+                    0%   { transform: scale(1);   opacity: .2; }
+                    100% { transform: scale(2.5); opacity: 0;  }
                 }
             `}</style>
-        </Card>
+        </div>
     );
 }

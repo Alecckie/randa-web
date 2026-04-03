@@ -1,60 +1,106 @@
-// resources/js/types/tracking.ts
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared GPS / Location types
+// ─────────────────────────────────────────────────────────────────────────────
 
-export interface Rider {
+export interface RiderInfo {
     id: number | null;
     name: string | null;
-    email: string | null;
     phone: string | null;
+    email: string | null;
     status: string | null;
 }
 
-export interface Campaign {
-    id: number;
-    name: string;
-}
-
-export interface LocationCoordinates {
+export interface LocationInfo {
     latitude: number | null;
     longitude: number | null;
     accuracy: number | null;
     speed: number | null;
     heading: number | null;
-    address?: string | null;  // Added address
+    address: string | null;
 }
 
-/**
- * EnrichedLocation matches the backend enrichLocation() method output
- * 
- * Backend structure from RiderTrackingService::enrichLocation():
- * {
- *   id, rider_id, rider: {...}, location: {...}, campaign: {...}, 
- *   recorded_at, time_ago, is_recent
- * }
- * 
- * Can also have flat properties for backward compatibility:
- * { latitude, longitude, speed, heading, accuracy, address, ... }
- */
+export interface CampaignInfo {
+    id: number;
+    name: string;
+}
+
+/** A single GPS point enriched with rider + campaign info — returned by the API */
 export interface EnrichedLocation {
     id: number;
-    rider_id: number;
-    rider: Rider;
-    
-    // Nested location object (primary structure from enrichLocation())
-    location: LocationCoordinates;
-    
-    // Also support flat properties for backward compatibility
-    latitude?: number;
-    longitude?: number;
-    accuracy?: number | null;
-    speed?: number | null;
-    heading?: number | null;
-    address?: string | null;
-    
-    campaign: Campaign | null;
+    rider_id: number | null;
+    rider: RiderInfo;
+    location: LocationInfo;
+    campaign: CampaignInfo | null;
     recorded_at: string;
     time_ago: string;
     is_recent: boolean;
+
+    // Flat aliases kept for map library compatibility
+    latitude: number | null;
+    longitude: number | null;
+    accuracy: number | null;
+    speed: number | null;
+    heading: number | null;
+    address: string | null;
 }
+
+/** A raw GPS point used inside a route polyline */
+export interface RouteLocation {
+    id: number;
+    latitude: number;
+    longitude: number;
+    speed: number | null;
+    recorded_at: string;
+    accuracy?: number | null;
+    heading?: number | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route / Stats types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RouteSummary {
+    distance: number;
+    duration: number;
+    avg_speed: number | null;
+    coverage_areas_count: number;
+}
+
+export interface RouteDetail {
+    id: number;
+    date: string;
+    total_distance: number;
+    total_duration: number;
+    avg_speed: number | null;
+    max_speed: number | null;
+    location_points_count: number;
+    tracking_status: string;
+    started_at: string | null;
+    ended_at: string | null;
+    total_pause_duration: number;
+    pause_history: PauseHistoryEntry[] | null;
+}
+
+export interface PauseHistoryEntry {
+    paused_at: string;
+    resumed_at: string;
+    duration_minutes: number;
+    latitude: number | null;
+    longitude: number | null;
+    reason: string | null;
+}
+
+export interface RiderTrackingData {
+    rider: RiderInfo;
+    route: RouteDetail | null;
+    summary: RouteSummary | null;
+    locations: RouteLocation[];
+    polyline: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard stats
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface TrackingStats {
     active_riders: number;
@@ -62,8 +108,11 @@ export interface TrackingStats {
     total_locations: number;
     active_campaigns: number;
     avg_speed: number;
-    coverage_areas: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live tracking response
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface LiveTrackingData {
     active_riders: number;
@@ -72,52 +121,14 @@ export interface LiveTrackingData {
     refresh_interval?: number;
 }
 
-export interface RiderRoute {
-    id: number;
-    rider_id: number;
-    date: string;
-    started_at: string;
-    ended_at: string | null;
-    total_distance: number;
-    total_duration: number;
-    avg_speed: number | null;
-    max_speed: number | null;
-    location_points_count: number;
-    coverage_areas: number[];
-    status: string;
-    tracking_status: string;
-    total_pause_duration: number;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Rider list
+// ─────────────────────────────────────────────────────────────────────────────
 
-export interface RouteLocation {
-    id: number;
-    latitude: number;
-    longitude: number;
-    speed: number | null;
-    heading?: number | null;
-    accuracy?: number | null;
-    recorded_at: string;
-    address?: string | null;
-}
-
-export interface RiderTrackingData {
-    rider: Rider;
-    route: RiderRoute | null;
-    summary: {
-        distance: number;
-        duration: number;
-        avg_speed: number;
-        coverage_areas_count: number;
-    } | null;
-    locations: RouteLocation[];
-    polyline: string | null;
-}
-
-export interface TrackingFilters {
-    campaign_id: number | null;
-    rider_ids: number[];
-    date: string;
-    view_mode: 'live' | 'historical';
+export interface TrackingStatus {
+    is_active: boolean;
+    last_seen: string | null;
+    last_seen_human: string;
 }
 
 export interface RiderListItem {
@@ -126,30 +137,35 @@ export interface RiderListItem {
     email: string;
     phone: string;
     status: string;
-    current_campaign: {
-        id: number;
-        name: string;
-    } | null;
-    tracking_status: {
-        is_active: boolean;
-        last_seen: string | null;
-        last_seen_human: string;
-    };
+    current_campaign: CampaignInfo | null;
+    tracking_status: TrackingStatus;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filters
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ViewMode = 'live' | 'historical';
+
+export interface TrackingFilters {
+    campaign_id: number | null;
+    rider_ids: number[];
+    date: string;
+    view_mode: ViewMode;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inertia page props
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SelectOption {
+    value: string;
+    label: string;
 }
 
 export interface TrackingPageProps {
     stats: TrackingStats;
-    campaigns: Array<{ value: string; label: string }>;
-    riders: Array<{ value: string; label: string }>;
+    campaigns: SelectOption[];
+    riders: SelectOption[];
     initialData: LiveTrackingData;
 }
-
-export interface MapBounds {
-    north: number;
-    south: number;
-    east: number;
-    west: number;
-}
-
-export type ViewMode = 'live' | 'historical' | 'heatmap';
-export type MapStyle = 'default' | 'satellite' | 'terrain';

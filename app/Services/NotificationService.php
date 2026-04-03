@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class NotificationService
 {
@@ -62,7 +63,7 @@ class NotificationService
     {
         try {
             $user->notifications()->create([
-                'id' => \Str::uuid(),
+                'id' => Str::uuid(),
                 'type' => 'App\Notifications\GeneralNotification',
                 'data' => [
                     'message' => $message,
