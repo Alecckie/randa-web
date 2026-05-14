@@ -170,7 +170,7 @@ class AdvertiserController extends Controller
      */
     public function approve($id)
     {
-        $advertiser = Advertiser::find($id);
+        $advertiser = Advertiser::findOrFail($id);
         if ($advertiser->status === 'approved') {
             return back()->with('error', 'Advertiser is already approved.');
         }
@@ -185,7 +185,7 @@ class AdvertiserController extends Controller
      */
     public function reject(Request $request, $id)
     {
-        $advertiser = Advertiser::find($id);
+        $advertiser = Advertiser::findOrFail($id);
         $validated = $request->validate([
             'reason' => 'required|string|min:10',
         ]);

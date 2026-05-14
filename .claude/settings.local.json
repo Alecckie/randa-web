@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(php artisan:*)",
+      "Bash(xargs wc *)",
+      "Bash(npx vite *)",
+      "Bash(php d:/xampp/htdocs/randa-web/artisan route:list --path=campaigns)",
+      "Bash(php d:/xampp/htdocs/randa-web/artisan tinker '--execute= *)",
+      "Bash(php d:/xampp/htdocs/randa-web/artisan config:cache)",
+      "Bash(php d:/xampp/htdocs/randa-web/artisan config:clear)"
+    ]
+  }
+}

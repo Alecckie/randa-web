@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep \"\\\\.ibd$\")",
+      "Bash(xargs -I{} rm \"D:/xampp/mysql/data/randa_web/{}\")",
+      "Bash(npm run:*)",
+      "Bash(php -r ':*)",
+      "Bash(grep -E \"\\\\.\\(php|tsx|ts|js\\)$\")",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\({...p.dependencies, ...p.devDependencies}, null, 2\\)\\)\")",
+      "Bash(php -l app/Http/Controllers/CampaignAnalyticsController.php)",
+      "Bash(php -l app/Http/Controllers/frontend/AdvertiserDashboardController.php)",
+      "Bash(php -l routes/frontend/advertiser.php)",
+      "Bash(php -l routes/tracking.php)",
+      "Bash(php -l app/Http/Controllers/RiderDashboardController.php)",
+      "Bash(php -l app/Http/Controllers/DashboardController.php)"
+    ]
+  }
+}

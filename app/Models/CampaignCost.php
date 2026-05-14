@@ -162,25 +162,29 @@ class CampaignCost extends Model
     }
 
     // Static calculation methods
-    public static function calculateBaseCost(int $helmetCount, int $durationDays, float $dailyRate = 200.00): float
+    public static function calculateBaseCost(int $helmetCount, int $durationDays, float $dailyRate = 0.0): float
     {
-        return round($helmetCount * $durationDays * $dailyRate, 2);
+        $rate = $dailyRate > 0 ? $dailyRate : (float) config('campaign.helmet_daily_rate', 200.00);
+        return round($helmetCount * $durationDays * $rate, 2);
     }
 
-    public static function calculateDesignCost(bool $needsDesign, float $designRate = 3000.00): float
+    public static function calculateDesignCost(bool $needsDesign, float $designRate = 0.0): float
     {
-        return $needsDesign ? round($designRate, 2) : 0.00;
+        $rate = $designRate > 0 ? $designRate : (float) config('campaign.design_cost', 3000.00);
+        return $needsDesign ? round($rate, 2) : 0.00;
     }
 
-    public static function calculateVat(float $subtotal, float $vatRate = 16.00): float
+    public static function calculateVat(float $subtotal, float $vatRate = 0.0): float
     {
-        return round(($subtotal * $vatRate) / 100, 2);
+        $rate = $vatRate > 0 ? $vatRate : (float) config('campaign.vat_rate', 16.00);
+        return round(($subtotal * $rate) / 100, 2);
     }
 
-    public static function calculateTotalCost(float $baseCost, float $designCost, float $vatRate = 16.00): array
+    public static function calculateTotalCost(float $baseCost, float $designCost, float $vatRate = 0.0): array
     {
+        $rate     = $vatRate > 0 ? $vatRate : (float) config('campaign.vat_rate', 16.00);
         $subtotal = round($baseCost + $designCost, 2);
-        $vatAmount = self::calculateVat($subtotal, $vatRate);
+        $vatAmount = self::calculateVat($subtotal, $rate);
         $totalCost = round($subtotal + $vatAmount, 2);
 
         return [
@@ -195,16 +199,16 @@ class CampaignCost extends Model
      */
     public static function createForCampaign(Campaign $campaign): self
     {
-        $helmetCount = $campaign->helmet_count;
+        $helmetCount  = $campaign->helmet_count;
         $durationDays = $campaign->duration_days;
-        $needsDesign = $campaign->need_design;
-        $dailyRate = 1.00;
-        $designRate = 3000.00;
-        $vatRate = 16.00;
+        $needsDesign  = $campaign->need_design;
+        $dailyRate    = (float) config('campaign.helmet_daily_rate', 200.00);
+        $designRate   = (float) config('campaign.design_cost', 3000.00);
+        $vatRate      = (float) config('campaign.vat_rate', 16.00);
 
         // Calculate costs
-        $baseCost = self::calculateBaseCost($helmetCount, $durationDays, $dailyRate);
-        $designCost = self::calculateDesignCost($needsDesign, $designRate);
+        $baseCost     = self::calculateBaseCost($helmetCount, $durationDays, $dailyRate);
+        $designCost   = self::calculateDesignCost($needsDesign, $designRate);
         $costBreakdown = self::calculateTotalCost($baseCost, $designCost, $vatRate);
 
         // Get next version number for this campaign
@@ -232,12 +236,12 @@ class CampaignCost extends Model
      */
     public static function previewForCampaign(Campaign $campaign): array
     {
-        $helmetCount = $campaign->helmet_count;
+        $helmetCount  = $campaign->helmet_count;
         $durationDays = $campaign->duration_days;
-        $needsDesign = $campaign->need_design;
-        $dailyRate = 1.00;
-        $designRate = 3000.00;
-        $vatRate = 16.00;
+        $needsDesign  = $campaign->need_design;
+        $dailyRate    = (float) config('campaign.helmet_daily_rate', 200.00);
+        $designRate   = (float) config('campaign.design_cost', 3000.00);
+        $vatRate      = (float) config('campaign.vat_rate', 16.00);
 
         $baseCost = self::calculateBaseCost($helmetCount, $durationDays, $dailyRate);
         $designCost = self::calculateDesignCost($needsDesign, $designRate);

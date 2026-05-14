@@ -135,12 +135,12 @@ class LocationController extends BaseApiController
      * Respond based on request type (API vs Web)
      */
     private function respondBasedOnRequest(
-        Request $request, 
-        $data, 
-        ?string $inertiaView = null, 
+        Request $request,
+        $data,
+        ?string $inertiaView = null,
         int $status = 200
     ) {
-        if ($request->wantsJson() || $request->is('api/*')) {
+        if ($request->wantsJson() || $request->ajax() || $request->is('api/*')) {
             return response()->json($data, $status);
         }
 

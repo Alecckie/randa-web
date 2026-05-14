@@ -81,17 +81,10 @@ class CampaignController extends Controller
         }
     }
 
-    public function show($campaign)
+    public function show(Campaign $campaign)
     {
         $user = $this->getAuthenticatedUser();
         $advertiser = Advertiser::where('user_id', $user->id)->first();
-
-        // Verify that the campaign belongs to this advertiser
-        // if ($campaign->advertiser_id !== $advertiser->id) {
-        //     abort(403, 'You do not have permission to view this campaign.');
-        // }
-
-        $campaign = Campaign::find($campaign);
 
         // Load the campaign with all necessary relationships
         $campaign->load([

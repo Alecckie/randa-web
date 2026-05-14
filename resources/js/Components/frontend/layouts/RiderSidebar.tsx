@@ -1,128 +1,98 @@
-import React from 'react';
 import { Link } from '@inertiajs/react';
-import { Text } from '@mantine/core';
-import {
-    Bike,
-    Package,
-    MapPinned,
-    Calendar,
-    TrendingUp,
-    Clock,
-    User,
-    LogOut,
-    AlertCircle,
-} from 'lucide-react';
+import { Package, Bike, User } from 'lucide-react';
 
-interface RiderSidebarProps {
-    user: {
-        id: number;
-        name: string;
-        email: string;
-        phone?: string;
-        role: string;
-    };
-    activeNav: string;
+interface NavItem {
+    icon: React.ReactNode;
+    label: string;
+    key: string;
+    href: string;
+    exact?: boolean;
 }
 
-const RiderSidebar: React.FC<RiderSidebarProps> = ({ user, activeNav }) => {
-    const navigationItems = [
-        {
-            group: 'Main',
-            items: [
-                { icon: <Package size={20} />, label: 'Dashboard', key: 'dashboard', href: '/rider/rider-dash' },
-                { icon: <Bike size={20} />, label: 'My Campaigns', key: 'campaigns', href: '/rider/campaigns' },
-                // { icon: <MapPinned size={20} />, label: 'GPS Tracking', key: 'tracking', href: '/rider/tracking' },
-            ]
-        },
-        // {
-        //     group: 'Activity',
-        //     items: [
-        //         { icon: <Calendar size={20} />, label: 'Schedule', key: 'schedule', href: '/rider/schedule' },
-        //         { icon: <TrendingUp size={20} />, label: 'Earnings', key: 'earnings', href: '/rider/earnings' },
-        //         { icon: <Clock size={20} />, label: 'Work History', key: 'history', href: '/rider/history' },
-        //     ]
-        // },
-        {
-            group: 'Account',
-            items: [
-                { icon: <User size={20} />, label: 'Profile', key: 'profile', href: '/rider/show-profile' },
-                // { icon: <AlertCircle size={20} />, label: 'Help & Support', key: 'support', href: '/rider/support' },
-            ]
-        },
-    ];
+interface RiderSidebarProps {
+    activeNav?: string;
+}
 
-    const handleLogout = () => {
-        // Using Inertia's post method for logout
-        if (window.confirm('Are you sure you want to logout?')) {
-            window.location.href = '/logout';
-        }
-    };
+const navigationSections = [
+    {
+        group: 'Main',
+        items: [
+            { icon: <Package size={18} />, label: 'Dashboard',   key: 'dashboard', href: '/rider/rider-dash', exact: true },
+            { icon: <Bike size={18} />,    label: 'My Campaigns', key: 'campaigns', href: '/rider/campaigns' },
+        ] as NavItem[],
+    },
+    {
+        group: 'Account',
+        items: [
+            { icon: <User size={18} />, label: 'Profile', key: 'profile', href: '/rider/show-profile' },
+        ] as NavItem[],
+    },
+];
+
+export default function RiderSidebar({ activeNav }: RiderSidebarProps) {
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+    const isActive = (item: NavItem) =>
+        activeNav === item.key ||
+        (item.exact ? currentPath === item.href : currentPath.startsWith(item.href));
 
     return (
-        <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-[#f79122] rounded-xl flex items-center justify-center shadow-lg">
-                        <span className="text-lg font-bold text-white">R</span>
-                    </div>
-                    <div>
-                        <Text size="sm" fw={600} className="text-gray-900 dark:text-white">Randa</Text>
-                        <Text size="xs" c="dimmed">Rider</Text>
-                    </div>
+        <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
+
+            {/* Logo */}
+            <div className="flex items-center gap-3 px-5 h-16 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                <div className="w-8 h-8 bg-gradient-to-br from-[#f79122] to-[#e07a1a] rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+                    <span className="text-white font-bold text-sm">R</span>
+                </div>
+                <div>
+                    <span className="font-bold text-lg text-gray-900 dark:text-white tracking-tight">RANDA</span>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 -mt-0.5 uppercase tracking-widest">GPS Platform</p>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-                {navigationItems.map((section, idx) => (
-                    <div key={idx} className="mb-6">
-                        <Text size="xs" fw={600} c="dimmed" className="uppercase mb-2 px-3">
+            {/* Navigation */}
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+                {navigationSections.map((section, idx) => (
+                    <div key={idx}>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 px-3 mb-2">
                             {section.group}
-                        </Text>
-                        <div className="space-y-1">
-                            {section.items.map((item) => (
-                                <Link
-                                    key={item.key}
-                                    href={item.href}
-                                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors w-full text-left ${activeNav === item.key
-                                        ? 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122] dark:text-orange-400'
-                                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        </p>
+                        <div className="space-y-0.5">
+                            {section.items.map((item) => {
+                                const active = isActive(item);
+                                return (
+                                    <Link
+                                        key={item.key}
+                                        href={item.href}
+                                        className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                                            active
+                                                ? 'bg-[#f79122] text-white shadow-sm shadow-orange-200 dark:shadow-none'
+                                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
                                         }`}
-                                >
-                                    {item.icon}
-                                    <span className="text-sm font-medium">{item.label}</span>
-                                </Link>
-                            ))}
+                                    >
+                                        <span className={`flex-shrink-0 transition-colors ${
+                                            active ? 'text-white' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'
+                                        }`}>
+                                            {item.icon}
+                                        </span>
+                                        <span className="truncate">{item.label}</span>
+                                        {active && (
+                                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60 flex-shrink-0" />
+                                        )}
+                                    </Link>
+                                );
+                            })}
                         </div>
                     </div>
                 ))}
             </div>
 
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
-                        <Bike size={20} className="text-[#f79122] dark:text-orange-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <Text size="sm" fw={600} className="truncate text-gray-900 dark:text-white">
-                            {user?.name || 'Rider'}
-                        </Text>
-                        <Text size="xs" c="dimmed" className="truncate">
-                            {user?.email || 'rider@example.com'}
-                        </Text>
-                    </div>
-                </div>
-                <Link
-                    method="post"
-                    as="button"
-                    href="/logout"
-                    className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 transition-all duration-200"
-                >
-                    <LogOut size={16} />
-                    <span className="text-sm font-medium">Logout</span>
-                </Link>
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
+                <p className="text-[11px] text-gray-400 dark:text-gray-600 text-center">
+                    RANDA GPS Platform · v1.0
+                </p>
             </div>
         </div>
     );
-};
-
-export default RiderSidebar;
+}

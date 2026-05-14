@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campaign;
 use App\Models\CampaignAssignment;
 use App\Models\Helmet;
+use App\Models\Payment;
 use App\Models\Rider;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -13,18 +14,27 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function index(): Response
+    public function index()
     {
         $user = auth()->user();
+
+        // Redirect riders and advertisers to their own dashboards
+        if ($user->role === 'rider') {
+            return redirect()->route('rider.rider-dash.index');
+        }
+        if ($user->role === 'advertiser') {
+            return redirect()->route('advert-dash.index');
+        }
         
         // Get real data from database
         $activeCampaigns = Campaign::where('status', 'active')->count();
-        $totalRiders = Rider::count(); // Count actual rider records, not users with rider role
-        $totalHelmets = Helmet::count();
+        $totalRiders     = Rider::count();
+        $totalHelmets    = Helmet::count();
+        $totalPayments   = (float) Payment::where('status', 'completed')->sum('amount');
         
         // Quick links data
         $ridersAwaitingApproval = Rider::where('status', 'pending')->count();
-        $campaignsAwaitingApproval = Campaign::where('status', 'pending')->count();
+        $campaignsAwaitingApproval = Campaign::whereIn('status', ['pending_payment', 'paid'])->count();
         $ridersAwaitingDisbursement = Rider::whereHas('assignments', function($query) {
             $query->where('status', 'completed')
                   ->whereNull('disbursed_at');
@@ -135,6 +145,7 @@ class DashboardController extends Controller
                 'campaignsAwaitingApproval' => $campaignsAwaitingApproval,
                 'ridersAwaitingDisbursement' => $ridersAwaitingDisbursement,
                 'recentActivities' => $recentActivities,
+                'totalPayments'    => $totalPayments,
             ]
         ]);
     }

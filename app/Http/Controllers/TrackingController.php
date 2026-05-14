@@ -189,7 +189,7 @@ class TrackingController extends Controller
             ->map(fn($c) => ['value' => (string) $c->id, 'label' => $c->name]);
 
         return Inertia::render('Admin/Tracking/Heatmap', [
-            'campaigns' => $campaigns,
+            'campaigns' => $campaigns->values(),
         ]);
     }
 

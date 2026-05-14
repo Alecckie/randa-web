@@ -1,12 +1,8 @@
-import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
-import { Button, Container, Drawer, rem, Alert } from '@mantine/core';
+import { Link } from '@inertiajs/react';
+import { Button, Container, Alert } from '@mantine/core';
 import { ArrowLeft, InfoIcon } from 'lucide-react';
-import Sidebar from '@/Components/frontend/layouts/Sidebar';
-import Header from '@/Components/frontend/layouts/Header';
 import RiderDetailsForm from '@/Components/riders/RiderDetailsForm';
-import { usePage, useForm } from '@inertiajs/react';
-import type { PageProps } from '@/types';
+import RiderLayout from '@/Layouts/RiderLayout';
 
 interface LocationData {
     county_id: number | '';
@@ -67,56 +63,21 @@ interface RiderCompleteProfileProps {
     counties: County[];
 }
 
-export default function Create({ 
-    rider, 
-    counties, 
+export default function Create({
+    rider,
+    counties,
 }: RiderCompleteProfileProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeNav, setActiveNav] = useState('profile');
-    const { auth } = usePage<PageProps>().props;
-    const user = auth?.user;
-
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
-            <Head title="Complete Your Profile" />
-
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </div>
-
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </Drawer>
-
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                {/* Header */}
-                <Header 
-                    onMenuClick={() => setSidebarOpen(true)} 
-                    user={rider}
-                    showCreateMenu={false}
-                />
-
-                {/* Page Content */}
-                <div className="p-4 sm:p-6 lg:p-8">
-                    <Container size="xl">
-                        {/* Page Header */}
-                        <div className="mb-6">
-                            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                                Complete Your Rider Profile
-                            </h2>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                Welcome {rider.firstname}! Please complete your profile to start receiving assignments.
-                            </p>
-                        </div>
+        <RiderLayout title="Complete Your Profile" activeNav="profile">
+            <Container size="xl">
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        Complete Your Rider Profile
+                    </h1>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Welcome {rider.firstname}! Please complete your profile to start receiving assignments.
+                    </p>
+                </div>
 
                         {/* Info Alert */}
                         <Alert icon={<InfoIcon size={16} />} color="blue" variant="light" className="mb-6">
@@ -131,23 +92,21 @@ export default function Create({
                             </ul>
                         </Alert>
 
-                        {/* Profile Completion Form */}
-                        <RiderDetailsForm
-                            rider={{
-                                id: rider.id,
-                                national_id: rider.national_id || '',
-                                mpesa_number: rider.mpesa_number || '',
-                                next_of_kin_name: rider.next_of_kin_name || '',
-                                next_of_kin_phone: rider.next_of_kin_phone || '',
-                                signed_agreement: '',
-                                daily_rate: rider.daily_rate || 70,
-                            }}
-                            counties={counties}
-                            isUpdate={true}
-                        />
-                    </Container>
-                </div>
-            </div>
-        </div>
+                {/* Profile Completion Form */}
+                <RiderDetailsForm
+                    rider={{
+                        id: rider.id,
+                        national_id: rider.national_id || '',
+                        mpesa_number: rider.mpesa_number || '',
+                        next_of_kin_name: rider.next_of_kin_name || '',
+                        next_of_kin_phone: rider.next_of_kin_phone || '',
+                        signed_agreement: '',
+                        daily_rate: rider.daily_rate || 70,
+                    }}
+                    counties={counties}
+                    isUpdate={true}
+                />
+            </Container>
+        </RiderLayout>
     );
 }

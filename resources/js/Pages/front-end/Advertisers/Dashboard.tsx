@@ -1,38 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
+import type { HeatmapPeriod } from '@/Components/tracking/LiveHeatmap';
 import { Head, useForm, Link } from '@inertiajs/react';
 import {
-    Button,
-    TextInput,
-    Textarea,
-    Card,
-    Group,
-    Text,
-    Stack,
-    Grid,
-    Alert,
-    Badge,
-    Divider,
-    Paper,
-    Title,
-    Drawer,
+    Button, TextInput, Textarea, Card, Group, Text,
+    Stack, Grid, Alert, Badge, Divider, Paper, Title,
 } from '@mantine/core';
 import {
-    Building2,
-    FileText,
-    Check,
-    AlertCircle,
-    MapPin,
-    Plus,
-    BarChart3,
-    Users,
+    Building2, FileText, Check, AlertCircle,
+    MapPin, Plus, BarChart3, Users, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
-import Sidebar from '@/Components/frontend/layouts/Sidebar';
-import Header from '@/Components/frontend/layouts/Header';
+import AdvertiserLayout from '@/Layouts/AdvertiserLayout';
+
+const LiveHeatmap = lazy(() => import('@/Components/tracking/LiveHeatmap'));
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Campaign {
     id: number;
     name: string;
-    status: 'Active' | 'Paused' | 'Completed' | 'Draft';
+    status: string;
     impressions: string;
     scans: number;
     budget: string;
@@ -54,14 +40,8 @@ interface StatCard {
     icon: string;
 }
 
-interface AdvertiserProfileProps {
-    user: {
-        id: number;
-        name: string;
-        email: string;
-        phone: string;
-        role: string;
-    };
+interface Props {
+    user: { id: number; name: string; email: string; phone: string; role: string };
     advertiser?: {
         id?: number;
         company_name?: string;
@@ -74,522 +54,338 @@ interface AdvertiserProfileProps {
     transactions?: Transaction[];
 }
 
-export default function AdvertiserDashboard({ 
-    user, 
-    advertiser,
-    stats = [
-        { name: 'Active Campaigns', value: '3', change: '0', trend: 'neutral' as const, icon: '🎯' },
-        { name: 'Total Impressions', value: '45.2K', change: '+2.1K', trend: 'up' as const, icon: '👁️' },
-        { name: 'QR Code Scans', value: '1,247', change: '+89', trend: 'up' as const, icon: '📱' },
-        { name: 'Campaign Budget', value: 'KSh 150K', change: '-25K', trend: 'down' as const, icon: '💳' },
-    ],
-    campaigns = [
-        { id: 1, name: 'Summer Sale Campaign', status: 'Active' as const, impressions: '15.2K', scans: 423, budget: 'KSh 50K' },
-        { id: 2, name: 'Brand Awareness Drive', status: 'Active' as const, impressions: '22.1K', scans: 651, budget: 'KSh 75K' },
-        { id: 3, name: 'Product Launch', status: 'Paused' as const, impressions: '8.9K', scans: 173, budget: 'KSh 25K' },
-    ],
-    transactions = [
-        { id: 1, desc: 'Campaign Payment - Summer Sale', amount: '-KSh 50,000', date: 'Today', type: 'payment' as const },
-        { id: 2, desc: 'Campaign Payment - Brand Awareness', amount: '-KSh 75,000', date: 'Yesterday', type: 'payment' as const },
-        { id: 3, desc: 'Refund - Cancelled Campaign', amount: '+KSh 10,000', date: '2 days ago', type: 'refund' as const },
-        { id: 4, desc: 'Campaign Payment - Product Launch', amount: '-KSh 25,000', date: '3 days ago', type: 'payment' as const },
-    ]
-}: AdvertiserProfileProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeNav, setActiveNav] = useState('dashboard');
-    
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StatCardComp({ stat }: { stat: StatCard }) {
+    const trendColor = stat.trend === 'up'
+        ? 'text-green-600 dark:text-green-400'
+        : stat.trend === 'down'
+        ? 'text-red-600 dark:text-red-400'
+        : 'text-gray-500';
+    const TrendIcon = stat.trend === 'up' ? TrendingUp : stat.trend === 'down' ? TrendingDown : Minus;
+
+    return (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between">
+                <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{stat.name}</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</p>
+                </div>
+                <div className="text-2xl">{stat.icon}</div>
+            </div>
+            {stat.change && (
+                <div className={`flex items-center gap-1 mt-3 text-xs font-medium ${trendColor}`}>
+                    <TrendIcon size={13} />
+                    {stat.change}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function statusBadgeColor(status: string) {
+    const map: Record<string, string> = {
+        active: 'green', paused: 'yellow', completed: 'gray',
+        draft: 'blue', pending_payment: 'orange', paid: 'teal',
+        Active: 'green', Paused: 'yellow', Completed: 'gray', Draft: 'blue',
+    };
+    return map[status] ?? 'gray';
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export default function AdvertiserDashboard({ user, advertiser, stats, campaigns, transactions }: Props) {
+    const [heatmapPeriod, setHeatmapPeriod] = useState<HeatmapPeriod>('7days');
+    const campaignIds = (campaigns ?? []).map((c) => c.id);
+
     const { data, setData, post, processing, errors } = useForm({
-        company_name: advertiser?.company_name || '',
-        business_registration: advertiser?.business_registration || '',
-        address: advertiser?.address || '',
-        user_id: user?.id || ''
+        company_name:          advertiser?.company_name          ?? '',
+        business_registration: advertiser?.business_registration ?? '',
+        address:               advertiser?.address               ?? '',
+        user_id:               user?.id                          ?? '',
     });
 
     const hasProfile = !!advertiser?.id;
     const isApproved = advertiser?.status === 'approved';
-    const isPending = advertiser?.status === 'pending';
+    const isPending  = advertiser?.status === 'pending';
     const isRejected = advertiser?.status === 'rejected';
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const endpoint = '/advertiser-complete-profile';
-        post(endpoint, {
-            onSuccess: () => {
-                // Handle success
-            }
-        });
-    };
-
-    const isFormValid = () => {
-        return data.company_name && data.address;
-    };
-
-    const getStatusColor = (status: Campaign['status']): string => {
-        const colors: Record<Campaign['status'], string> = {
-            Active: 'green',
-            Paused: 'yellow',
-            Completed: 'gray',
-            Draft: 'blue',
-        };
-        return colors[status] || 'green';
-    };
-
-    const getTrendColor = (trend: StatCard['trend']): string => {
-        const colors: Record<StatCard['trend'], string> = {
-            up: 'text-green-600 dark:text-green-400',
-            down: 'text-red-600 dark:text-red-400',
-            neutral: 'text-gray-600 dark:text-gray-400',
-        };
-        return colors[trend] || colors.neutral;
-    };
-
-    const getTrendIcon = (trend: StatCard['trend']): string => {
-        const icons: Record<StatCard['trend'], string> = {
-            up: '↗️',
-            down: '↘️',
-            neutral: '➡️',
-        };
-        return icons[trend] || icons.neutral;
+        post('/advertiser-complete-profile');
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
-            <Head title="Advertiser Dashboard" />
+        <AdvertiserLayout title="Dashboard" activeNav="dashboard">
+            <Head title="Dashboard" />
+            <div className="space-y-6">
 
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </div>
+                <div>
+                    <Title order={2} className="text-gray-900 dark:text-white">Dashboard</Title>
+                    <Text size="sm" c="dimmed" mt={4}>Welcome back, {user.name}!</Text>
+                </div>
 
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </Drawer>
+                {/* Status alerts */}
+                {!hasProfile && (
+                    <Alert color="orange" icon={<AlertCircle size={16} />}>
+                        <strong>Complete Your Profile:</strong> Fill out your company information to start creating advertising campaigns.
+                    </Alert>
+                )}
+                {isPending && (
+                    <Alert color="yellow" icon={<AlertCircle size={16} />}>
+                        <strong>Under Review:</strong> Your advertiser profile is being reviewed. You'll be notified once approved.
+                    </Alert>
+                )}
+                {isApproved && (
+                    <Alert color="green" icon={<Check size={16} />}>
+                        <strong>Profile Approved</strong> — you can create campaigns.
+                    </Alert>
+                )}
+                {isRejected && (
+                    <Alert color="red" icon={<AlertCircle size={16} />}>
+                        <strong>Application Rejected:</strong> Please update your information and resubmit.
+                    </Alert>
+                )}
 
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                {/* Header */}
-                <Header 
-                    onMenuClick={() => setSidebarOpen(true)} 
-                    user={advertiser}
-                    showCreateMenu={true}
-                />
-
-                {/* Page Content */}
-                <div className="p-4 sm:p-6 lg:p-8">
-                    <div className="max-w-9xl mx-auto space-y-6">
-                        {/* Page Title */}
-                        <div>
-                            <Title order={2} size="h2" className="text-gray-900 dark:text-white">
-                                Dashboard
-                            </Title>
-                            <Text size="sm" c="dimmed" mt="xs">
-                                Welcome back, {user.name}!
+                {/* Company profile form */}
+                {(!hasProfile || isRejected) && (
+                    <Card radius="md" withBorder>
+                        <Stack>
+                            <Text size="lg" fw={600} className="flex items-center gap-2">
+                                <Building2 size={20} /> Company Information
                             </Text>
-                        </div>
+                            <Divider />
+                            <Grid>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Company Name"
+                                        placeholder="Enter company name"
+                                        value={data.company_name}
+                                        onChange={(e) => setData('company_name', e.currentTarget.value)}
+                                        error={errors.company_name}
+                                        leftSection={<Building2 size={15} />}
+                                        required
+                                    />
+                                </Grid.Col>
+                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                    <TextInput
+                                        label="Business Registration"
+                                        placeholder="Optional"
+                                        value={data.business_registration}
+                                        onChange={(e) => setData('business_registration', e.currentTarget.value)}
+                                        error={errors.business_registration}
+                                        leftSection={<FileText size={15} />}
+                                    />
+                                </Grid.Col>
+                                <Grid.Col span={12}>
+                                    <Textarea
+                                        label="Company Address"
+                                        placeholder="Physical address"
+                                        value={data.address}
+                                        onChange={(e) => setData('address', e.currentTarget.value)}
+                                        error={errors.address}
+                                        minRows={3}
+                                        required
+                                    />
+                                </Grid.Col>
+                            </Grid>
+                            <Group justify="flex-end">
+                                <Button
+                                    onClick={handleSubmit}
+                                    loading={processing}
+                                    disabled={!data.company_name || !data.address}
+                                    color="orange"
+                                    leftSection={<Building2 size={15} />}
+                                >
+                                    {hasProfile ? 'Update Profile' : 'Submit Application'}
+                                </Button>
+                            </Group>
+                        </Stack>
+                    </Card>
+                )}
 
-                        {/* Status Messages */}
-                        {!hasProfile && (
-                            <Alert color="purple" variant="light" icon={<AlertCircle size={16} />}>
-                                <Text size="sm">
-                                    <strong>Complete Your Profile:</strong> Please fill out your company information to start creating advertising campaigns.
-                                </Text>
-                            </Alert>
+                {/* Main dashboard (approved) */}
+                {isApproved && (
+                    <div className="space-y-6">
+
+                        {/* Stats */}
+                        {stats && stats.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {stats.map((s, i) => <StatCardComp key={i} stat={s} />)}
+                            </div>
                         )}
 
-                        {isPending && (
-                            <Alert color="yellow" variant="light" icon={<AlertCircle size={16} />}>
-                                <Text size="sm">
-                                    <strong>Application Under Review:</strong> Your advertiser profile is being reviewed by our team. You'll be notified once it's approved.
-                                </Text>
-                            </Alert>
-                        )}
-
-                        {isApproved && (
-                            <Alert color="green" variant="light" icon={<Check size={16} />}>
-                                <Text size="sm">
-                                    <strong>Profile Approved:</strong> Your advertiser profile has been approved and you can start creating campaigns.
-                                </Text>
-                            </Alert>
-                        )}
-
-                        {isRejected && (
-                            <Alert color="red" variant="light" icon={<AlertCircle size={16} />}>
-                                <Text size="sm">
-                                    <strong>Application Rejected:</strong> Please review and update your information, then resubmit your application.
-                                </Text>
-                            </Alert>
-                        )}
-
-                        {/* Company Profile Form */}
-                        {(!hasProfile || isRejected) && (
-                            <Card>
-                                <Stack>
-                                    <div>
-                                        <Text size="lg" fw={600} mb="sm" className="flex items-center">
-                                            <Building2 size={20} className="mr-2" />
-                                            Company Information
-                                        </Text>
-                                        <Text size="sm" c="dimmed">
-                                            Provide your company details for the advertiser account.
-                                        </Text>
-                                    </div>
-
-                                    <Divider />
-
-                                    <Grid>
-                                        <Grid.Col span={{ base: 12, md: 6 }}>
-                                            <TextInput
-                                                label="Company Name"
-                                                placeholder="Enter company name"
-                                                value={data.company_name}
-                                                onChange={(e) => setData('company_name', e.currentTarget.value)}
-                                                error={errors.company_name}
-                                                leftSection={<Building2 size={16} />}
-                                                required
-                                            />
-                                        </Grid.Col>
-
-                                        <Grid.Col span={{ base: 12, md: 6 }}>
-                                            <TextInput
-                                                label="Business Registration Number"
-                                                placeholder="Enter registration number (optional)"
-                                                description="Company registration or license number"
-                                                value={data.business_registration}
-                                                onChange={(e) => setData('business_registration', e.currentTarget.value)}
-                                                error={errors.business_registration}
-                                                leftSection={<FileText size={16} />}
-                                            />
-                                        </Grid.Col>
-
-                                        <Grid.Col span={12}>
-                                            <Textarea
-                                                label="Company Address"
-                                                placeholder="Enter complete company address"
-                                                description="Physical address of your company"
-                                                value={data.address}
-                                                onChange={(e) => setData('address', e.currentTarget.value)}
-                                                error={errors.address}
-                                                minRows={3}
-                                                required
-                                            />
-                                        </Grid.Col>
-                                    </Grid>
-
-                                    <Divider />
-
-                                    <Alert icon={<AlertCircle size={16} />} color="purple" variant="light">
-                                        <Text size="sm">
-                                            <strong>Application Process:</strong>
-                                            <br />• Your application will be submitted with "pending" status
-                                            <br />• Admin review is required before approval
-                                            <br />• You'll be notified once your application is reviewed
-                                            <br />• Campaign creation access will be granted upon approval
-                                        </Text>
-                                    </Alert>
-
-                                    <Group justify="flex-end">
-                                        <Button
-                                            onClick={handleSubmit}
-                                            loading={processing}
-                                            disabled={!isFormValid() || processing}
-                                            color="purple"
-                                            leftSection={<Building2 size={16} />}
-                                        >
-                                            {hasProfile ? 'Update Profile' : 'Submit Application'}
-                                        </Button>
-                                    </Group>
-
-                                    {Object.keys(errors).length > 0 && (
-                                        <Alert color="red" variant="light">
-                                            <Text size="sm" fw={500} mb="xs">Please fix the following errors:</Text>
-                                            <ul className="list-disc list-inside text-sm space-y-1">
-                                                {Object.entries(errors).map(([field, error]) => (
-                                                    <li key={field}>{error}</li>
-                                                ))}
-                                            </ul>
-                                        </Alert>
-                                    )}
-                                </Stack>
-                            </Card>
-                        )}
-
-                        {/* Approved Advertiser Dashboard Content */}
-                        {isApproved && (
-                            <div className="space-y-6">
-                                {/* Stats Grid */}
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                                    {stats.map((stat, index) => (
-                                        <div
-                                            key={index}
-                                            className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow duration-300"
-                                        >
-                                            <div className="p-4 sm:p-6">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                                                            {stat.name}
-                                                        </p>
-                                                        <div className="mt-2 flex items-baseline">
-                                                            <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                                                {stat.value}
-                                                            </p>
-                                                            <p className={`ml-2 flex items-center text-sm font-semibold ${getTrendColor(stat.trend)}`}>
-                                                                <span className="mr-1">{getTrendIcon(stat.trend)}</span>
-                                                                {stat.change}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">
-                                                        {stat.icon}
-                                                    </div>
+                        {/* Campaigns + Quick Actions */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Campaigns */}
+                            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">My Campaigns</h3>
+                                    <Link href={route('my-campaigns.index')} className="text-xs text-[#f79122] hover:underline font-medium">
+                                        View all
+                                    </Link>
+                                </div>
+                                {campaigns && campaigns.length > 0 ? (
+                                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                        {campaigns.map((c) => (
+                                            <div key={c.id} className="px-5 py-3.5 flex items-center justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                                    <Badge color={statusBadgeColor(c.status)} variant="light" size="sm" tt="capitalize">
+                                                        {c.status}
+                                                    </Badge>
+                                                    <Link
+                                                        href={route('advertiser.analytics')}
+                                                        className="text-xs text-[#f79122] hover:underline font-medium"
+                                                    >
+                                                        Analytics
+                                                    </Link>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="px-5 py-8 text-center text-sm text-gray-400">
+                                        No campaigns yet.{' '}
+                                        <Link href={route('my-campaigns.create')} className="text-[#f79122] hover:underline">
+                                            Create one
+                                        </Link>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Actions</h3>
+                                </div>
+                                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {[
+                                        { label: 'New Campaign', icon: <Plus size={18} />,    href: route('my-campaigns.create'),    color: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]' },
+                                        { label: 'Analytics',    icon: <BarChart3 size={18} />, href: route('advertiser.analytics'), color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' },
+                                        { label: 'Heatmap',      icon: <MapPin size={18} />,    href: route('advertiser.heatmap'),   color: 'bg-green-50 dark:bg-green-900/20 text-green-600' },
+                                        { label: 'My Campaigns', icon: <Users size={18} />,     href: route('my-campaigns.index'),   color: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' },
+                                    ].map((action) => (
+                                        <Link
+                                            key={action.label}
+                                            href={action.href}
+                                            className="flex items-center gap-3 p-3.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-[#f79122] hover:shadow-sm transition-all group"
+                                        >
+                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${action.color}`}>
+                                                {action.icon}
+                                            </div>
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
+                                                {action.label}
+                                            </span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Recent Transactions */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
+                            </div>
+                            {transactions && transactions.length > 0 ? (
+                                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                    {transactions.map((t) => (
+                                        <div key={t.id} className="px-5 py-3.5 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                                    t.type === 'refund' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+                                                }`}>
+                                                    <span className="text-sm">{t.type === 'refund' ? '↩' : '↗'}</span>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{t.desc}</p>
+                                                    <p className="text-xs text-gray-500">{t.date}</p>
+                                                </div>
+                                            </div>
+                                            <span className={`text-sm font-semibold ${t.amount.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
+                                                {t.amount}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
+                            ) : (
+                                <p className="px-5 py-6 text-sm text-gray-400 text-center">No transactions yet.</p>
+                            )}
+                        </div>
 
-                                {/* Main Content - Two Column Layout */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Active Campaigns */}
-                                    <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Active Campaigns</h3>
-                                                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
-                                                    View All
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="p-4 sm:p-6">
-                                            <div className="space-y-4">
-                                                {campaigns.map((campaign) => (
-                                                    <div key={campaign.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <h4 className="font-medium text-gray-900 dark:text-white truncate">{campaign.name}</h4>
-                                                            <Badge color={getStatusColor(campaign.status)} variant="light" size="sm">
-                                                                {campaign.status}
-                                                            </Badge>
-                                                        </div>
-                                                        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
-                                                            <div>
-                                                                <p className="text-gray-500 dark:text-gray-400">Impressions</p>
-                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.impressions}</p>
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-gray-500 dark:text-gray-400">QR Scans</p>
-                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.scans}</p>
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-gray-500 dark:text-gray-400">Budget</p>
-                                                                <p className="font-medium text-gray-900 dark:text-white">{campaign.budget}</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Performance Chart */}
-                                    <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Campaign Performance</h3>
-                                        </div>
-                                        <div className="p-4 sm:p-6">
-                                            <div className="text-center py-8">
-                                                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <span className="text-white text-3xl">📈</span>
-                                                </div>
-                                                <p className="text-gray-500 dark:text-gray-400 mb-4">Campaign performance chart</p>
-                                                <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-                                                    View Detailed Analytics
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                        {/* Heatmap preview */}
+                        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Rider Heatmap</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">GPS density of your campaign riders</p>
                                 </div>
-
-                                {/* Recent Transactions */}
-                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
-                                            <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
-                                                View All
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="p-4 sm:p-6">
-                                        <div className="space-y-3 sm:space-y-4">
-                                            {transactions.map((transaction) => (
-                                                <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                                    <div className="flex items-center space-x-3 min-w-0 flex-1">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                                            transaction.type === 'refund' ? 'bg-green-100 dark:bg-green-800' : 'bg-red-100 dark:bg-red-800'
-                                                        }`}>
-                                                            <span className={transaction.type === 'refund' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                                                                {transaction.type === 'refund' ? '💰' : '📤'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{transaction.desc}</p>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-400">{transaction.date}</p>
-                                                        </div>
-                                                    </div>
-                                                    <p className={`text-sm font-semibold flex-shrink-0 ml-2 ${
-                                                        transaction.amount.startsWith('+') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                                                    }`}>
-                                                        {transaction.amount}
-                                                    </p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={heatmapPeriod}
+                                        onChange={(e) => setHeatmapPeriod(e.target.value as HeatmapPeriod)}
+                                        className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                                    >
+                                        <option value="today">Today</option>
+                                        <option value="7days">Last 7 days</option>
+                                        <option value="30days">Last 30 days</option>
+                                    </select>
+                                    <Link href={route('advertiser.heatmap')} className="text-xs text-[#f79122] hover:underline font-medium whitespace-nowrap">
+                                        Full view →
+                                    </Link>
                                 </div>
-
-                                {/* GPS Tracking Heat Map */}
-                                <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
-                                    <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">GPS Tracking Heat Map</h3>
-                                            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                                               <select className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                                                    <option>Last 24 hours</option>
-                                                    <option>Last 7 days</option>
-                                                    <option>Last 30 days</option>
-                                                </select>
-                                                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 px-3 py-1">
-                                                    Full Screen
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="p-4 sm:p-6">
-                                        <div className="bg-gray-100 dark:bg-gray-700 rounded-lg h-64 sm:h-96 flex items-center justify-center">
-                                            <div className="text-center">
-                                                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <span className="text-white text-2xl">🗺️</span>
-                                                </div>
-                                                <p className="text-gray-600 dark:text-gray-400 mb-2">Interactive Heat Map</p>
-                                                <p className="text-sm text-gray-500">GPS tracking data visualization</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Company Profile Info */}
-                                <Card>
-                                    <Stack>
-                                        <div>
-                                            <Text size="lg" fw={600} mb="sm" className="flex items-center">
-                                                <Building2 size={20} className="mr-2" />
-                                                Company Profile
-                                            </Text>
-                                        </div>
-
-                                        <Grid>
-                                            <Grid.Col span={{ base: 12, md: 6 }}>
-                                                <Paper p="md" withBorder className="bg-slate-50">
-                                                    <div className="flex items-center space-x-3 mb-2">
-                                                        <Building2 size={16} className="text-slate-600" />
-                                                        <Text size="sm" c="dimmed">Company Name</Text>
-                                                    </div>
-                                                    <Text fw={500}>{advertiser?.company_name}</Text>
-                                                </Paper>
-                                            </Grid.Col>
-
-                                            {advertiser?.business_registration && (
-                                                <Grid.Col span={{ base: 12, md: 6 }}>
-                                                    <Paper p="md" withBorder className="bg-slate-50">
-                                                        <div className="flex items-center space-x-3 mb-2">
-                                                            <FileText size={16} className="text-slate-600" />
-                                                            <Text size="sm" c="dimmed">Registration Number</Text>
-                                                        </div>
-                                                        <Text fw={500}>{advertiser.business_registration}</Text>
-                                                    </Paper>
-                                                </Grid.Col>
-                                            )}
-
-                                            <Grid.Col span={12}>
-                                                <Paper p="md" withBorder className="bg-slate-50">
-                                                    <div className="flex items-center space-x-3 mb-2">
-                                                        <MapPin size={16} className="text-slate-600" />
-                                                        <Text size="sm" c="dimmed">Company Address</Text>
-                                                    </div>
-                                                    <Text fw={500}>{advertiser?.address}</Text>
-                                                </Paper>
-                                            </Grid.Col>
-                                        </Grid>
-                                    </Stack>
-                                </Card>
-
-                                {/* Quick Actions */}
-                                <Card>
-                                    <Stack>
-                                        <div>
-                                            <Text size="lg" fw={600} mb="sm">Quick Actions</Text>
-                                            <Text size="sm" c="dimmed">
-                                                Get started with your advertising campaigns
-                                            </Text>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            <Button
-                                                variant="light"
-                                                color="purple"
-                                                size="lg"
-                                                leftSection={<Plus size={20} />}
-                                                className="h-20"
-                                                fullWidth
-                                            >
-                                                <div className="text-left">
-                                                    <Text size="sm" fw={600}>Create Campaign</Text>
-                                                    <Text size="xs" c="dimmed">Start a new campaign</Text>
-                                                </div>
-                                            </Button>
-
-                                            <Button
-                                                variant="light"
-                                                color="blue"
-                                                size="lg"
-                                                leftSection={<BarChart3 size={20} />}
-                                                className="h-20"
-                                                fullWidth
-                                            >
-                                                <div className="text-left">
-                                                    <Text size="sm" fw={600}>View Analytics</Text>
-                                                    <Text size="xs" c="dimmed">Track performance</Text>
-                                                </div>
-                                            </Button>
-
-                                            <Button
-                                                variant="light"
-                                                color="green"
-                                                size="lg"
-                                                leftSection={<Users size={20} />}
-                                                className="h-20"
-                                                fullWidth
-                                            >
-                                                <div className="text-left">
-                                                    <Text size="sm" fw={600}>Find Riders</Text>
-                                                    <Text size="xs" c="dimmed">Browse riders</Text>
-                                                </div>
-                                            </Button>
-                                        </div>
-                                    </Stack>
-                                </Card>
                             </div>
+                            <div className="p-4">
+                                <Suspense fallback={
+                                    <div className="h-72 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                                        <span className="text-sm text-gray-400">Loading map…</span>
+                                    </div>
+                                }>
+                                    <LiveHeatmap campaignIds={campaignIds} period={heatmapPeriod} height={288} />
+                                </Suspense>
+                            </div>
+                        </div>
+
+                        {/* Company profile info */}
+                        {advertiser?.company_name && (
+                            <Card radius="md" withBorder>
+                                <Stack gap="sm">
+                                    <Text fw={600} className="flex items-center gap-2">
+                                        <Building2 size={18} /> Company Profile
+                                    </Text>
+                                    <Grid>
+                                        <Grid.Col span={{ base: 12, md: 6 }}>
+                                            <Paper p="sm" withBorder>
+                                                <Text size="xs" c="dimmed">Company Name</Text>
+                                                <Text fw={500} size="sm" mt={2}>{advertiser.company_name}</Text>
+                                            </Paper>
+                                        </Grid.Col>
+                                        {advertiser.business_registration && (
+                                            <Grid.Col span={{ base: 12, md: 6 }}>
+                                                <Paper p="sm" withBorder>
+                                                    <Text size="xs" c="dimmed">Registration No.</Text>
+                                                    <Text fw={500} size="sm" mt={2}>{advertiser.business_registration}</Text>
+                                                </Paper>
+                                            </Grid.Col>
+                                        )}
+                                        {advertiser.address && (
+                                            <Grid.Col span={12}>
+                                                <Paper p="sm" withBorder>
+                                                    <Text size="xs" c="dimmed">Address</Text>
+                                                    <Text fw={500} size="sm" mt={2}>{advertiser.address}</Text>
+                                                </Paper>
+                                            </Grid.Col>
+                                        )}
+                                    </Grid>
+                                </Stack>
+                            </Card>
                         )}
                     </div>
-                </div>
+                )}
             </div>
-        </div>
+        </AdvertiserLayout>
     );
 }

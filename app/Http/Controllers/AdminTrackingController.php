@@ -266,6 +266,100 @@ class AdminTrackingController extends Controller
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // GET /advertiser/tracking/heatmap
+    // Scoped to the authenticated advertiser's own campaigns only.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public function advertiserHeatmap(Request $request): JsonResponse
+    {
+        try {
+            $advertiser = $request->user()->advertiser;
+
+            if (!$advertiser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Advertiser profile not found.',
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'campaign_id' => 'nullable|exists:campaigns,id',
+                'date_from'   => 'nullable|date',
+                'date_to'     => 'nullable|date|after_or_equal:date_from',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validationError($validator);
+            }
+
+            // All campaigns owned by this advertiser
+            $ownedIds = Campaign::where('advertiser_id', $advertiser->id)->pluck('id');
+
+            // If a specific campaign is requested, verify ownership
+            if ($request->campaign_id) {
+                if (!$ownedIds->contains((int) $request->campaign_id)) {
+                    return response()->json(['success' => false, 'message' => 'Campaign not found.'], 404);
+                }
+                $activeCampaignIds = [(int) $request->campaign_id];
+            } else {
+                $activeCampaignIds = $ownedIds->toArray();
+            }
+
+            if (empty($activeCampaignIds)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No campaigns found.',
+                    'data'    => ['points' => [], 'total_points' => 0, 'max_intensity' => 0],
+                ]);
+            }
+
+            $query = RiderGpsPoint::query()
+                ->whereHas('campaignAssignment', fn($q) =>
+                    $q->whereIn('campaign_id', $activeCampaignIds)
+                );
+
+            if ($request->date_from) {
+                $query->whereDate('recorded_at', '>=', $request->date_from);
+            }
+
+            $query->whereDate('recorded_at', '<=', $request->date_to ?? now()->toDateString());
+
+            if (!$request->date_from && !$request->date_to) {
+                $query->whereDate('recorded_at', '>=', now()->subDays(7));
+            }
+
+            $heatmapPoints = $query
+                ->select(
+                    DB::raw('ROUND(latitude, 4) as lat'),
+                    DB::raw('ROUND(longitude, 4) as lng'),
+                    DB::raw('COUNT(*) as intensity')
+                )
+                ->groupBy('lat', 'lng')
+                ->orderByDesc('intensity')
+                ->limit(10000)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Heatmap data retrieved successfully.',
+                'data'    => [
+                    'points'        => $heatmapPoints->map(fn($p) => [
+                        'lat'       => (float) $p->lat,
+                        'lng'       => (float) $p->lng,
+                        'intensity' => $p->intensity,
+                    ]),
+                    'total_points'  => $heatmapPoints->count(),
+                    'max_intensity' => $heatmapPoints->max('intensity') ?? 0,
+                    'campaign_ids'  => $activeCampaignIds,
+                ],
+            ]);
+
+        } catch (Exception $e) {
+            return $this->serverError($e);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // GET /api/admin/tracking/heatmap
     // ──────────────────────────────────────────────────────────────────────────
 

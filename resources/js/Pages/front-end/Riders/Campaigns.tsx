@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
-import { 
-    Badge, 
-    Button, 
-    Card, 
-    Container, 
-    Drawer, 
-    Grid, 
-    Group, 
-    Stack, 
-    Text, 
+import { useState } from 'react';
+import { Link, router } from '@inertiajs/react';
+import {
+    Badge,
+    Button,
+    Card,
+    Container,
+    Grid,
+    Group,
+    Text,
     TextInput,
     Select,
     Table,
@@ -33,10 +31,7 @@ import {
     HardHat,
     MapPin
 } from 'lucide-react';
-import { usePage } from '@inertiajs/react';
-import type { PageProps } from '@/types';
-import RiderHeader from '@/Components/frontend/layouts/RiderHeader';
-import RiderSidebar from '@/Components/frontend/layouts/RiderSidebar';
+import RiderLayout from '@/Layouts/RiderLayout';
 
 interface Helmet {
     id: number;
@@ -118,11 +113,8 @@ interface CampaignsProps {
 }
 
 export default function Campaigns({ campaigns, stats, filters, rider }: CampaignsProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
-    const { auth } = usePage<PageProps>().props;
-    const user = auth?.user;
 
     const getCampaignStatusBadge = (status: string) => {
         const statusConfig = {
@@ -242,33 +234,8 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
-            <Head title="My Campaigns" />
-
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <RiderSidebar user={user} activeNav="campaigns" />
-            </div>
-
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <RiderSidebar user={user} activeNav="campaigns" />
-            </Drawer>
-
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                {/* Header */}
-                <RiderHeader onMenuClick={() => setSidebarOpen(true)} rider={rider} />
-
-                {/* Page Content */}
-                <div className="p-2 sm:p-6 lg:p-4">
-                    <Container size="xl">
+        <RiderLayout title="My Campaigns" activeNav="campaigns">
+            <Container size="xl">
                         {/* Page Header */}
                         <div className="mb-6">
                             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
@@ -562,9 +529,7 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                 </Alert>
                             )}
                         </Card>
-                    </Container>
-                </div>
-            </div>
-        </div>
+            </Container>
+        </RiderLayout>
     );
 }

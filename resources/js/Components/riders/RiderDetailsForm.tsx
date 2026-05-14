@@ -97,6 +97,16 @@ interface DocumentFieldConfig {
     maxSizeBytes: number;
 }
 
+/** Strip non-digits, normalise to 254XXXXXXXXX (12 digits). */
+function formatKenyanPhone(raw: string): string {
+    let d = raw.replace(/\D/g, '');
+    // 07XXXXXXXX → 2547XXXXXXXX
+    if (d.startsWith('0')) d = '254' + d.slice(1);
+    // 7XXXXXXXXX (9 digits) → 2547XXXXXXXXX
+    if (!d.startsWith('254')) d = '254' + d;
+    return d.slice(0, 12);
+}
+
 const DOCUMENT_FIELDS: DocumentFieldConfig[] = [
     {
         name: 'national_id_front_photo',
@@ -218,14 +228,16 @@ export default function RiderDetailsForm({
         { label: 'Agreement', description: 'Terms and conditions', completed: stepsCompleted.agreement },
     ];
 
+    const jsonHeaders = { headers: { Accept: 'application/json' } };
+
     // Load subcounties when county changes
     useEffect(() => {
         if (locationForm.data.location.county_id) {
             setLoadingSubcounties(true);
             axios
-                .get(`/locations/counties/${locationForm.data.location.county_id}/subcounties`)
+                .get(`/locations/counties/${locationForm.data.location.county_id}/subcounties`, jsonHeaders)
                 .then((res) => {
-                    setSubcounties(res.data);
+                    setSubcounties(res.data.data ?? res.data);
                     setWards([]);
                 })
                 .catch((err) => {
@@ -243,9 +255,9 @@ export default function RiderDetailsForm({
         if (locationForm.data.location.sub_county_id) {
             setLoadingWards(true);
             axios
-                .get(`/locations/subcounties/${locationForm.data.location.sub_county_id}/wards`)
+                .get(`/locations/subcounties/${locationForm.data.location.sub_county_id}/wards`, jsonHeaders)
                 .then((res) => {
-                    setWards(res.data);
+                    setWards(res.data.data ?? res.data);
                 })
                 .catch((err) => {
                     console.error('Failed to load wards:', err);
@@ -295,8 +307,8 @@ export default function RiderDetailsForm({
 
     // Save National ID
     const saveNationalId = async () => {
-        if (!nationalId || nationalId.length < 5) {
-            setUploadErrors({ ...uploadErrors, national_id: 'Please enter a valid National ID' });
+        if (!/^\d{7,8}$/.test(nationalId)) {
+            setUploadErrors({ ...uploadErrors, national_id: 'National ID must be 7 or 8 digits' });
             return;
         }
 
@@ -513,9 +525,9 @@ export default function RiderDetailsForm({
                     uploadStatus.motorbike_license &&
                     uploadStatus.motorbike_registration;
             case 2:
-                return contactForm.data.mpesa_number &&
-                    contactForm.data.next_of_kin_name &&
-                    contactForm.data.next_of_kin_phone;
+                return /^254\d{9}$/.test(contactForm.data.mpesa_number) &&
+                    !!contactForm.data.next_of_kin_name.trim() &&
+                    /^254\d{9}$/.test(contactForm.data.next_of_kin_phone);
             case 3:
                 return agreementForm.data.signed_agreement.length >= 10;
             default:
@@ -747,12 +759,14 @@ export default function RiderDetailsForm({
                                     <div style={{ flex: 1 }}>
                                         <TextInput
                                             label="National ID Number"
-                                            placeholder="Enter national ID number"
-                                            description="Enter your valid Kenyan National ID number"
+                                            placeholder="e.g. 12345678"
+                                            description="Digits only — Kenyan National ID number"
                                             value={nationalId}
-                                            onChange={(e) => setNationalId(e.currentTarget.value)}
+                                            onChange={(e) => setNationalId(e.currentTarget.value.replace(/\D/g, ''))}
                                             error={uploadErrors.national_id}
                                             disabled={uploadStatus.national_id}
+                                            inputMode="numeric"
+                                            maxLength={8}
                                             required
                                         />
                                     </div>
@@ -879,10 +893,13 @@ export default function RiderDetailsForm({
                             <TextInput
                                 label="M-Pesa Number"
                                 placeholder="254712345678"
-                                description="Enter M-Pesa number in format 254XXXXXXXX (will receive payments here)"
+                                description="Format: 254XXXXXXXXX — payments will be sent here"
+                                leftSection={<span style={{ fontSize: 14 }}>🇰🇪</span>}
                                 value={contactForm.data.mpesa_number}
-                                onChange={(e) => contactForm.setData('mpesa_number', e.currentTarget.value)}
+                                onChange={(e) => contactForm.setData('mpesa_number', formatKenyanPhone(e.currentTarget.value))}
                                 error={contactForm.errors.mpesa_number}
+                                inputMode="numeric"
+                                maxLength={12}
                                 required
                             />
 
@@ -909,10 +926,13 @@ export default function RiderDetailsForm({
                                         <TextInput
                                             label="Next of Kin Phone"
                                             placeholder="254712345678"
-                                            description="Phone number in format 254XXXXXXXX"
+                                            description="Format: 254XXXXXXXXX"
+                                            leftSection={<span style={{ fontSize: 14 }}>🇰🇪</span>}
                                             value={contactForm.data.next_of_kin_phone}
-                                            onChange={(e) => contactForm.setData('next_of_kin_phone', e.currentTarget.value)}
+                                            onChange={(e) => contactForm.setData('next_of_kin_phone', formatKenyanPhone(e.currentTarget.value))}
                                             error={contactForm.errors.next_of_kin_phone}
+                                            inputMode="numeric"
+                                            maxLength={12}
                                             required
                                         />
                                     </Grid.Col>

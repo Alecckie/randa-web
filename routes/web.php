@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\NotificationsController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -56,9 +57,15 @@ Route::get('/test-broadcast/{paymentId}', function ($paymentId) {
 Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::get('/profile', [ProfileController::class, 'edit']);
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Notifications API
+    Route::get('/notifications', [NotificationsController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/read-all', [NotificationsController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('/notifications/{id}/read', [NotificationsController::class, 'markRead'])->name('notifications.read');
 
 
     Route::prefix('payments')->name('payments.')->group(function () {
@@ -83,15 +90,15 @@ Route::middleware('auth')->group(function () {
         Route::post('/mpesa/paybill-instructions', [PaymentController::class, 'getPaybillInstructions'])
             ->name('mpesa.paybill-instructions');
 
-        // Get payment details
-        Route::get('/{reference}', [PaymentController::class, 'getPaymentDetails'])
-            ->name('details');
-
         Route::get('/list', [PaymentController::class, 'listPayments'])
             ->name('list');
 
         Route::get('/stats', [PaymentController::class, 'getStats'])
             ->name('stats');
+
+        // Keep catch-all last so /list and /stats match first
+        Route::get('/{reference}', [PaymentController::class, 'getPaymentDetails'])
+            ->name('details');
     });
 });
 

@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CampaignAssignment;
 use App\Models\Rider;
+use App\Models\RiderCheckIn;
+use App\Models\RiderRoute;
 use App\Services\RiderService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -21,13 +25,133 @@ class RiderDashboardController extends Controller
      */
     public function index(): Response
     {
-        $user = $this->getAuthenticatedUser();
+        $user  = $this->getAuthenticatedUser();
         $rider = $this->riderService->getRiderByUserId($user->id);
 
-        return Inertia::render('front-end/Riders/Dashboard', [
-            'user' => $this->formatUserData($user),
-            'rider' => $rider ? $this->formatRiderData($rider) : null
-        ]);
+        $props = [
+            'user'  => $this->formatUserData($user),
+            'rider' => $rider ? $this->formatRiderData($rider) : null,
+        ];
+
+        if ($rider) {
+            $props['stats']          = $this->buildRiderStats($rider);
+            $props['currentCampaign']= $this->buildCurrentCampaign($rider);
+            $props['recentEarnings'] = $this->buildRecentEarnings($rider);
+            $props['todayProgress']  = $this->buildTodayProgress($rider);
+        }
+
+        return Inertia::render('front-end/Riders/Dashboard', $props);
+    }
+
+    private function buildRiderStats(Rider $rider): array
+    {
+        $assignmentIds = CampaignAssignment::where('rider_id', $rider->id)->pluck('id');
+
+        $checkInStats = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)
+            ->selectRaw("
+                COUNT(*) as total_checkins,
+                SUM(CASE WHEN status = 'ended' THEN 1 ELSE 0 END) as days_worked,
+                SUM(CASE WHEN status = 'ended' THEN COALESCE(daily_earning, 0) ELSE 0 END) as total_earnings
+            ")
+            ->first();
+
+        $checkInIds    = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)->pluck('id');
+        $totalDistance = (float) RiderRoute::whereIn('check_in_id', $checkInIds)->sum('total_distance');
+
+        $daysWorked     = (int) ($checkInStats->days_worked ?? 0);
+        $totalEarnings  = (float) ($checkInStats->total_earnings ?? 0);
+        $totalCheckins  = (int) ($checkInStats->total_checkins ?? 0);
+        $qrScans        = $totalCheckins * 2;
+
+        return [
+            ['name' => 'Days Worked',       'value' => (string) $daysWorked,                                           'change' => '', 'trend' => 'neutral', 'icon' => '📅'],
+            ['name' => 'Total Earnings',    'value' => 'KSh ' . number_format($totalEarnings, 2),                      'change' => '', 'trend' => 'neutral', 'icon' => '💰'],
+            ['name' => 'Distance Covered',  'value' => number_format($totalDistance, 1) . ' km',                       'change' => '', 'trend' => 'neutral', 'icon' => '🗺️'],
+            ['name' => 'QR Scans',          'value' => (string) $qrScans,                                              'change' => '', 'trend' => 'neutral', 'icon' => '📱'],
+        ];
+    }
+
+    private function buildCurrentCampaign(Rider $rider): ?array
+    {
+        $assignment = CampaignAssignment::where('rider_id', $rider->id)
+            ->where('status', 'active')
+            ->with('campaign:id,name,end_date,start_date', 'helmet:id,helmet_code')
+            ->latest('assigned_at')
+            ->first();
+
+        if (!$assignment || !$assignment->campaign) {
+            return null;
+        }
+
+        $campaign  = $assignment->campaign;
+        $today     = Carbon::today();
+        $endDate   = $campaign->end_date;
+        $startDate = $campaign->start_date;
+
+        $totalDays     = ($startDate && $endDate) ? (int) $startDate->diffInDays($endDate) + 1 : 0;
+        $currentDay    = ($startDate && $today->gte($startDate)) ? (int) $startDate->diffInDays($today) + 1 : 0;
+        $daysRemaining = $endDate ? max(0, (int) $today->diffInDays($endDate, false)) : 0;
+
+        return [
+            'id'             => $campaign->id,
+            'name'           => $campaign->name,
+            'helmet_code'    => $assignment->helmet?->helmet_code ?? '—',
+            'total_days'     => $totalDays,
+            'current_day'    => $currentDay,
+            'days_remaining' => $daysRemaining,
+            'end_date'       => $endDate?->format('Y-m-d'),
+        ];
+    }
+
+    private function buildRecentEarnings(Rider $rider): array
+    {
+        $assignmentIds = CampaignAssignment::where('rider_id', $rider->id)->pluck('id');
+
+        return RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)
+            ->where('status', 'ended')
+            ->orderByDesc('check_in_date')
+            ->take(5)
+            ->get()
+            ->map(function ($ci) {
+                $date  = $ci->check_in_date;
+                $today = Carbon::today();
+                $label = $date->isToday() ? 'Today'
+                    : ($date->isYesterday() ? 'Yesterday'
+                    : $date->diffInDays($today) . ' days ago');
+
+                return [
+                    'id'     => $ci->id,
+                    'desc'   => 'Daily earning - ' . $ci->check_in_date->format('M j'),
+                    'amount' => '+KSh ' . number_format((float) $ci->daily_earning, 2),
+                    'date'   => $label,
+                    'type'   => 'earning',
+                ];
+            })
+            ->values()
+            ->toArray();
+    }
+
+    private function buildTodayProgress(Rider $rider): array
+    {
+        $assignmentIds = CampaignAssignment::where('rider_id', $rider->id)->pluck('id');
+
+        $todayCheckIn = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)
+            ->whereDate('check_in_date', Carbon::today())
+            ->latest()
+            ->first();
+
+        $todayDistance = 0.0;
+        if ($todayCheckIn) {
+            $todayRoute    = RiderRoute::where('check_in_id', $todayCheckIn->id)->first();
+            $todayDistance = $todayRoute ? (float) $todayRoute->total_distance : 0.0;
+        }
+
+        return [
+            'worked_hours'  => $todayCheckIn?->total_hours ?? 0,
+            'distance_km'   => round($todayDistance, 2),
+            'daily_earning' => $todayCheckIn ? 'KSh ' . number_format((float) $todayCheckIn->daily_earning, 2) : 'KSh 0.00',
+            'status'        => $todayCheckIn?->status ?? null,
+        ];
     }
 
     /**

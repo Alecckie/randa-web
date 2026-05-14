@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Events\RiderGpsPointRecorded;
+use App\Models\CampaignAssignment;
 use App\Models\RiderGpsPoint;
 use App\Models\RiderCheckIn;
 use App\Models\RiderPauseEvent;
@@ -50,6 +52,19 @@ class RiderTrackingService
             $this->updateRouteRecord($checkIn, $gpsPoint);
 
             Cache::put("rider.{$riderId}.latest_gps_point", $gpsPoint, now()->addHours(24));
+
+            // Broadcast live location update to admin + campaign advertiser
+            if ($gpsPoint->campaign_assignment_id) {
+                $campaignId = CampaignAssignment::where('id', $gpsPoint->campaign_assignment_id)
+                    ->value('campaign_id');
+
+                if ($campaignId) {
+                    RiderGpsPointRecorded::dispatch(
+                        $gpsPoint->load('rider.user'),
+                        $campaignId,
+                    );
+                }
+            }
 
             Log::info('GPS point recorded', [
                 'rider_id'     => $riderId,

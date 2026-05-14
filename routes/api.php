@@ -51,28 +51,28 @@ Route::prefix('v1')->group(function () {
 
             // Step-by-step rider profile completion endpoints
             Route::post('/profile/location', [RiderProfileController::class, 'storeLocation'])
-                ->name('rider.profile.location');
+                ->name('api.rider.profile.location');
 
             Route::post('/profile/update-location', [RiderProfileController::class, 'updateLocation'])
-                ->name('rider.profile.update-location');
+                ->name('api.rider.profile.update-location');
 
             //  Individual document upload endpoint
             Route::post('/profile/upload-document', [RiderProfileController::class, 'uploadSingleDocument'])
-                ->name('rider.profile.upload-document');
+                ->name('api.rider.profile.upload-document');
 
             //  Delete individual document
             Route::post('/profile/delete-document', [RiderProfileController::class, 'deleteDocument'])
-                ->name('rider.profile.delete-document');
+                ->name('api.rider.profile.delete-document');
 
             // Batch upload
             Route::post('/profile/documents', [RiderProfileController::class, 'storeDocuments'])
-                ->name('rider.profile.documents');
+                ->name('api.rider.profile.documents');
 
             Route::post('/profile/contact', [RiderProfileController::class, 'storeContactInfo'])
-                ->name('rider.profile.contact');
+                ->name('api.rider.profile.contact');
 
             Route::post('/profile/agreement', [RiderProfileController::class, 'storeAgreement'])
-                ->name('rider.profile.agreement');
+                ->name('api.rider.profile.agreement');
 
 
             Route::name('rider')->group(function () {

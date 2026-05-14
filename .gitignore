@@ -12,6 +12,7 @@
 /.vscode
 /.zed
 /auth.json
+/bootstrap/cache/*.php
 /bootstrap/ssr
 /node_modules
 /public/build

@@ -32,6 +32,7 @@ import {
     DollarSignIcon,
     FileTextIcon,
     TrendingUpIcon,
+    TrendingDownIcon,
     ClockIcon,
     CheckCircleIcon,
     XCircleIcon,
@@ -44,9 +45,33 @@ import {
     AlertCircleIcon,
     InfoIcon,
     BikeIcon,
-    TargetIcon
+    TargetIcon,
+    BarChart2Icon
 } from 'lucide-react';
 import type { Campaign } from '@/types/campaign';
+
+interface PerRiderPayout {
+    rider_id: number;
+    rider_name: string;
+    total_earning: number;
+    days_worked: number;
+}
+
+interface DailyBreakdown {
+    date: string;
+    daily_rider_cost: number;
+    riders_active: number;
+    cumulative_rider_cost: number;
+    cumulative_profit: number;
+}
+
+interface PaymentAnalysis {
+    total_revenue: number;
+    total_rider_payouts: number;
+    company_profit: number;
+    per_rider: PerRiderPayout[];
+    daily_breakdown: DailyBreakdown[];
+}
 
 interface CampaignShowProps {
     campaign: Campaign & {
@@ -83,7 +108,7 @@ interface CampaignShowProps {
             vat_amount: number;
             total_cost: number;
             status: string;
-        };
+        } | null;
         assignments: Array<{
             id: number;
             rider_id: number;
@@ -131,9 +156,11 @@ interface CampaignShowProps {
         helmet_code: string;
         status: string;
     }>;
+    paymentAnalysis?: PaymentAnalysis | null;
+    isAdmin?: boolean;
 }
 
-export default function Show({ campaign, availableRiders = [], availableHelmets = [] }: CampaignShowProps) {
+export default function Show({ campaign, availableRiders = [], availableHelmets = [], paymentAnalysis, isAdmin = false }: CampaignShowProps) {
     const [assignModalOpened, { open: openAssignModal, close: closeAssignModal }] = useDisclosure(false);
     const [selectedRider, setSelectedRider] = useState<string>('');
     const [selectedHelmet, setSelectedHelmet] = useState<string>('');
@@ -335,7 +362,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         Duration
                                     </Text>
                                     <Text size="xl" fw={700}>
-                                        {campaign.current_cost.duration_days} Days
+                                        {campaign.current_cost?.duration_days ?? campaign.duration_days ?? 0} Days
                                     </Text>
                                 </div>
                                 <CalendarIcon size={32} className="text-blue-500" />
@@ -435,6 +462,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                         <Tabs.Tab value="timeline" leftSection={<ClockIcon size={16} />}>
                             Timeline
                         </Tabs.Tab>
+                        {isAdmin && (
+                            <Tabs.Tab value="payment-analysis" leftSection={<BarChart2Icon size={16} />}>
+                                Payment Analysis
+                            </Tabs.Tab>
+                        )}
                     </Tabs.List>
 
                     <Tabs.Panel value="details" p="md">
@@ -688,7 +720,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                 <Paper p="md" withBorder>
                                     <Stack gap="sm">
                                         <Group justify="apart">
-                                            <Text>Base Cost ({campaign.helmet_count} helmets × {campaign.current_cost.duration_days} days × KES {campaign.current_cost?.helmet_daily_rate})</Text>
+                                            <Text>Base Cost ({campaign.helmet_count} helmets × {campaign.current_cost?.duration_days ?? campaign.duration_days ?? 0} days × KES {campaign.current_cost?.helmet_daily_rate ?? 0})</Text>
                                             <Text fw={500}>{formatCurrency(campaign.current_cost?.base_cost || 0)}</Text>
                                         </Group>
                                         {campaign.current_cost?.includes_design && (
@@ -788,6 +820,225 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                             )}
                         </Stack>
                     </Tabs.Panel>
+
+                    {isAdmin && paymentAnalysis && (
+                        <Tabs.Panel value="payment-analysis" p="md">
+                            <Stack gap="lg">
+                                {/* Summary Cards */}
+                                <div>
+                                    <Text size="lg" fw={700} mb="md">Financial Summary</Text>
+                                    <Grid gutter="md">
+                                        <Grid.Col span={{ base: 12, sm: 4 }}>
+                                            <Paper p="md" withBorder>
+                                                <Stack gap="xs">
+                                                    <Group justify="apart">
+                                                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total Revenue</Text>
+                                                        <DollarSignIcon size={20} className="text-blue-500" />
+                                                    </Group>
+                                                    <Text size="xl" fw={700} c="blue">
+                                                        {formatCurrency(paymentAnalysis.total_revenue)}
+                                                    </Text>
+                                                    <Text size="xs" c="dimmed">Paid by advertiser (completed payments)</Text>
+                                                </Stack>
+                                            </Paper>
+                                        </Grid.Col>
+
+                                        <Grid.Col span={{ base: 12, sm: 4 }}>
+                                            <Paper p="md" withBorder>
+                                                <Stack gap="xs">
+                                                    <Group justify="apart">
+                                                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Rider Payouts</Text>
+                                                        <UsersIcon size={20} className="text-orange-500" />
+                                                    </Group>
+                                                    <Text size="xl" fw={700} c="orange">
+                                                        {formatCurrency(paymentAnalysis.total_rider_payouts)}
+                                                    </Text>
+                                                    <Text size="xs" c="dimmed">Total earned by all riders so far</Text>
+                                                </Stack>
+                                            </Paper>
+                                        </Grid.Col>
+
+                                        <Grid.Col span={{ base: 12, sm: 4 }}>
+                                            <Paper p="md" withBorder>
+                                                <Stack gap="xs">
+                                                    <Group justify="apart">
+                                                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Company Profit</Text>
+                                                        {paymentAnalysis.company_profit >= 0
+                                                            ? <TrendingUpIcon size={20} className="text-green-500" />
+                                                            : <TrendingDownIcon size={20} className="text-red-500" />
+                                                        }
+                                                    </Group>
+                                                    <Text size="xl" fw={700} c={paymentAnalysis.company_profit >= 0 ? 'green' : 'red'}>
+                                                        {formatCurrency(paymentAnalysis.company_profit)}
+                                                    </Text>
+                                                    <Text size="xs" c="dimmed">Revenue minus total rider payouts</Text>
+                                                </Stack>
+                                            </Paper>
+                                        </Grid.Col>
+                                    </Grid>
+                                </div>
+
+                                {/* Revenue Breakdown Bar */}
+                                {paymentAnalysis.total_revenue > 0 && (
+                                    <div>
+                                        <Text size="lg" fw={700} mb="md">Revenue Breakdown</Text>
+                                        <Paper p="md" withBorder>
+                                            <Stack gap="sm">
+                                                <Group justify="apart">
+                                                    <Text size="sm" c="dimmed">
+                                                        Rider Payouts — {((paymentAnalysis.total_rider_payouts / paymentAnalysis.total_revenue) * 100).toFixed(1)}%
+                                                    </Text>
+                                                    <Text size="sm" c="dimmed">
+                                                        Company Profit — {Math.max(0, (paymentAnalysis.company_profit / paymentAnalysis.total_revenue) * 100).toFixed(1)}%
+                                                    </Text>
+                                                </Group>
+                                                <Progress
+                                                    value={(paymentAnalysis.total_rider_payouts / paymentAnalysis.total_revenue) * 100}
+                                                    color="orange"
+                                                    size="xl"
+                                                    radius="xl"
+                                                />
+                                                <Group gap="xl">
+                                                    <Group gap="xs">
+                                                        <div style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: 'var(--mantine-color-orange-5)' }} />
+                                                        <Text size="xs" c="dimmed">Rider Payouts: {formatCurrency(paymentAnalysis.total_rider_payouts)}</Text>
+                                                    </Group>
+                                                    <Group gap="xs">
+                                                        <div style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: 'var(--mantine-color-blue-5)' }} />
+                                                        <Text size="xs" c="dimmed">Company Profit: {formatCurrency(paymentAnalysis.company_profit)}</Text>
+                                                    </Group>
+                                                </Group>
+                                            </Stack>
+                                        </Paper>
+                                    </div>
+                                )}
+
+                                {/* No payment yet notice */}
+                                {paymentAnalysis.total_revenue === 0 && (
+                                    <Alert icon={<AlertCircleIcon size={16} />} color="yellow" variant="light">
+                                        No completed payments found for this campaign. Analysis will populate once the advertiser completes payment.
+                                    </Alert>
+                                )}
+
+                                {/* Per-Rider Payouts */}
+                                <div>
+                                    <Text size="lg" fw={700} mb="md">Per-Rider Payouts</Text>
+                                    {paymentAnalysis.per_rider.length > 0 ? (
+                                        <Table highlightOnHover withTableBorder withColumnBorders>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th>Rider</Table.Th>
+                                                    <Table.Th>Days Worked</Table.Th>
+                                                    <Table.Th>Total Earned</Table.Th>
+                                                    <Table.Th>% of Revenue</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {paymentAnalysis.per_rider.map((rider) => (
+                                                    <Table.Tr key={rider.rider_id}>
+                                                        <Table.Td>
+                                                            <Text size="sm" fw={500}>{rider.rider_name}</Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Badge variant="light" color="blue">{rider.days_worked} day{rider.days_worked !== 1 ? 's' : ''}</Badge>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="sm" fw={500} c="orange">
+                                                                {formatCurrency(rider.total_earning)}
+                                                            </Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="sm">
+                                                                {paymentAnalysis.total_revenue > 0
+                                                                    ? ((rider.total_earning / paymentAnalysis.total_revenue) * 100).toFixed(1) + '%'
+                                                                    : '—'
+                                                                }
+                                                            </Text>
+                                                        </Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                                <Table.Tr style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                                                    <Table.Td><Text size="sm" fw={700}>Total</Text></Table.Td>
+                                                    <Table.Td></Table.Td>
+                                                    <Table.Td>
+                                                        <Text size="sm" fw={700} c="orange">
+                                                            {formatCurrency(paymentAnalysis.total_rider_payouts)}
+                                                        </Text>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Text size="sm" fw={700}>
+                                                            {paymentAnalysis.total_revenue > 0
+                                                                ? ((paymentAnalysis.total_rider_payouts / paymentAnalysis.total_revenue) * 100).toFixed(1) + '%'
+                                                                : '—'
+                                                            }
+                                                        </Text>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            </Table.Tbody>
+                                        </Table>
+                                    ) : (
+                                        <Paper p="xl" className="text-center" withBorder>
+                                            <UsersIcon size={36} className="mx-auto text-gray-400 mb-2" />
+                                            <Text size="sm" c="dimmed">
+                                                No rider payouts recorded yet. Earnings accumulate daily as riders check in and check out.
+                                            </Text>
+                                        </Paper>
+                                    )}
+                                </div>
+
+                                {/* Progressive Daily Breakdown */}
+                                <div>
+                                    <Text size="lg" fw={700} mb="xs">Progressive Daily Analysis</Text>
+                                    <Text size="sm" c="dimmed" mb="md">
+                                        Rider costs accumulate each day. Profit is updated in real-time as riders earn through check-ins.
+                                    </Text>
+                                    {paymentAnalysis.daily_breakdown.length > 0 ? (
+                                        <Table highlightOnHover withTableBorder withColumnBorders>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th>Date</Table.Th>
+                                                    <Table.Th>Active Riders</Table.Th>
+                                                    <Table.Th>Daily Rider Cost</Table.Th>
+                                                    <Table.Th>Cumulative Rider Cost</Table.Th>
+                                                    <Table.Th>Running Profit</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {paymentAnalysis.daily_breakdown.map((day) => (
+                                                    <Table.Tr key={day.date}>
+                                                        <Table.Td>
+                                                            <Text size="sm">{formatDate(day.date)}</Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Badge variant="light" color="blue">{day.riders_active}</Badge>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="sm" c="orange">{formatCurrency(day.daily_rider_cost)}</Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="sm" c="red">{formatCurrency(day.cumulative_rider_cost)}</Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="sm" fw={600} c={day.cumulative_profit >= 0 ? 'green' : 'red'}>
+                                                                {formatCurrency(day.cumulative_profit)}
+                                                            </Text>
+                                                        </Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    ) : (
+                                        <Paper p="xl" className="text-center" withBorder>
+                                            <BarChart2Icon size={36} className="mx-auto text-gray-400 mb-2" />
+                                            <Text size="sm" c="dimmed">
+                                                No daily activity recorded yet. This table updates as riders complete their daily check-ins.
+                                            </Text>
+                                        </Paper>
+                                    )}
+                                </div>
+                            </Stack>
+                        </Tabs.Panel>
+                    )}
 
                     <Tabs.Panel value="timeline" p="md">
                         <Timeline active={3} bulletSize={24} lineWidth={2}>

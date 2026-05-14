@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
-import { Badge, Button, Card, Container, Drawer, Grid, Group, Stack, Text, Avatar, Paper, Divider, Alert } from '@mantine/core';
+import { useState } from 'react';
+import { Link } from '@inertiajs/react';
+import { Avatar, Badge, Button, Card, Container, Grid, Group, Stack, Text, Paper, Divider, Alert } from '@mantine/core';
 import {
     User,
     Mail,
@@ -19,12 +19,9 @@ import {
     Users,
     Image as ImageIcon
 } from 'lucide-react';
-import Sidebar from '@/Components/frontend/layouts/Sidebar';
-import Header from '@/Components/frontend/layouts/Header';
 import { usePage } from '@inertiajs/react';
 import type { PageProps } from '@/types';
-import RiderHeader from '@/Components/frontend/layouts/RiderHeader';
-import RiderSidebar from '@/Components/frontend/layouts/RiderSidebar';
+import RiderLayout from '@/Layouts/RiderLayout';
 
 interface Location {
     id: number;
@@ -117,11 +114,7 @@ interface ShowProps {
 }
 
 export default function Show({ rider }: ShowProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeNav, setActiveNav] = useState('profile');
     const [selectedDocument, setSelectedDocument] = useState<string | null>(null);
-    const { auth } = usePage<PageProps>().props;
-    const user = auth?.user;
 
     const getStatusBadge = (status: string) => {
         const statusConfig = {
@@ -178,36 +171,8 @@ export default function Show({ rider }: ShowProps) {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
-            <Head title="My Profile" />
-
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <RiderSidebar user={user} activeNav="profile" />
-
-            </div>
-
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <RiderSidebar user={user} activeNav="profile" />
-
-            </Drawer>
-
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                {/* Header */}
-                <RiderHeader onMenuClick={() => setSidebarOpen(true)} rider={rider} />
-
-
-                {/* Page Content */}
-                <div className="p-2 sm:p-6 lg:p-4">
-                    <Container size="xl">
+        <RiderLayout title="My Profile" activeNav="profile">
+            <Container size="xl">
                         {/* Page Header */}
                         <div className="mb-6">
                             <Group justify="space-between" align="center">
@@ -726,9 +691,7 @@ export default function Show({ rider }: ShowProps) {
                                 </Card>
                             </Grid.Col>
                         </Grid>
-                    </Container>
-                </div>
-            </div>
+            </Container>
 
             {/* Image Modal */}
             {selectedDocument && (
@@ -745,6 +708,6 @@ export default function Show({ rider }: ShowProps) {
                     </div>
                 </div>
             )}
-        </div>
+        </RiderLayout>
     );
 }

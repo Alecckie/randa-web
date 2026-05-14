@@ -4,6 +4,11 @@ namespace App\Http\Controllers\frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Advertiser;
+use App\Models\Campaign;
+use App\Models\CampaignAssignment;
+use App\Models\Payment;
+use App\Models\RiderCheckIn;
+use App\Models\RiderRoute;
 use App\Services\AdvertiserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,17 +23,97 @@ class AdvertiserDashboardController extends Controller
     ) {}
 
     /**
-     * Display the advertiser dashboard
+     * Display the advertiser heatmap page
      */
-    public function index(): Response
+    public function heatmap(): Response
     {
         $user = $this->getAuthenticatedUser();
         $advertiser = $this->advertiserService->getAdvertiserByUserId($user->id);
 
-        return Inertia::render('front-end/Advertisers/Dashboard', [
-            'user' => $this->formatUserData($user),
-            'advertiser' => $advertiser ? $this->formatAdvertiserData($advertiser) : null
+        $campaigns = $advertiser
+            ? Campaign::where('advertiser_id', $advertiser->id)
+                ->select('id', 'name')
+                ->get()
+                ->map(fn($c) => ['value' => (string) $c->id, 'label' => $c->name])
+                ->values()
+            : collect();
+
+        return Inertia::render('front-end/Advertisers/Heatmap', [
+            'user'       => $this->formatUserData($user),
+            'advertiser' => $advertiser ? $this->formatAdvertiserData($advertiser) : null,
+            'campaigns'  => $campaigns,
         ]);
+    }
+
+    /**
+     * Display the advertiser dashboard
+     */
+    public function index(): Response
+    {
+        $user       = $this->getAuthenticatedUser();
+        $advertiser = $this->advertiserService->getAdvertiserByUserId($user->id);
+
+        $dashboardData = ['user' => $this->formatUserData($user), 'advertiser' => $advertiser ? $this->formatAdvertiserData($advertiser) : null];
+
+        if ($advertiser && $advertiser->status === 'approved') {
+            $allCampaignIds    = Campaign::where('advertiser_id', $advertiser->id)->pluck('id');
+            $activeCampaignIds = Campaign::where('advertiser_id', $advertiser->id)->where('status', 'active')->pluck('id');
+
+            $assignmentIds = CampaignAssignment::whereIn('campaign_id', $allCampaignIds)->pluck('id');
+            $checkInIds    = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)->pluck('id');
+
+            $totalDistance    = (float) RiderRoute::whereIn('check_in_id', $checkInIds)->sum('total_distance');
+            $totalImpressions = (int) ($totalDistance * 500);
+            $totalQrScans     = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)->count() * 2;
+
+            $recentCampaigns = Campaign::where('advertiser_id', $advertiser->id)
+                ->whereIn('status', ['active', 'paused', 'completed'])
+                ->orderByDesc('start_date')
+                ->take(5)
+                ->get()
+                ->map(fn ($c) => [
+                    'id'          => $c->id,
+                    'name'        => $c->name,
+                    'status'      => ucfirst($c->status),
+                    'impressions' => '—',
+                    'scans'       => 0,
+                    'budget'      => '—',
+                ]);
+
+            $totalBudget = Payment::where('advertiser_id', $advertiser->id)
+                ->where('status', 'completed')
+                ->sum('amount');
+
+            $recentTransactions = Payment::where('advertiser_id', $advertiser->id)
+                ->whereIn('status', ['completed', 'refunded'])
+                ->with('campaign:id,name')
+                ->orderByDesc('completed_at')
+                ->take(5)
+                ->get()
+                ->map(fn ($p) => [
+                    'id'     => $p->id,
+                    'desc'   => 'Campaign Payment' . ($p->campaign ? ' – ' . $p->campaign->name : ''),
+                    'amount' => ($p->status === 'refunded' ? '+' : '-') . 'KSh ' . number_format((float) $p->amount),
+                    'date'   => $p->completed_at?->diffForHumans() ?? '—',
+                    'type'   => $p->status === 'refunded' ? 'refund' : 'payment',
+                ]);
+
+            $dashboardData['stats'] = [
+                ['name' => 'Active Campaigns',  'value' => (string) $activeCampaignIds->count(),
+                 'change' => '', 'trend' => 'neutral', 'icon' => '🎯'],
+                ['name' => 'Total Impressions', 'value' => $totalImpressions >= 1000 ? round($totalImpressions / 1000, 1) . 'K' : (string) $totalImpressions,
+                 'change' => 'est. 500/km', 'trend' => 'up', 'icon' => '👁️'],
+                ['name' => 'QR Code Scans',     'value' => number_format($totalQrScans),
+                 'change' => 'check-in + out', 'trend' => 'up', 'icon' => '📱'],
+                ['name' => 'Campaign Budget',   'value' => 'KSh ' . number_format((float) $totalBudget),
+                 'change' => 'total paid', 'trend' => 'neutral', 'icon' => '💳'],
+            ];
+
+            $dashboardData['campaigns']    = $recentCampaigns;
+            $dashboardData['transactions'] = $recentTransactions;
+        }
+
+        return Inertia::render('front-end/Advertisers/Dashboard', $dashboardData);
     }
 
     /**

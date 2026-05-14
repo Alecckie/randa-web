@@ -1,19 +1,7 @@
-import React, { useState } from 'react';
-import { Head } from '@inertiajs/react';
-import {
-    Alert,
-    Drawer,
-    Title,
-    Text,
-    Card,
-} from '@mantine/core';
-import {
-    AlertCircle,
-    Check,
-} from 'lucide-react';
+import { Alert, Text, Card } from '@mantine/core';
+import { AlertCircle, Check } from 'lucide-react';
 import RiderDetailsForm from '@/Components/riders/RiderDetailsForm';
-import RiderSidebar from '@/Components/frontend/layouts/RiderSidebar';
-import RiderHeader from '@/Components/frontend/layouts/RiderHeader';
+import RiderLayout from '@/Layouts/RiderLayout';
 
 // Types
 interface County {
@@ -48,46 +36,21 @@ interface PageProps {
     counties: County[];
 }
 
-export default function RiderProfile({ user, rider, counties }: PageProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-
+export default function RiderProfile({ rider, counties }: PageProps) {
     const hasProfile = !!rider?.id;
     const isPending = rider?.status === 'pending';
     const isApproved = rider?.status === 'approved';
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex">
-            <Head title="Rider Profile" />
-
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <RiderSidebar user={user} activeNav="profile" />
-            </div>
-
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <RiderSidebar user={user} activeNav="profile" />
-            </Drawer>
-
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                <RiderHeader onMenuClick={() => setSidebarOpen(true)} rider={rider} />
-
-                <div className="p-4 sm:p-6 lg:p-8">
-                    <div className="max-w-9xl mx-auto space-y-6">
+        <RiderLayout title="Rider Profile" activeNav="profile">
+            <div className="max-w-9xl mx-auto space-y-6">
                         {/* Page Title */}
                         <div>
-                            <Title order={2} size="h2" className="text-gray-900 dark:text-white">
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                                 {hasProfile ? 'Profile Settings' : 'Complete Your Profile'}
-                            </Title>
+                            </h1>
                             <Text size="sm" c="dimmed" mt="xs">
-                                {hasProfile 
+                                {hasProfile
                                     ? 'Update your profile information and documents'
                                     : 'Please complete your profile to start working as a rider'
                                 }
@@ -140,8 +103,6 @@ export default function RiderProfile({ user, rider, counties }: PageProps) {
                             />
                         </Card>
                     </div>
-                </div>
-            </div>
-        </div>
+        </RiderLayout>
     );
 }

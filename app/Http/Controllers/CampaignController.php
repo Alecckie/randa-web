@@ -10,6 +10,7 @@ use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -104,12 +105,84 @@ class CampaignController extends Controller
 
         $assignmentStats = $this->assignmentService->getAssignmentStats($campaign);
 
+        $user = Auth::user();
+        $isAdmin = $user && $user->role === 'admin';
+
+        $paymentAnalysis = $isAdmin ? $this->buildPaymentAnalysis($campaign) : null;
+
         return Inertia::render('Campaigns/Show', [
             'campaign' => $campaign,
             'availableRiders' => $availableRiders,
             'availableHelmets' => $availableHelmets,
             'assignmentStats' => $assignmentStats,
+            'paymentAnalysis' => $paymentAnalysis,
+            'isAdmin' => $isAdmin,
         ]);
+    }
+
+    /**
+     * Build payment analysis data for a campaign.
+     * Includes total revenue, per-rider payouts, company profit, and daily progressive breakdown.
+     */
+    private function buildPaymentAnalysis(Campaign $campaign): array
+    {
+        $totalRevenue = round((float) $campaign->payments()
+            ->where('status', 'completed')
+            ->sum('amount'), 2);
+
+        // Fetch all ended check-ins for this campaign's assignments
+        $checkIns = DB::table('rider_check_ins')
+            ->join('campaign_assignments', 'rider_check_ins.campaign_assignment_id', '=', 'campaign_assignments.id')
+            ->join('riders', 'rider_check_ins.rider_id', '=', 'riders.id')
+            ->join('users', 'riders.user_id', '=', 'users.id')
+            ->where('campaign_assignments.campaign_id', $campaign->id)
+            ->where('rider_check_ins.status', 'ended')
+            ->select(
+                'rider_check_ins.rider_id',
+                'users.name as rider_name',
+                'rider_check_ins.check_in_date',
+                DB::raw('CAST(rider_check_ins.daily_earning AS DECIMAL(10,2)) as daily_earning')
+            )
+            ->get();
+
+        $totalRiderPayouts = round((float) $checkIns->sum('daily_earning'), 2);
+        $companyProfit = round($totalRevenue - $totalRiderPayouts, 2);
+
+        // Per-rider breakdown
+        $perRider = $checkIns->groupBy('rider_id')->map(function ($riderCheckIns) {
+            $first = $riderCheckIns->first();
+            return [
+                'rider_id'      => $first->rider_id,
+                'rider_name'    => $first->rider_name,
+                'total_earning' => round((float) $riderCheckIns->sum('daily_earning'), 2),
+                'days_worked'   => $riderCheckIns->count(),
+            ];
+        })->sortByDesc('total_earning')->values()->toArray();
+
+        // Progressive daily breakdown — cumulative rider costs vs profit
+        $cumulativeCost = 0.0;
+        $dailyBreakdown = $checkIns
+            ->groupBy('check_in_date')
+            ->sortKeys()
+            ->map(function ($dayCheckIns, $date) use (&$cumulativeCost, $totalRevenue) {
+                $dayCost = round((float) $dayCheckIns->sum('daily_earning'), 2);
+                $cumulativeCost = round($cumulativeCost + $dayCost, 2);
+                return [
+                    'date'                   => $date,
+                    'daily_rider_cost'       => $dayCost,
+                    'riders_active'          => $dayCheckIns->count(),
+                    'cumulative_rider_cost'  => $cumulativeCost,
+                    'cumulative_profit'      => round($totalRevenue - $cumulativeCost, 2),
+                ];
+            })->values()->toArray();
+
+        return [
+            'total_revenue'       => $totalRevenue,
+            'total_rider_payouts' => $totalRiderPayouts,
+            'company_profit'      => $companyProfit,
+            'per_rider'           => $perRider,
+            'daily_breakdown'     => $dailyBreakdown,
+        ];
     }
 
     /**

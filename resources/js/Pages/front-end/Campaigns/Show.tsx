@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
+import { Link, router } from '@inertiajs/react';
 import {
     Button,
     Badge,
@@ -18,7 +18,6 @@ import {
     ThemeIcon,
     ActionIcon,
     Menu,
-    Drawer,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -44,12 +43,9 @@ import {
     Palette,
     Receipt,
 } from 'lucide-react';
-import Sidebar from '@/Components/frontend/layouts/Sidebar';
-import Header from '@/Components/frontend/layouts/Header';
-import type { PageProps } from '@/types';
-import { usePage } from '@inertiajs/react';
 import { Advertiser } from '@/types/advertiser';
 import MpesaPaymentModal from '@/Components/payments/MpesaPaymentModal';
+import AdvertiserLayout from '@/Layouts/AdvertiserLayout';
 
 interface CoverageArea {
     id: number;
@@ -127,10 +123,6 @@ interface CampaignShowProps {
 }
 
 export default function Show({ campaign, advertiser }: CampaignShowProps) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeNav, setActiveNav] = useState('campaigns');
-    const { auth } = usePage<PageProps>().props;
-    const user = auth?.user;
 
     // Payment modal state
     const [paymentModalOpened, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
@@ -229,36 +221,8 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex">
-            <Head title={`Campaign: ${campaign.name}`} />
-
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </div>
-
-            {/* Mobile Drawer */}
-            <Drawer
-                opened={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                size="280px"
-                padding={0}
-                withCloseButton={false}
-            >
-                <Sidebar user={user} activeNav={activeNav} onNavClick={setActiveNav} />
-            </Drawer>
-
-            {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
-                {/* Header */}
-                <Header 
-                    onMenuClick={() => setSidebarOpen(true)} 
-                    user={advertiser}
-                    showCreateMenu={false}
-                />
-
-                {/* Page Content */}
-                <div className="p-4 sm:p-6 lg:p-8 pb-12">
+        <AdvertiserLayout title={`Campaign: ${campaign.name}`} activeNav="campaigns">
+            <div className="pb-12">
                     {/* Page Header */}
                     <div className="mb-8">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
@@ -863,7 +827,6 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                         </Tabs.Panel>
                     </Tabs>
                 </div>
-            </div>
 
             {/* Payment Modal */}
             {campaign.current_cost && advertiser.id && hasBalance() && (
@@ -878,7 +841,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                         design_cost: campaign.current_cost.design_cost,
                         subtotal: campaign.current_cost.subtotal,
                         vat_amount: campaign.current_cost.vat_amount,
-                        total_cost: calculateBalance(), 
+                        total_cost: calculateBalance(),
                         currency: 'KES'
                     }}
                     advertiserId={advertiser.id}
@@ -891,6 +854,6 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                     onPaymentSuccess={handlePaymentSuccess}
                 />
             )}
-        </div>
+        </AdvertiserLayout>
     );
 }
