@@ -17,6 +17,21 @@ class Advertiser extends Model
         'status'
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Assign a human-readable, unique advertiser number once the row
+        // has an id — a RANDA-internal reference distinct from the
+        // advertiser's own external business_registration number.
+        static::created(function (Advertiser $advertiser) {
+            if (!$advertiser->advertiser_number) {
+                $advertiser->advertiser_number = sprintf('ADV-%06d', $advertiser->id);
+                $advertiser->saveQuietly();
+            }
+        });
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

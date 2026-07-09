@@ -44,11 +44,10 @@ export default function LocationTrackingButton({
       handleStart();
     }
 
-    // Cleanup on unmount
+    // Cleanup on unmount — stopTracking() is idempotent, so it's always
+    // safe to call even if tracking was never started.
     return () => {
-      if (status !== 'stopped') {
-        LocationTrackingService.stopTracking();
-      }
+      LocationTrackingService.stopTracking();
     };
   }, [autoStart, disabled]);
 

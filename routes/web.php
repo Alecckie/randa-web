@@ -90,6 +90,16 @@ Route::middleware('auth')->group(function () {
         Route::post('/mpesa/paybill-instructions', [PaymentController::class, 'getPaybillInstructions'])
             ->name('mpesa.paybill-instructions');
 
+        // Admin: record manual cash/M-Pesa payment without STK push
+        Route::post('/record-manual', [PaymentController::class, 'recordManualPayment'])
+            ->name('record-manual');
+
+        // Admin: approve or reject a manually-submitted receipt awaiting verification
+        Route::patch('/{payment}/approve', [PaymentController::class, 'approveManualPayment'])
+            ->name('approve');
+        Route::patch('/{payment}/reject', [PaymentController::class, 'rejectManualPayment'])
+            ->name('reject');
+
         Route::get('/list', [PaymentController::class, 'listPayments'])
             ->name('list');
 
@@ -103,6 +113,7 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__ . '/auth.php';
+require __DIR__ . '/admin.php';
 require __DIR__ . '/rider.php';
 require __DIR__ . '/advertiser.php';
 require __DIR__ . '/campaign.php';

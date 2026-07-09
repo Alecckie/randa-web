@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\CheckInService;
+use App\Services\Shift\RiderPayoutService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,8 +15,10 @@ class RiderCheckInController extends Controller
 {
     protected $checkInService;
 
-    public function __construct(CheckInService $checkInService)
-    {
+    public function __construct(
+        CheckInService $checkInService,
+        private RiderPayoutService $payoutService,
+    ) {
         $this->checkInService = $checkInService;
     }
 
@@ -395,16 +399,21 @@ class RiderCheckInController extends Controller
     // }
 
     /**
-     * Force check-out (admin only or emergency)
+     * End the shift early for a reason other than a normal finish —
+     * e.g. sickness or an emergency ("Leave Shift" / "Stop Shift").
+     * Pay is calculated the same way as a normal check-out (worked hours
+     * minus pause time, subject to the minimum-hours-to-qualify rule);
+     * only the recorded reason differs.
      *
      * @param Request $request
      * @return JsonResponse
      */
-    public function forceCheckOut(Request $request): JsonResponse
+    public function leaveShift(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'check_in_id' => 'required|integer|exists:rider_check_ins,id',
-            'reason' => 'nullable|string|max:500'
+            'reason' => 'required|string|in:sickness,emergency,other',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         if ($validator->fails()) {
@@ -416,7 +425,7 @@ class RiderCheckInController extends Controller
         }
 
         try {
-            $rider = Auth::user()->rider;
+            $rider = $request->user()->rider;
 
             if (!$rider) {
                 return response()->json([
@@ -425,42 +434,19 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $checkIn = \App\Models\RiderCheckIn::where('id', $request->check_in_id)
-                ->where('rider_id', $rider->id)
-                ->where('status', 'active')
-                ->first();
+            $result = $this->checkInService->leaveShift(
+                $rider->id,
+                $request->reason,
+                $request->latitude,
+                $request->longitude
+            );
 
-            if (!$checkIn) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Active check-in not found.'
-                ], 404);
-            }
-
-            // Force check-out
-            $checkIn->update([
-                'check_out_time' => now(),
-                'status' => 'completed'
-            ]);
-
-            // Update wallet
-            $rider->increment('wallet_balance', $checkIn->daily_earning);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Force check-out successful.',
-                'data' => [
-                    'check_out_time' => $checkIn->formatted_check_out_time,
-                    'worked_hours' => $checkIn->worked_hours,
-                    'daily_earning' => $checkIn->formatted_daily_earning,
-                ]
-            ], 200);
+            return response()->json($result, 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to force check-out.',
-                'error' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
+                'message' => $e->getMessage()
+            ], 400);
         }
     }
 
@@ -541,43 +527,37 @@ class RiderCheckInController extends Controller
                 ], 404);
             }
 
-            $month = $request->input('month', now()->month);
-            $year = $request->input('year', now()->year);
+            $month = (int) $request->input('month', now()->month);
+            $year = (int) $request->input('year', now()->year);
 
-            $earnings = \App\Models\RiderCheckIn::where('rider_id', $rider->id)
-                ->whereMonth('check_in_date', $month)
-                ->whereYear('check_in_date', $year)
-                ->where('status', 'completed')
-                ->selectRaw('
-                    COUNT(*) as total_days,
-                    SUM(daily_earning) as total_earnings,
-                    AVG(daily_earning) as average_earning,
-                    DATE(check_in_date) as date,
-                    SUM(TIMESTAMPDIFF(HOUR, check_in_time, check_out_time)) as total_hours
-                ')
-                ->groupBy('date')
-                ->orderBy('date', 'desc')
-                ->get();
+            $from = Carbon::create($year, $month, 1)->startOfMonth();
+            $to = $from->copy()->endOfMonth();
 
-            $summary = [
-                'month' => $month,
-                'year' => $year,
-                'total_days_worked' => $earnings->count(),
-                'total_earnings' => 'KSh ' . number_format($earnings->sum('total_earnings'), 2),
-                'average_daily_earning' => 'KSh ' . number_format($earnings->avg('average_earning'), 2),
-                'total_hours_worked' => $earnings->sum('total_hours'),
-                'daily_breakdown' => $earnings->map(function ($item) {
-                    return [
-                        'date' => $item->date,
-                        'earnings' => 'KSh ' . number_format($item->total_earnings, 2),
-                        'hours' => $item->total_hours
-                    ];
-                })
-            ];
+            $summary = $this->payoutService->periodSummary($rider->id, $from, $to);
+            $daysWorked = $summary['days_worked'];
 
             return response()->json([
                 'success' => true,
-                'data' => $summary
+                'data' => [
+                    'month' => $month,
+                    'year' => $year,
+                    'total_days_worked' => $daysWorked,
+                    'total_earnings' => 'KSh ' . number_format($summary['total_earning'], 2),
+                    'average_daily_earning' => 'KSh ' . number_format(
+                        $daysWorked > 0 ? $summary['total_earning'] / $daysWorked : 0,
+                        2
+                    ),
+                    'total_hours_worked' => $summary['total_hours_worked'],
+                    'total_owed' => $summary['total_owed'],
+                    'daily_breakdown' => array_map(fn (array $day) => [
+                        'date' => $day['date'],
+                        'earnings' => 'KSh ' . number_format($day['daily_earning'], 2),
+                        'hours' => $day['worked_hours'],
+                        'settled' => $day['settled'],
+                        'daily_earning' => $day['daily_earning'],
+                        'max_possible_earning' => $day['max_possible_earning'],
+                    ], $summary['days']),
+                ],
             ], 200);
         } catch (\Exception $e) {
             return response()->json([

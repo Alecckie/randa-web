@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Helmet extends Model
 {
@@ -15,6 +16,20 @@ class Helmet extends Model
         'status',
         'current_branding'
     ];
+
+    /**
+     * Generate a unique helmet code, retrying until it doesn't collide.
+     * Used as the server-side source of truth when an admin doesn't type
+     * in a code matching a physical asset tag.
+     */
+    public static function generateHelmetCode(): string
+    {
+        do {
+            $code = 'HMT-' . strtoupper(Str::random(6));
+        } while (static::where('helmet_code', $code)->exists());
+
+        return $code;
+    }
 
     public function assignments()
     {

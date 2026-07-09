@@ -19,6 +19,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/assignments/{assignment}/complete', [CampaignAssignmentController::class, 'completeAssignment'])
             ->name('complete-assignment');
 
+        Route::get('/assignments/{assignment}/activity', [CampaignAssignmentController::class, 'assignmentActivity'])
+            ->name('assignment-activity');
+
         // Route::patch('/status', [CampaignAssignmentController::class, 'updateStatus'])
         //     ->name('update-status');
 
@@ -30,5 +33,8 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/assignment-stats', [CampaignAssignmentController::class, 'assignmentStats'])
             ->name('assignment-stats');
+
+        Route::post('/revoke-helmets', [CampaignAssignmentController::class, 'revokeAllHelmets'])
+            ->name('revoke-helmets');
     });
 });

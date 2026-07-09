@@ -24,7 +24,7 @@ class StoreCampaignRequest extends FormRequest
             'advertiser_id' => [
                 'required',
                 'integer',
-                'exists:advertisers,user_id'
+                'exists:advertisers,id'
             ],
             'payment_id' => [
                 'nullable',
@@ -140,7 +140,7 @@ class StoreCampaignRequest extends FormRequest
             'status' => [
                 'sometimes',
                 'string',
-                Rule::in(['draft', 'pending_payment', 'paid', 'active', 'paused', 'completed', 'cancelled'])
+                Rule::in(['draft', 'submitted', 'active', 'paused', 'completed', 'cancelled'])
             ]
         ];
     }

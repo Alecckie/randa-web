@@ -8,6 +8,7 @@ import {
 import {
     Building2, FileText, Check, AlertCircle,
     MapPin, Plus, BarChart3, Users, TrendingUp, TrendingDown, Minus,
+    Target, Eye, Smartphone, CreditCard,
 } from 'lucide-react';
 import AdvertiserLayout from '@/Layouts/AdvertiserLayout';
 
@@ -56,6 +57,14 @@ interface Props {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+// Single theme-colored icon per stat, no emoji.
+const STAT_ICONS: Record<string, typeof Target> = {
+    target: Target,
+    eye: Eye,
+    smartphone: Smartphone,
+    'credit-card': CreditCard,
+};
+
 function StatCardComp({ stat }: { stat: StatCard }) {
     const trendColor = stat.trend === 'up'
         ? 'text-green-600 dark:text-green-400'
@@ -63,6 +72,7 @@ function StatCardComp({ stat }: { stat: StatCard }) {
         ? 'text-red-600 dark:text-red-400'
         : 'text-gray-500';
     const TrendIcon = stat.trend === 'up' ? TrendingUp : stat.trend === 'down' ? TrendingDown : Minus;
+    const StatIcon = STAT_ICONS[stat.icon] ?? Target;
 
     return (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow">
@@ -71,7 +81,9 @@ function StatCardComp({ stat }: { stat: StatCard }) {
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{stat.name}</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</p>
                 </div>
-                <div className="text-2xl">{stat.icon}</div>
+                <div className="w-11 h-11 rounded-lg bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center flex-shrink-0">
+                    <StatIcon size={20} className="text-[#f79122]" />
+                </div>
             </div>
             {stat.change && (
                 <div className={`flex items-center gap-1 mt-3 text-xs font-medium ${trendColor}`}>
@@ -86,8 +98,8 @@ function StatCardComp({ stat }: { stat: StatCard }) {
 function statusBadgeColor(status: string) {
     const map: Record<string, string> = {
         active: 'green', paused: 'yellow', completed: 'gray',
-        draft: 'blue', pending_payment: 'orange', paid: 'teal',
-        Active: 'green', Paused: 'yellow', Completed: 'gray', Draft: 'blue',
+        draft: 'blue', submitted: 'orange',
+        Active: 'green', Paused: 'yellow', Completed: 'gray', Draft: 'blue', Submitted: 'orange',
     };
     return map[status] ?? 'gray';
 }
@@ -264,9 +276,9 @@ export default function AdvertiserDashboard({ user, advertiser, stats, campaigns
                                 <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {[
                                         { label: 'New Campaign', icon: <Plus size={18} />,    href: route('my-campaigns.create'),    color: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]' },
-                                        { label: 'Analytics',    icon: <BarChart3 size={18} />, href: route('advertiser.analytics'), color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' },
-                                        { label: 'Heatmap',      icon: <MapPin size={18} />,    href: route('advertiser.heatmap'),   color: 'bg-green-50 dark:bg-green-900/20 text-green-600' },
-                                        { label: 'My Campaigns', icon: <Users size={18} />,     href: route('my-campaigns.index'),   color: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' },
+                                        { label: 'Analytics',    icon: <BarChart3 size={18} />, href: route('advertiser.analytics'), color: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]' },
+                                        { label: 'Heatmap',      icon: <MapPin size={18} />,    href: route('advertiser.heatmap'),   color: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]' },
+                                        { label: 'My Campaigns', icon: <Users size={18} />,     href: route('my-campaigns.index'),   color: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]' },
                                     ].map((action) => (
                                         <Link
                                             key={action.label}

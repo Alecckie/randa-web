@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class Payment extends Model
 {
@@ -232,7 +233,7 @@ class Payment extends Model
 
         if ($updated && $this->campaign) {
             $this->campaign->update([
-                'status' => 'paid',
+                'payment_status' => 'paid',
                 'payment_verification_status' => 'verified'
             ]);
         }
@@ -245,13 +246,22 @@ class Payment extends Model
      */
     public function rejectByAdmin(int $adminUserId, string $reason): bool
     {
-        return $this->update([
+        $updated = $this->update([
             'status' => 'failed',
             'failed_at' => now(),
             'admin_approved_by' => $adminUserId,
             'status_message' => 'Rejected: ' . $reason,
             'requires_admin_approval' => false,
         ]);
+
+        if ($updated && $this->campaign) {
+            $this->campaign->update([
+                'payment_status' => 'rejected',
+                'payment_verification_status' => 'failed',
+            ]);
+        }
+
+        return $updated;
     }
 
     /**
@@ -272,14 +282,16 @@ class Payment extends Model
     }
 
     /**
-     * Generate user-friendly payment reference using phone number
+     * Generate user-friendly payment reference using phone number.
+     * Falls back to a random suffix when no phone number is available
+     * (e.g. a manual receipt submitted without one).
      */
-    public static function generatePaymentReference(string $phoneNumber): string
+    public static function generatePaymentReference(?string $phoneNumber = null): string
     {
         // Use last 9 digits of phone number + timestamp suffix
-        $phoneSuffix = substr($phoneNumber, -9);
+        $phoneSuffix = $phoneNumber ? substr($phoneNumber, -9) : strtoupper(Str::random(6));
         $timeSuffix = substr(time(), -4); // Last 4 digits of timestamp
-        
+
         return 'CPG' . $phoneSuffix . $timeSuffix;
     }
 
@@ -290,7 +302,7 @@ class Payment extends Model
     {
         return [
             'paybill_number' => config('mpesa.business_short_code'),
-            'account_number' => $this->phone_number,
+            'account_number' => $this->campaign?->campaign_number ?? $this->phone_number,
             'amount' => $this->amount,
             'reference' => $this->payment_reference,
         ];

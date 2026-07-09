@@ -5,21 +5,28 @@ namespace App\Http\Controllers\Payment;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payment\WebInitiatePaymentRequest;
 use App\Services\Payments\MpesaService;
+use App\Services\NotificationService;
 use App\Models\Payment;
+use App\Models\Campaign;
+use App\Events\PaymentStatusUpdated;
 use App\Traits\HandlesPayment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
     use HandlesPayment;
 
     protected MpesaService $mpesaService;
+    protected NotificationService $notificationService;
 
-    public function __construct(MpesaService $mpesaService)
+    public function __construct(MpesaService $mpesaService, NotificationService $notificationService)
     {
         $this->mpesaService = $mpesaService;
+        $this->notificationService = $notificationService;
     }
 
     /**
@@ -239,7 +246,7 @@ class PaymentController extends Controller
             'advertiser_id' => 'required|integer|exists:advertisers,id',
             'receipt_number' => 'required|string|min:6|max:20',
             'amount' => 'required|numeric|min:1',
-            'phone_number' => 'required|string',
+            'phone_number' => 'nullable|string',
             'campaign_data' => 'nullable|array'
         ]);
 
@@ -254,6 +261,13 @@ class PaymentController extends Controller
                 'campaign_id' => $request->input('campaign_id'),
                 'campaign_data' => $request->input('campaign_data')
             ]);
+
+            if (!empty($result['success']) && !empty($result['payment_id'])) {
+                $payment = Payment::find($result['payment_id']);
+                if ($payment) {
+                    $this->notificationService->notifyPaymentSubmitted($payment);
+                }
+            }
 
             if ($request->header('X-Inertia')) {
                 return back()->with($result);
@@ -333,6 +347,124 @@ class PaymentController extends Controller
                 'message' => 'Error generating instructions'
             ], 500);
         }
+    }
+
+    /**
+     * Admin: record a manual cash or M-Pesa payment without going through STK push
+     */
+    public function recordManualPayment(Request $request)
+    {
+        $request->validate([
+            'campaign_id'    => 'required|integer|exists:campaigns,id',
+            'advertiser_id'  => 'required|integer|exists:advertisers,id',
+            'amount'         => 'required|numeric|min:1',
+            'payment_method' => 'required|in:cash,mpesa',
+            'receipt_number' => 'nullable|string|max:50',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $campaign = Campaign::findOrFail($request->campaign_id);
+
+            $payment = Payment::create([
+                'advertiser_id'      => $request->advertiser_id,
+                'campaign_id'        => $request->campaign_id,
+                'amount'             => $request->amount,
+                'payment_method'     => $request->payment_method,
+                'payment_reference'  => 'MANUAL-' . strtoupper(Str::random(8)),
+                'status'             => 'completed',
+                'completed_at'       => now(),
+                'phone_number'       => null,
+                'mpesa_receipt_number' => $request->receipt_number,
+                'verification_method' => 'admin_approval',
+                'requires_admin_approval' => false,
+                'metadata'           => [
+                    'recorded_by' => Auth::id(),
+                    'notes'       => $request->notes,
+                ],
+            ]);
+
+            // Mark payment as paid — admin is directly vouching for this one,
+            // so it doesn't need the pending_verification review step.
+            $campaign->update(['payment_status' => 'paid']);
+
+            // Notify any advertiser page with the campaign open, live, so it
+            // doesn't keep showing "payment required" after this succeeds.
+            broadcast(new PaymentStatusUpdated($payment, 'success'))->toOthers();
+            $this->notificationService->notifyPaymentRecorded($payment);
+
+            if ($request->header('X-Inertia')) {
+                return back()->with([
+                    'success' => 'Payment of KES ' . number_format($request->amount, 2) . ' recorded successfully.',
+                ]);
+            }
+
+            return response()->json(['success' => true, 'payment_id' => $payment->id]);
+
+        } catch (\Exception $e) {
+            Log::error('Manual payment recording error', ['error' => $e->getMessage()]);
+
+            if ($request->header('X-Inertia')) {
+                return back()->with(['error' => 'Failed to record payment: ' . $e->getMessage()]);
+            }
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Admin: approve a manually-submitted receipt that's awaiting verification.
+     */
+    public function approveManualPayment(Request $request, Payment $payment)
+    {
+        $user = Auth::user();
+
+        if (!$user || $user->role !== 'admin') {
+            return back()->with(['error' => 'You do not have permission to approve payments.']);
+        }
+
+        if ($payment->status === 'completed') {
+            return back()->with(['error' => 'This payment has already been approved.']);
+        }
+
+        $payment->approveByAdmin($user->id, $request->input('note'));
+        $payment = $payment->fresh();
+
+        // Notify the advertiser's page live so it stops asking for payment.
+        broadcast(new PaymentStatusUpdated($payment, 'success'))->toOthers();
+        $this->notificationService->notifyPaymentApproved($payment);
+
+        return back()->with([
+            'success' => 'Payment of KES ' . number_format((float) $payment->amount, 2) . ' approved.',
+        ]);
+    }
+
+    /**
+     * Admin: reject a manually-submitted receipt that's awaiting verification.
+     */
+    public function rejectManualPayment(Request $request, Payment $payment)
+    {
+        $user = Auth::user();
+
+        if (!$user || $user->role !== 'admin') {
+            return back()->with(['error' => 'You do not have permission to reject payments.']);
+        }
+
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        if ($payment->status === 'completed') {
+            return back()->with(['error' => 'This payment has already been approved and cannot be rejected.']);
+        }
+
+        $reason = $request->input('reason');
+        $payment->rejectByAdmin($user->id, $reason);
+        $this->notificationService->notifyPaymentRejected($payment->fresh(), $reason);
+
+        return back()->with([
+            'success' => 'Payment rejected. The advertiser can submit a new receipt.',
+        ]);
     }
 
     /**

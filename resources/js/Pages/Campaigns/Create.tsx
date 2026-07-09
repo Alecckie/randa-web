@@ -391,7 +391,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
     const StepBasicInfo = useMemo(() => (
         <Stack gap="md">
             <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <FileText size={20} className="text-blue-600" />
+                <FileText size={20} className="text-[#f79122]" />
                 Basic Campaign Information
             </Title>
             <Grid>
@@ -477,7 +477,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
     const StepCampaignDetails = useMemo(() => (
         <Stack gap="md">
             <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <MapPin size={20} className="text-green-600" />
+                <MapPin size={20} className="text-[#f79122]" />
                 Campaign Details & Coverage
             </Title>
             <Grid>
@@ -562,7 +562,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
                 <Grid.Col span={{ base: 12, md: 6 }}>
                     <Paper 
                         p="md" 
-                        className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200"
+                        className="bg-blue-50 border border-blue-200"
                         style={{ borderRadius: rem(12) }}
                     >
                         <Text size="sm" fw={500} c="blue.7">Campaign Duration</Text>
@@ -645,7 +645,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
     const StepDesignRequirements = useMemo(() => (
         <Stack gap="md">
             <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <Palette size={20} className="text-purple-600" />
+                <Palette size={20} className="text-[#f79122]" />
                 Design Requirements
             </Title>
             
@@ -769,7 +769,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
         <Stack gap="md">
             <Group justify="space-between" align="center">
                 <Title order={3} className="flex items-center gap-2 text-gray-800">
-                    <Calculator size={20} className="text-emerald-600" />
+                    <Calculator size={20} className="text-[#f79122]" />
                     Cost Breakdown & Review
                 </Title>
                 <Button
@@ -842,7 +842,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
                                         KES {costBreakdown.vat_amount.toLocaleString()}
                                     </Table.Td>
                                 </Table.Tr>
-                                <Table.Tr className="bg-gradient-to-r from-emerald-50 to-green-50">
+                                <Table.Tr className="bg-emerald-50">
                                     <Table.Td fw={700}>
                                         <Text size="lg" fw={700}>Total Amount</Text>
                                     </Table.Td>
@@ -877,8 +877,8 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
                         onClick={calculateCosts}
                         disabled={!formData.helmet_count || !duration}
                         leftSection={<Calculator size={16} />}
-                        gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                        variant="gradient"
+                        variant="filled"
+                        color="orange"
                     >
                         Calculate Costs
                     </Button>
@@ -890,7 +890,7 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
     const StepFinalReview = useMemo(() => (
         <Stack gap="md">
             <Title order={3} className="flex items-center gap-2 text-gray-800">
-                <Eye size={20} className="text-indigo-600" />
+                <Eye size={20} className="text-[#f79122]" />
                 Final Review & Submit
             </Title>
 
@@ -1068,15 +1068,15 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
                                     >
                                         Previous
                                     </Button>
-                                    <Button 
+                                    <Button
                                         type="submit"
                                         loading={submitting || (activeStep === 4 && loadingCosts)}
                                         disabled={!isStepValid}
                                         rightSection={activeStep === 5 ? <Flag size={16} /> : <ArrowRight size={16} />}
                                         size="md"
                                         radius="md"
-                                        gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                                        variant="gradient"
+                                        variant="filled"
+                                        color="orange"
                                     >
                                         {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
                                     </Button>
@@ -1160,11 +1160,11 @@ export default function Create({ advertisers, coverageareas }: CampaignCreatePro
                             >
                                 Cancel
                             </Button>
-                            <Button 
+                            <Button
                                 onClick={handleCreateCoverageArea}
                                 disabled={!newCoverageArea.name}
-                                gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                                variant="gradient"
+                                variant="filled"
+                                color="orange"
                                 radius="md"
                             >
                                 Add Coverage Area

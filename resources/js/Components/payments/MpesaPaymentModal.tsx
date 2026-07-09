@@ -12,7 +12,6 @@ import {
     Loader,
     Modal,
     Badge,
-    ThemeIcon,
     Notification,
     Paper,
     Divider,
@@ -36,7 +35,7 @@ import {
     Copy,
     CreditCard,
 } from 'lucide-react';
-import type { PaymentStatus } from '@/types/campaign';
+import type { PaymentFlowState } from '@/types/campaign';
 import Echo from 'laravel-echo';
 
 import Pusher from 'pusher-js';
@@ -67,6 +66,7 @@ interface PaymentModalProps {
     costBreakdown: CostBreakdown;
     advertiserId: number;
     campaignId?: number | null; // Add campaign_id prop
+    campaignNumber?: string | null;
     campaignData: {
         name: string;
         helmet_count: number | null;
@@ -84,12 +84,13 @@ export default function MpesaPaymentModal({
     onClose,
     costBreakdown,
     advertiserId,
-    campaignId = null, 
+    campaignId = null,
+    campaignNumber = null,
     campaignData,
     onPaymentSuccess,
 }: PaymentModalProps) {
     const [phoneNumber, setPhoneNumber] = useState('');
-    const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
+    const [paymentStatus, setPaymentStatus] = useState<PaymentFlowState>('idle');
     const [paymentError, setPaymentError] = useState('');
     const [paymentReference, setPaymentReference] = useState('');
     const [mpesa_receipt, setMpesaReceipt] = useState('');
@@ -110,6 +111,11 @@ export default function MpesaPaymentModal({
     // Paybill modal
     const [paybillModalOpened, { open: openPaybillModal, close: closePaybillModal }] = useDisclosure(false);
     const [paybillDetails, setPaybillDetails] = useState<any>(null);
+
+    // The paybill account number to key this payment to a campaign for reconciliation.
+    // Prefer the backend-computed value once it's back from a paybill/STK request,
+    // otherwise fall back to the campaign number we already know, then the phone number.
+    const paybillAccountNumber = paybillDetails?.account_number || campaignNumber || phoneNumber;
 
     // Manual receipt modal
     const [manualReceiptModalOpened, { open: openManualReceiptModal, close: closeManualReceiptModal }] = useDisclosure(false);
@@ -402,9 +408,9 @@ export default function MpesaPaymentModal({
                 onClose={onClose}
                 title={
                     <Group gap="sm">
-                        <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
-                            <CreditCard size={24} />
-                        </ThemeIcon>
+                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <CreditCard size={20} className="text-gray-500" />
+                        </div>
                         <div>
                             <Text fw={700} size="lg">M-Pesa Payment</Text>
                             <Text size="xs" c="dimmed">Complete your payment</Text>
@@ -446,19 +452,24 @@ export default function MpesaPaymentModal({
                     )}
 
                     {/* Payment Amount Summary */}
-                    <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-200 dark:border-gray-700">
+                    <Card withBorder p="xl" radius="lg">
                         <Stack gap="md">
                             <Group justify="space-between" align="center">
                                 <div>
                                     <Text size="sm" c="dimmed" fw={600}>Total Amount Due</Text>
-                                    <Text fw={700} size="2.5rem" className="text-green-600 dark:text-green-400">
+                                    <Text fw={700} size="2.5rem" className="text-gray-900">
                                         KES {costBreakdown?.total_cost.toLocaleString()}
                                     </Text>
                                 </div>
-                                <ThemeIcon size={80} radius="xl" variant="light" color="green">
-                                    <Smartphone size={40} />
-                                </ThemeIcon>
+                                <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                    <Smartphone size={32} className="text-gray-500" />
+                                </div>
                             </Group>
+                            {campaignNumber && (
+                                <Badge size="lg" variant="light" color="gray" style={{ alignSelf: 'flex-start' }}>
+                                    Account No: {campaignNumber}
+                                </Badge>
+                            )}
                             <Divider />
                             <Grid>
                                 <Grid.Col span={6}>
@@ -503,12 +514,44 @@ export default function MpesaPaymentModal({
                                     size="xl"
                                     radius="md"
                                     leftSection={<CreditCard size={22} />}
-                                    gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                                    variant="gradient"
+                                    variant="filled"
+                                    color="orange"
                                     fullWidth
                                 >
                                     Pay KES {costBreakdown?.total_cost.toLocaleString()} via M-Pesa
                                 </Button>
+
+                                <Divider label="or" labelPosition="center" />
+
+                                <Text size="sm" c="dimmed" ta="center">
+                                    Already paid, or prefer not to use STK push?
+                                </Text>
+
+                                <Grid gutter="md">
+                                    <Grid.Col span={6}>
+                                        <Button
+                                            onClick={openPaybillModal}
+                                            variant="light"
+                                            size="lg"
+                                            fullWidth
+                                            leftSection={<Phone size={20} />}
+                                        >
+                                            Pay via Paybill
+                                        </Button>
+                                    </Grid.Col>
+
+                                    <Grid.Col span={6}>
+                                        <Button
+                                            onClick={openManualReceiptModal}
+                                            variant="light"
+                                            size="lg"
+                                            fullWidth
+                                            leftSection={<Receipt size={20} />}
+                                        >
+                                            Enter Receipt
+                                        </Button>
+                                    </Grid.Col>
+                                </Grid>
                             </Stack>
                         </Card>
                     )}
@@ -528,12 +571,12 @@ export default function MpesaPaymentModal({
 
                     {/* Pending Payment State */}
                     {paymentStatus === 'pending' && (
-                        <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-800 border-2 border-yellow-300 dark:border-gray-700">
+                        <Card withBorder p="xl" radius="lg" className="bg-orange-50 border border-orange-100">
                             <Stack gap="md" align="center">
-                                <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
-                                    <Clock size={40} />
-                                </ThemeIcon>
-                                <Text fw={700} size="xl" className="text-yellow-700 dark:text-yellow-400">
+                                <div className="w-16 h-16 rounded-xl bg-white border border-orange-100 flex items-center justify-center">
+                                    <Clock size={32} className="text-gray-500" />
+                                </div>
+                                <Text fw={700} size="xl" className="text-gray-800">
                                     Payment Prompt Sent!
                                 </Text>
                                 <Text size="md" ta="center" c="dimmed">
@@ -573,12 +616,12 @@ export default function MpesaPaymentModal({
 
                     {/* Fallback Options - Show when payment fails */}
                     {showFallbackOptions && paymentStatus === 'failed' && (
-                        <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800">
+                        <Card withBorder p="xl" radius="lg">
                             <Stack gap="lg">
                                 <div className="text-center">
-                                    <ThemeIcon size={64} radius="xl" color="blue" variant="light" mx="auto" mb="md">
-                                        <HelpCircle size={32} />
-                                    </ThemeIcon>
+                                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                                        <HelpCircle size={28} className="text-gray-500" />
+                                    </div>
                                     <Text fw={700} size="lg">Payment Options</Text>
                                     <Text size="sm" c="dimmed">Choose an alternative payment method</Text>
                                 </div>
@@ -652,18 +695,18 @@ export default function MpesaPaymentModal({
 
                     {/* Payment Success State */}
                     {paymentStatus === 'success' && (
-                        <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-800 dark:to-gray-800 border-2 border-green-300 dark:border-gray-700">
+                        <Card withBorder p="xl" radius="lg" className="bg-green-50 border border-green-100">
                             <Stack gap="md" align="center">
-                                <ThemeIcon size={100} radius="xl" color="green" variant="light">
-                                    <CheckCircle size={50} />
-                                </ThemeIcon>
-                                <Text fw={700} size="2rem" className="text-green-600 dark:text-green-400">
+                                <div className="w-20 h-20 rounded-xl bg-white border border-green-100 flex items-center justify-center">
+                                    <CheckCircle size={40} className="text-gray-500" />
+                                </div>
+                                <Text fw={700} size="2rem" className="text-gray-900">
                                     Payment Successful!
                                 </Text>
                                 <Text size="lg" ta="center" c="dimmed">
                                     KES {costBreakdown?.total_cost.toLocaleString()} received successfully
                                 </Text>
-                                <Paper p="md" radius="md" className="bg-white dark:bg-gray-900" style={{ width: '100%' }}>
+                                <Paper p="md" radius="md" className="bg-white" style={{ width: '100%' }}>
                                     <Group justify="space-between">
                                         <Text size="sm" c="dimmed">Transaction Code</Text>
                                         <Badge size="lg" color="green" variant="light">{mpesa_receipt}</Badge>
@@ -680,12 +723,12 @@ export default function MpesaPaymentModal({
 
                     {/* Payment Failed State */}
                     {paymentStatus === 'failed' && !showFallbackOptions && (
-                        <Card withBorder p="xl" radius="lg" className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-2 border-red-300 dark:border-gray-700">
+                        <Card withBorder p="xl" radius="lg" className="bg-red-50 border border-red-100">
                             <Stack gap="md" align="center">
-                                <ThemeIcon size={80} radius="xl" color="red" variant="light">
-                                    <AlertCircle size={40} />
-                                </ThemeIcon>
-                                <Text fw={700} size="xl" className="text-red-600 dark:text-red-400">
+                                <div className="w-16 h-16 rounded-xl bg-white border border-red-100 flex items-center justify-center">
+                                    <AlertCircle size={32} className="text-gray-500" />
+                                </div>
+                                <Text fw={700} size="xl" className="text-gray-900">
                                     Payment Failed
                                 </Text>
                                 <Text size="md" ta="center" c="dimmed">
@@ -726,9 +769,9 @@ export default function MpesaPaymentModal({
                 onClose={closeManualReceiptModal}
                 title={
                     <Group gap="sm">
-                        <ThemeIcon size="lg" radius="xl" variant="light" color="blue">
-                            <Receipt size={24} />
-                        </ThemeIcon>
+                        <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <Receipt size={18} className="text-gray-500" />
+                        </div>
                         <div>
                             <Text fw={700} size="lg">Enter M-Pesa Receipt</Text>
                             <Text size="xs" c="dimmed">Requires admin verification</Text>
@@ -793,8 +836,8 @@ export default function MpesaPaymentModal({
                             loading={isVerifyingReceipt}
                             disabled={!manualReceiptNumber.trim() || manualReceiptNumber.length < 6}
                             leftSection={<CheckCircle size={18} />}
-                            gradient={{ from: 'blue', to: 'indigo', deg: 45 }}
-                            variant="gradient"
+                            variant="filled"
+                            color="orange"
                         >
                             Submit for Verification
                         </Button>
@@ -808,9 +851,9 @@ export default function MpesaPaymentModal({
                 onClose={closePaybillModal}
                 title={
                     <Group gap="sm">
-                        <ThemeIcon size="lg" radius="xl" variant="light" color="green">
-                            <Phone size={24} />
-                        </ThemeIcon>
+                        <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <Phone size={18} className="text-gray-500" />
+                        </div>
                         <div>
                             <Text fw={700} size="lg">Pay via Paybill</Text>
                             <Text size="xs" c="dimmed">Manual M-Pesa payment instructions</Text>
@@ -828,7 +871,7 @@ export default function MpesaPaymentModal({
                         </Text>
                     </Alert>
 
-                    <Paper withBorder p="lg" radius="md" className="bg-gradient-to-br from-green-50 to-emerald-50">
+                    <Paper withBorder p="lg" radius="md" className="bg-green-50">
                         <Stack gap="md">
                             <Group justify="space-between">
                                 <Text fw={600}>Paybill Number</Text>
@@ -847,9 +890,9 @@ export default function MpesaPaymentModal({
                             <Group justify="space-between">
                                 <Text fw={600}>Account Number</Text>
                                 <Group gap="xs">
-                                    <Code className="text-lg font-bold">{phoneNumber}</Code>
+                                    <Code className="text-lg font-bold">{paybillAccountNumber}</Code>
                                     <ActionIcon
-                                        onClick={() => copyToClipboard(phoneNumber)}
+                                        onClick={() => copyToClipboard(paybillAccountNumber)}
                                         variant="light"
                                         color="green"
                                     >
@@ -874,7 +917,7 @@ export default function MpesaPaymentModal({
                             <List.Item>Select <Text component="span" fw={600}>Lipa na M-Pesa</Text></List.Item>
                             <List.Item>Select <Text component="span" fw={600}>Pay Bill</Text></List.Item>
                             <List.Item>Enter Business Number: <Code>{paybillDetails?.paybill_number || '174379'}</Code></List.Item>
-                            <List.Item>Enter Account Number: <Code>{phoneNumber}</Code></List.Item>
+                            <List.Item>Enter Account Number: <Code>{paybillAccountNumber}</Code></List.Item>
                             <List.Item>Enter Amount: <Code>{costBreakdown?.total_cost}</Code></List.Item>
                             <List.Item>Enter your M-Pesa PIN</List.Item>
                             <List.Item>Confirm the transaction</List.Item>
@@ -904,8 +947,8 @@ export default function MpesaPaymentModal({
                                 openManualReceiptModal();
                             }}
                             leftSection={<Receipt size={18} />}
-                            gradient={{ from: 'blue', to: 'indigo', deg: 45 }}
-                            variant="gradient"
+                            variant="filled"
+                            color="orange"
                         >
                             Enter Receipt Number
                         </Button>

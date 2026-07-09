@@ -50,6 +50,7 @@ Route::middleware(['auth', 'role:rider'])
                     Route::post('/check-out', 'checkOut')->name('checkout');
                     Route::post('/validate-qr', 'validateQrCode')->name('validate');
                     Route::get('/status', 'getTodayStatus')->name('status');
+                    Route::get('/earnings-summary', 'earningsSummary')->name('earnings-summary');
                     Route::get('/history', 'history')->name('history');
                 });
         });

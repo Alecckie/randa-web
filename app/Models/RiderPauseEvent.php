@@ -68,12 +68,15 @@ class RiderPauseEvent extends Model
     
     public function calculateDuration(): int
     {
+        // Explicit non-absolute diff + max(0, ...) so a clock-skew/bad-data
+        // case (resumed_at before paused_at) clamps to zero instead of
+        // reporting a wrong-but-positive pause duration.
         if ($this->resumed_at) {
-            return $this->paused_at->diffInMinutes($this->resumed_at);
+            return max(0, $this->paused_at->diffInMinutes($this->resumed_at, false));
         }
-        
+
         // If still paused, calculate from now
-        return $this->paused_at->diffInMinutes(now());
+        return max(0, $this->paused_at->diffInMinutes(now(), false));
     }
     
     public function getFormattedDurationAttribute(): string

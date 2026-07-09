@@ -3,15 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Rider;
+use App\Services\NotificationService;
 use App\Services\RiderService;
-use Illuminate\Http\Request;
 
 class ApproveRiderController extends Controller
 {
-    /**
-     * Handle the incoming request.
-     */
-    public function __invoke(Rider $rider, RiderService $riderService)
+    public function __invoke(Rider $rider, RiderService $riderService, NotificationService $notificationService)
     {
         try {
             if ($rider->status !== 'pending') {
@@ -19,8 +16,7 @@ class ApproveRiderController extends Controller
             }
 
             $riderService->approveRider($rider);
-
-            // NotificationService::sendRiderApprovalNotification($approvedRider);
+            $notificationService->notifyRiderApproved($rider);
 
             return back()->with('success', 'Rider application approved successfully.');
         } catch (\Exception $e) {

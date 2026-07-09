@@ -39,9 +39,9 @@ export default function RiderLayout({
             </Drawer>
 
             {/* Main */}
-            <div className="flex-1 flex flex-col min-h-screen lg:ml-64">
+            <div className="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
                 <TopBar onMenuClick={() => setSidebarOpen(true)} />
-                <main className="flex-1 p-4 sm:p-6 lg:p-8">
+                <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
                     {children}
                 </main>
                 <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-6 py-3">

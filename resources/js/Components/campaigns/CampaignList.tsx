@@ -1,6 +1,8 @@
 // components/campaigns/CampaignList.tsx
 
 import { useState } from 'react';
+import { formatStatus } from '@/utils/formatting';
+import { getCampaignStatusColor } from '@/utils/status';
 import { Link, router } from '@inertiajs/react';
 import { 
     Button, 
@@ -28,7 +30,6 @@ import {
     EyeIcon,
     PencilIcon,
     PlusIcon,
-    FullscreenIcon,
     RefreshCw
 } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
@@ -103,38 +104,20 @@ export default function CampaignList({
         setStatusModalOpened(true);
     };
 
-    const getStatusColor = (status: CampaignStatus): string => {
-        const colors: Record<CampaignStatus, string> = {
-            draft: 'yellow',
-            pending_payment: 'orange',
-            active: 'blue',
-            paused: 'grape',
-            completed: 'green',
-            cancelled: 'red',
-            paid: 'green'
-        };
-        return colors[status] || 'gray';
-    };
+    const getStatusColor = (status: CampaignStatus): string => getCampaignStatusColor(status);
 
     const getStatusIcon = (status: CampaignStatus) => {
         const icons: Record<CampaignStatus, JSX.Element> = {
             draft: <DraftingCompass size={14} />,
-            pending_payment: <Clock1Icon size={14} />,
+            submitted: <Clock1Icon size={14} />,
             active: <ActivitySquareIcon size={14} />,
             paused: <PauseIcon size={14} />,
             completed: <Fullscreen size={14} />,
             cancelled: <BookLockIcon size={14} />,
-            paid: <FullscreenIcon size={14} />
         };
         return icons[status] || null;
     };
 
-    const formatStatus = (status: string): string => {
-        return status
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-    };
 
     const renderCoverageAreas = (coverageAreas: any) => {
         if (!coverageAreas) return '—';
@@ -188,50 +171,50 @@ export default function CampaignList({
             <div className="space-y-6">
                 {/* Stats Cards - Enhanced with gradients */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-2 xl:grid-cols-4">
-                    <Card className="bg-gradient-to-br from-white to-blue-50 dark:from-gray-800 dark:to-gray-800 border border-blue-100 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
+                    <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
                         <Group justify="space-between" wrap="nowrap">
                             <div className="flex-1 min-w-0">
                                 <Text size="sm" c="dimmed" className="mb-1">Total Campaigns</Text>
                                 <Text size="xl" fw={700} className="text-gray-900 dark:text-white">{stats.total_campaigns || 0}</Text>
                             </div>
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                                <Building2Icon size={24} className="text-blue-600 dark:text-blue-400" />
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                <Building2Icon size={24} className="text-[#f79122]" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-white to-green-50 dark:from-gray-800 dark:to-gray-800 border border-green-100 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
+                    <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
                         <Group justify="space-between" wrap="nowrap">
                             <div className="flex-1 min-w-0">
                                 <Text size="sm" c="dimmed" className="mb-1">Active Campaigns</Text>
                                 <Text size="xl" fw={700} c="blue">{stats.active_campaigns || 0}</Text>
                             </div>
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                                <ActivitySquareIcon size={24} className="text-green-600 dark:text-green-400" />
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                <ActivitySquareIcon size={24} className="text-[#f79122]" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-white to-yellow-50 dark:from-gray-800 dark:to-gray-800 border border-yellow-100 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
+                    <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
                         <Group justify="space-between" wrap="nowrap">
                             <div className="flex-1 min-w-0">
                                 <Text size="sm" c="dimmed" className="mb-1">Draft Campaigns</Text>
                                 <Text size="xl" fw={700} c="yellow">{stats.draft_campaigns || 0}</Text>
                             </div>
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-                                <DraftingCompass size={24} className="text-yellow-600 dark:text-yellow-400" />
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                <DraftingCompass size={24} className="text-[#f79122]" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-gradient-to-br from-white to-emerald-50 dark:from-gray-800 dark:to-gray-800 border border-emerald-100 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
+                    <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200" radius="md" p="lg">
                         <Group justify="space-between" wrap="nowrap">
                             <div className="flex-1 min-w-0">
                                 <Text size="sm" c="dimmed" className="mb-1">Completed</Text>
                                 <Text size="xl" fw={700} c="green">{stats.completed_campaigns || 0}</Text>
                             </div>
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                                <CheckIcon size={24} className="text-emerald-600 dark:text-emerald-400" />
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                <CheckIcon size={24} className="text-[#f79122]" />
                             </div>
                         </Group>
                     </Card>
@@ -263,8 +246,7 @@ export default function CampaignList({
                                 data={[
                                     { value: '', label: 'All Status' },
                                     { value: 'draft', label: 'Draft' },
-                                    { value: 'pending_payment', label: 'Pending Payment' },
-                                    { value: 'paid', label: 'Paid' },
+                                    { value: 'submitted', label: 'Submitted' },
                                     { value: 'active', label: 'Active' },
                                     { value: 'paused', label: 'Paused' },
                                     { value: 'completed', label: 'Completed' },
@@ -312,7 +294,7 @@ export default function CampaignList({
                     {/* Mobile Card View */}
                     <div className="block lg:hidden">
                         {campaigns.data.map((campaign) => (
-                            <div key={campaign.id} className="p-4 border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
+                            <div key={campaign.id} className="p-4 border-b border-gray-100 hover:bg-gray-50/60 transition-colors">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex-1 min-w-0 mr-3">
                                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1 truncate">
@@ -344,7 +326,7 @@ export default function CampaignList({
                                                     Update Status
                                                 </Menu.Item>
                                             )}
-                                            {(campaign.status === 'draft' || campaign.status === 'pending_payment') && (
+                                            {(campaign.status === 'draft' || campaign.status === 'submitted') && (
                                                 <Menu.Item leftSection={<PencilIcon size={14} />} component={Link}>
                                                     Edit
                                                 </Menu.Item>
@@ -387,34 +369,34 @@ export default function CampaignList({
 
                     {/* Desktop Table View */}
                     <div className="hidden lg:block overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-750">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Campaign
                                     </th>
                                     {userRole === 'admin' && (
-                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Advertiser
                                         </th>
                                     )}
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Status
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Duration
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Coverage Areas
                                     </th>
-                                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {campaigns.data.map((campaign) => (
-                                    <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+                                    <tr key={campaign.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="max-w-xs">
                                                 <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -502,7 +484,7 @@ export default function CampaignList({
 
                     {/* Pagination - Enhanced for mobile */}
                     {campaigns.last_page > 1 && (
-                        <div className="flex flex-col sm:flex-row items-center justify-between px-4 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-700 gap-4 bg-gray-50 dark:bg-gray-750">
+                        <div className="flex flex-col sm:flex-row items-center justify-between px-4 sm:px-6 py-4 border-t border-gray-100 gap-4 bg-gray-50">
                             <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
                                 Showing <span className="font-medium text-gray-900 dark:text-white">{campaigns.from}</span> to <span className="font-medium text-gray-900 dark:text-white">{campaigns.to}</span> of <span className="font-medium text-gray-900 dark:text-white">{campaigns.total}</span> campaigns
                             </div>

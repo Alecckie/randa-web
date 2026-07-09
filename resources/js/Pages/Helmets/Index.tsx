@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { formatDateShort } from '@/utils/formatting';
+import { getHelmetStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import {
@@ -26,11 +28,13 @@ import {
     SearchIcon,
     Trash2Icon,
     CheckCircleIcon,
-    AlertTriangleIcon,
     WrenchIcon,
     XCircleIcon,
-    QrCodeIcon
+    QrCode,
+    DownloadIcon,
 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { jsPDF } from 'jspdf';
 
 interface Helmet {
     id: number;
@@ -106,15 +110,7 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
         router.get(route('helmets.index'));
     };
 
-    const getStatusColor = (status: Helmet['status']): string => {
-        const colors = {
-            available: 'green',
-            assigned: 'blue',
-            maintenance: 'yellow',
-            retired: 'red',
-        };
-        return colors[status];
-    };
+    const getStatusColor = (status: Helmet['status']): string => getHelmetStatusColor(status);
 
     const getStatusIcon = (status: Helmet['status']) => {
         const icons = {
@@ -157,12 +153,46 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
         }
     };
 
+    const handleDownloadQrPdf = async (helmet: Helmet) => {
+        if (!helmet.qr_code) return;
+
+        const canvas = document.createElement('canvas');
+        await QRCode.toCanvas(canvas, helmet.qr_code, { width: 300, margin: 2 });
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('RANDA — Helmet QR Code', pageW / 2, 24, { align: 'center' });
+
+        pdf.setFontSize(13);
+        pdf.setFont('courier', 'bold');
+        pdf.text(helmet.helmet_code, pageW / 2, 34, { align: 'center' });
+
+        const size = 100;
+        const x = (pageW - size) / 2;
+        pdf.addImage(imgData, 'PNG', x, 44, size, size);
+
+        pdf.setFontSize(9);
+        pdf.setFont('courier', 'normal');
+        pdf.setTextColor(100);
+        pdf.text(helmet.qr_code, pageW / 2, 152, { align: 'center', maxWidth: pageW - 30 });
+
+        pdf.setFontSize(8);
+        pdf.setTextColor(150);
+        pdf.text(`Generated ${new Date().toLocaleDateString('en-KE')} · RANDA GPS Platform`, pageW / 2, 270, { align: 'center' });
+
+        pdf.save(`${helmet.helmet_code}.pdf`);
+    };
+
     return (
         <AuthenticatedLayout
             header={
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
                             Helmet Management
                         </h2>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -185,62 +215,62 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-5">
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Helmets</Text>
                                 <Text size="xl" fw={700}>{stats.total_helmets}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <HardHat size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <HardHat size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Available</Text>
-                                <Text size="xl" fw={700} c="green">{stats.available_helmets}</Text>
+                                <Text size="xl" fw={700}>{stats.available_helmets}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <CheckCircleIcon size={32} className="text-green-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <CheckCircleIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Assigned</Text>
-                                <Text size="xl" fw={700} c="blue">{stats.assigned_helmets}</Text>
+                                <Text size="xl" fw={700}>{stats.assigned_helmets}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <HardHat size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <HardHat size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Maintenance</Text>
-                                <Text size="xl" fw={700} c="yellow">{stats.maintenance_helmets}</Text>
+                                <Text size="xl" fw={700}>{stats.maintenance_helmets}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <WrenchIcon size={32} className="text-yellow-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <WrenchIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Retired</Text>
-                                <Text size="xl" fw={700} c="red">{stats.retired_helmets}</Text>
+                                <Text size="xl" fw={700}>{stats.retired_helmets}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <XCircleIcon size={32} className="text-red-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <XCircleIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
@@ -292,44 +322,30 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                 </Card>
 
                 {/* Helmets Table */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         <Checkbox
                                             checked={selectedHelmets.length === helmets.data.length && helmets.data.length > 0}
                                             indeterminate={selectedHelmets.length > 0 && selectedHelmets.length < helmets.data.length}
                                             onChange={toggleAllHelmets}
                                         />
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Helmet Code
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        QR Code
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Assigned Rider
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Branding
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Created
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Helmet Code</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">QR Code</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Rider</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campaign</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {helmets.data.map((helmet) => (
-                                    <tr key={helmet.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <tr key={helmet.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <Checkbox
                                                 checked={selectedHelmets.includes(helmet.id)}
@@ -339,22 +355,20 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
                                                 <HardHat size={20} className="text-gray-400 mr-3" />
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                                <div className="text-sm font-medium text-gray-900">
                                                     {helmet.helmet_code}
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center">
+                                            <div className="flex items-center gap-2">
                                                 {helmet.qr_code ? (
                                                     <>
-                                                        <QrCodeIcon size={16} className="text-gray-400 mr-2" />
-                                                        <Text size="sm" className="font-mono">
-                                                            -----
-                                                        </Text>
+                                                        <QrCode size={16} className="text-green-500" />
+                                                        <Text size="sm" c="green">Generated</Text>
                                                     </>
                                                 ) : (
-                                                    <Text size="sm" c="dimmed">No QR Code</Text>
+                                                    <Text size="sm" c="dimmed">—</Text>
                                                 )}
                                             </div>
                                         </td>
@@ -370,10 +384,10 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {helmet.current_assignment ? (
                                                 <div>
-                                                    <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                                    <div className="text-sm font-medium text-gray-900">
                                                         {helmet.current_assignment.rider.user.name}
                                                     </div>
-                                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                                    <div className="text-sm text-gray-500">
                                                         {helmet.current_assignment.rider.user.email}
                                                     </div>
                                                     {helmet.current_assignment.campaign && (
@@ -386,11 +400,11 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                                 <Text size="sm" c="dimmed">Not assigned</Text>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {helmet.current_branding || '—'}
+                                        <td className="px-6 py-4 max-w-[180px] truncate text-sm text-gray-500" title={helmet.current_assignment?.campaign?.name ?? undefined}>
+                                            {helmet.current_assignment?.campaign?.name ?? ''}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {new Date(helmet.created_at).toLocaleDateString()}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {formatDateShort(helmet.created_at)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>
@@ -415,6 +429,14 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
                                                     >
                                                         Edit
                                                     </Menu.Item>
+                                                    {helmet.qr_code && (
+                                                        <Menu.Item
+                                                            leftSection={<DownloadIcon size={14} />}
+                                                            onClick={() => handleDownloadQrPdf(helmet)}
+                                                        >
+                                                            Download QR PDF
+                                                        </Menu.Item>
+                                                    )}
                                                     <Menu.Divider />
                                                     <Menu.Item
                                                         leftSection={<Trash2Icon size={14} />}
@@ -452,8 +474,8 @@ export default function Index({ helmets, stats, filters }: HelmetIndexProps) {
 
                     {/* Pagination */}
                     {helmets.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                            <div className="text-sm text-gray-500">
                                 Showing {helmets.from} to {helmets.to} of {helmets.total} helmets
                             </div>
                             <div className="flex space-x-1">

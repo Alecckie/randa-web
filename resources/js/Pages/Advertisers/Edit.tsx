@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getPersonStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link } from '@inertiajs/react';
 import {
@@ -15,7 +16,7 @@ import {
     Badge,
 } from '@mantine/core';
 import { ArrowLeft, Save, Building2, User, AlertCircle } from 'lucide-react';
-import { notifications } from '@mantine/notifications';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
 
 interface User {
     id: number;
@@ -65,35 +66,12 @@ export default function AdvertiserEdit({ advertiser }: AdvertiserEditProps) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         put(route('advertisers.update', advertiser.id), {
-            onSuccess: () => {
-                notifications.show({
-                    title: 'Success',
-                    message: 'Advertiser updated successfully',
-                    color: 'green',
-                });
-            },
-            onError: () => {
-                notifications.show({
-                    title: 'Error',
-                    message: 'Failed to update advertiser',
-                    color: 'red',
-                });
-            },
+            onSuccess: () => showSuccessToast('Advertiser updated successfully'),
+            onError: () => showErrorToast('Failed to update advertiser'),
         });
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'approved':
-                return 'green';
-            case 'rejected':
-                return 'red';
-            case 'pending':
-                return 'yellow';
-            default:
-                return 'gray';
-        }
-    };
+    const getStatusColor = getPersonStatusColor;
 
     return (
         <AuthenticatedLayout

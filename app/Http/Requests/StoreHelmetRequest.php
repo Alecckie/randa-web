@@ -24,7 +24,7 @@ class StoreHelmetRequest extends FormRequest
 
         return [
             'helmet_code' => [
-                'required',
+                'nullable',
                 'string',
                 'max:255',
                 'regex:/^[A-Z0-9_-]+$/', // Only allow uppercase letters, numbers, underscores, and hyphens

@@ -10,7 +10,7 @@ class CampaignStatusHistory extends Model
 {
     use HasFactory;
 
-    protected $table = 'campaign_status_history';
+    protected $table = 'campaign_status_histories';
 
     protected $fillable = [
         'campaign_id',

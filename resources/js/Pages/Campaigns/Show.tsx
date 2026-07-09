@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { formatCurrency, formatDate } from '@/utils/formatting';
+import { getCampaignStatusColor, getPaymentStatusColor } from '@/utils/status';
+import { calculateProgress, calculateBalance } from '@/utils/calculations';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
@@ -15,6 +18,8 @@ import {
     Modal,
     Select,
     NumberInput,
+    TextInput,
+    Textarea,
     ActionIcon,
     Menu,
     Divider,
@@ -29,7 +34,7 @@ import {
     CalendarIcon,
     MapPinIcon,
     UsersIcon,
-    DollarSignIcon,
+    BanknoteIcon,
     FileTextIcon,
     TrendingUpIcon,
     TrendingDownIcon,
@@ -46,9 +51,17 @@ import {
     InfoIcon,
     BikeIcon,
     TargetIcon,
-    BarChart2Icon
+    BarChart2Icon,
+    Banknote,
+    RefreshCwIcon,
+    Map as MapIcon,
+    ActivityIcon,
 } from 'lucide-react';
 import type { Campaign } from '@/types/campaign';
+import StatusUpdateModal from '@/Components/campaigns/StatusUpdateModal';
+import type { HeatmapPeriod } from '@/Components/tracking/LiveHeatmap';
+
+const LiveHeatmap = lazy(() => import('@/Components/tracking/LiveHeatmap'));
 
 interface PerRiderPayout {
     rider_id: number;
@@ -133,7 +146,7 @@ interface CampaignShowProps {
             id: number;
             amount: number;
             payment_method: string;
-            mpesa_receipt: string;
+            mpesa_receipt_number: string | null;
             status: string;
             created_at: string;
         }>;
@@ -162,34 +175,30 @@ interface CampaignShowProps {
 
 export default function Show({ campaign, availableRiders = [], availableHelmets = [], paymentAnalysis, isAdmin = false }: CampaignShowProps) {
     const [assignModalOpened, { open: openAssignModal, close: closeAssignModal }] = useDisclosure(false);
+    const [autoAssignModalOpened, { open: openAutoAssignModal, close: closeAutoAssignModal }] = useDisclosure(false);
+    const [manualPaymentOpened, { open: openManualPayment, close: closeManualPayment }] = useDisclosure(false);
+    const [statusModalOpened, { open: openStatusModal, close: closeStatusModal }] = useDisclosure(false);
     const [selectedRider, setSelectedRider] = useState<string>('');
     const [selectedHelmet, setSelectedHelmet] = useState<string>('');
     const [assignmentCount, setAssignmentCount] = useState(1);
+    const [autoAssignCount, setAutoAssignCount] = useState(1);
+    const [autoAssigning, setAutoAssigning] = useState(false);
+    const [manualAmount, setManualAmount] = useState<number | string>(campaign.current_cost?.total_cost || 0);
+    const [manualMethod, setManualMethod] = useState<string>('cash');
+    const [manualReceipt, setManualReceipt] = useState('');
+    const [manualNotes, setManualNotes] = useState('');
+    const [savingManual, setSavingManual] = useState(false);
 
-    const getStatusColor = (status: string): string => {
-        const colors: Record<string, string> = {
-            draft: 'yellow',
-            active: 'blue',
-            paused: 'orange',
-            completed: 'green',
-            cancelled: 'red',
-            pending_payment: 'yellow',
-            paid: 'teal'
-        };
-        return colors[status] || 'gray';
-    };
+    const getStatusColor = getCampaignStatusColor;
+    const pendingPayments = campaign.payments?.filter(p => p.status === 'pending_verification') ?? [];
+    const [heatmapVisited, setHeatmapVisited] = useState(false);
+    const [heatmapPeriod, setHeatmapPeriod] = useState<HeatmapPeriod>('7days');
+    const activeAssignments = campaign.assignments?.filter(a => a.status === 'active') ?? [];
+    const historyAssignments = campaign.assignments?.filter(a => a.status !== 'active') ?? [];
+    const activeAssignmentCount = activeAssignments.length;
+    const hasAssignedRiders = activeAssignmentCount > 0;
 
-    const getPaymentStatusColor = (status: string): string => {
-        const colors: Record<string, string> = {
-            fully_paid: 'green',
-            partially_paid: 'yellow',
-            unpaid: 'red',
-        };
-        return colors[status] || 'gray';
-    };
-
-    // Inside your Show component, add this near other state declarations:
-    const { errors, flash } = usePage().props as any;
+    const { errors } = usePage().props as any;
 
     const handleCompleteAssignment = (assignmentId: number) => {
         router.patch(route('campaigns.complete-assignment', { campaign: campaign.id, assignment: assignmentId }), {}, {
@@ -203,6 +212,41 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
         router.delete(route('campaigns.remove-assignment', { campaign: campaign.id, assignment: assignmentId }), {
             preserveScroll: true,
         });
+    };
+
+    const handleRevokeAllHelmets = () => {
+        const activeCount = campaign.assignments?.filter(a => a.status === 'active').length ?? 0;
+        if (!confirm(`This will revoke all ${activeCount} active helmet(s) and return them to the available pool so they can be assigned to new campaigns. Continue?`)) return;
+        router.post(route('campaigns.revoke-helmets', campaign.id), {}, { preserveScroll: true });
+    };
+
+    const handleUpdateStatus = (status: string, confirmMessage: string) => {
+        if (!confirm(confirmMessage)) return;
+        router.put(route('campaigns.update-status', campaign.id), { status }, { preserveScroll: true });
+    };
+
+    const handleActivateCampaign = () =>
+        handleUpdateStatus('active', 'Activate this campaign now? Riders will be able to check in and start earning.');
+
+    const handlePauseCampaign = () =>
+        handleUpdateStatus('paused', 'Pause this campaign? Riders will stop earning until it is resumed.');
+
+    const handleResumeCampaign = () =>
+        handleUpdateStatus('active', 'Resume this campaign?');
+
+    const handleCloseCampaign = () => {
+        handleUpdateStatus('completed', 'Complete this campaign? All assigned helmets will automatically be returned to the available pool and riders will be notified to drop them off. This cannot be undone.');
+    };
+
+    const handleApprovePayment = (paymentId: number) => {
+        if (!confirm('Approve this payment? The campaign will be marked as paid.')) return;
+        router.patch(route('payments.approve', paymentId), {}, { preserveScroll: true });
+    };
+
+    const handleRejectPayment = (paymentId: number) => {
+        const reason = prompt('Reason for rejecting this payment:');
+        if (!reason) return;
+        router.patch(route('payments.reject', paymentId), { reason }, { preserveScroll: true });
     };
 
 
@@ -223,23 +267,49 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
         });
     };
 
-    const calculateProgress = () => {
+    const calculateCampaignProgress = () => {
         const assigned = campaign.assignments?.filter(a => a.status === 'active').length || 0;
-        return (assigned / campaign.helmet_count) * 100;
+        return calculateProgress(assigned, campaign.helmet_count);
     };
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-KE', {
-            style: 'currency',
-            currency: 'KES',
-        }).format(amount);
+    const remainingSlots = campaign.helmet_count - activeAssignmentCount;
+    const maxAutoAssign = Math.max(0, Math.min(remainingSlots, availableRiders.length, availableHelmets.length));
+
+    const handleAutoAssign = () => {
+        if (autoAssignCount < 1) return;
+        setAutoAssigning(true);
+
+        router.post(route('campaigns.auto-assign', campaign.id), {
+            count: autoAssignCount,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeAutoAssignModal();
+                setAutoAssignCount(1);
+            },
+            onFinish: () => setAutoAssigning(false),
+        });
     };
 
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
+    const handleManualPayment = () => {
+        if (!manualAmount || Number(manualAmount) <= 0) return;
+        setSavingManual(true);
+        router.post(route('payments.record-manual'), {
+            campaign_id:    campaign.id,
+            advertiser_id:  campaign.advertiser.id,
+            amount:         manualAmount,
+            payment_method: manualMethod,
+            receipt_number: manualReceipt || null,
+            notes:          manualNotes || null,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeManualPayment();
+                setManualReceipt('');
+                setManualNotes('');
+                setSavingManual(false);
+            },
+            onError: () => setSavingManual(false),
         });
     };
 
@@ -261,11 +331,23 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                 {campaign.name}
                             </h2>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                {campaign.campaign_number && <span className="font-semibold text-gray-700 dark:text-gray-300">{campaign.campaign_number} &middot; </span>}
                                 Campaign Details & Management
                             </p>
                         </div>
                     </div>
                     <Group>
+                        {campaign.status === 'submitted' && campaign.payment_status === 'paid' && hasAssignedRiders && (
+                            <Button
+                                size="md"
+                                color="green"
+                                leftSection={<PlayCircleIcon size={18} />}
+                                onClick={handleActivateCampaign}
+                                fw={700}
+                            >
+                                Activate Campaign Now
+                            </Button>
+                        )}
                         <Badge
                             size="lg"
                             color={getStatusColor(campaign.status)}
@@ -296,6 +378,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                     <Menu.Item
                                         leftSection={<PauseCircleIcon size={14} />}
                                         color="orange"
+                                        onClick={handlePauseCampaign}
                                     >
                                         Pause Campaign
                                     </Menu.Item>
@@ -304,8 +387,26 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                     <Menu.Item
                                         leftSection={<PlayCircleIcon size={14} />}
                                         color="green"
+                                        onClick={handleResumeCampaign}
                                     >
                                         Resume Campaign
+                                    </Menu.Item>
+                                )}
+                                {campaign.status === 'active' && (
+                                    <Menu.Item
+                                        leftSection={<XCircleIcon size={14} />}
+                                        color="red"
+                                        onClick={handleCloseCampaign}
+                                    >
+                                        Complete Campaign
+                                    </Menu.Item>
+                                )}
+                                {!['completed', 'cancelled'].includes(campaign.status) && (
+                                    <Menu.Item
+                                        leftSection={<RefreshCwIcon size={14} />}
+                                        onClick={openStatusModal}
+                                    >
+                                        Update Status…
                                     </Menu.Item>
                                 )}
                             </Menu.Dropdown>
@@ -318,38 +419,72 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
 
             <div className="space-y-6">
                 {/* Alert for pending actions */}
-                {campaign.status === 'pending_payment' && (
+                {pendingPayments.length > 0 ? (
+                    <Alert icon={<AlertCircleIcon size={16} />} title={`Payment${pendingPayments.length > 1 ? 's' : ''} Submitted — Awaiting Your Approval`} color="yellow">
+                        <Stack gap="md">
+                            {pendingPayments.map((payment) => (
+                                <Stack gap="sm" key={payment.id}>
+                                    <Text size="sm">
+                                        The advertiser submitted a receipt for <strong>{formatCurrency(payment.amount)}</strong> — M-Pesa code: <strong>{payment.mpesa_receipt_number || 'no receipt code'}</strong>.
+                                        The campaign will only be marked paid — and riders can only be assigned — once you approve it.
+                                    </Text>
+                                    <Group gap="xs">
+                                        <Button size="sm" color="green" onClick={() => handleApprovePayment(payment.id)}>
+                                            Approve Payment
+                                        </Button>
+                                        <Button size="sm" color="red" variant="light" onClick={() => handleRejectPayment(payment.id)}>
+                                            Reject Payment
+                                        </Button>
+                                    </Group>
+                                    {pendingPayments.length > 1 && payment.id !== pendingPayments[pendingPayments.length - 1].id && <Divider />}
+                                </Stack>
+                            ))}
+                        </Stack>
+                    </Alert>
+                ) : campaign.status === 'submitted' && campaign.payment_status === 'rejected' ? (
+                    <Alert icon={<AlertCircleIcon size={16} />} title="Payment Rejected" color="red">
+                        The advertiser's last payment submission was rejected. They've been notified and can resubmit.
+                    </Alert>
+                ) : campaign.status === 'submitted' && campaign.payment_status !== 'paid' && (
                     <Alert icon={<AlertCircleIcon size={16} />} title="Payment Required" color="yellow">
                         This campaign is awaiting payment. Please complete the payment to activate the campaign.
                     </Alert>
                 )}
 
-                {campaign.status === 'paid' && (
-                    <Alert icon={<InfoIcon size={16} />} title="Ready to Activate" color="blue">
-                        Campaign is paid and ready to be activated. Assign riders to begin.
-                    </Alert>
-                )}
-
-                {flash?.success && (
-                    <Alert
-                        icon={<CheckCircleIcon size={16} />}
-                        title="Success"
-                        color="green"
-                        withCloseButton
-                    >
-                        {flash.success}
-                    </Alert>
-                )}
-
-                {flash?.error && (
-                    <Alert
-                        icon={<AlertCircleIcon size={16} />}
-                        title="Error"
-                        color="red"
-                        withCloseButton
-                    >
-                        {flash.error}
-                    </Alert>
+                {campaign.status === 'submitted' && campaign.payment_status === 'paid' && (
+                    hasAssignedRiders ? (
+                        <Alert
+                            icon={<AlertCircleIcon size={20} />}
+                            title="Don't Forget — This Campaign Is Ready to Go Live!"
+                            color="green"
+                            variant="filled"
+                            radius="md"
+                        >
+                            <Stack gap="sm">
+                                <Text size="sm">
+                                    Payment is confirmed and {activeAssignmentCount} rider{activeAssignmentCount === 1 ? '' : 's'} {activeAssignmentCount === 1 ? 'is' : 'are'} assigned,
+                                    but the campaign is still sitting in <strong>Submitted</strong>. Riders can't earn or check in until you activate it.
+                                </Text>
+                                <Group>
+                                    <Button
+                                        size="md"
+                                        color="white"
+                                        variant="white"
+                                        c="green.8"
+                                        leftSection={<PlayCircleIcon size={18} />}
+                                        onClick={handleActivateCampaign}
+                                        fw={700}
+                                    >
+                                        Activate Campaign Now
+                                    </Button>
+                                </Group>
+                            </Stack>
+                        </Alert>
+                    ) : (
+                        <Alert icon={<InfoIcon size={16} />} title="Ready to Activate" color="blue">
+                            Campaign is paid and ready to be activated. Assign riders to begin.
+                        </Alert>
+                    )
                 )}
 
                 {/* Overview Cards */}
@@ -365,7 +500,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         {campaign.current_cost?.duration_days ?? campaign.duration_days ?? 0} Days
                                     </Text>
                                 </div>
-                                <CalendarIcon size={32} className="text-blue-500" />
+                                <CalendarIcon size={32} className="text-gray-400" />
                             </Group>
                         </Paper>
                     </Grid.Col>
@@ -381,7 +516,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         {campaign.helmet_count}
                                     </Text>
                                 </div>
-                                <BikeIcon size={32} className="text-green-500" />
+                                <BikeIcon size={32} className="text-gray-400" />
                             </Group>
                         </Paper>
                     </Grid.Col>
@@ -397,7 +532,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         {campaign.assignments?.filter(a => a.status === 'active').length || 0}
                                     </Text>
                                 </div>
-                                <UsersIcon size={32} className="text-purple-500" />
+                                <UsersIcon size={32} className="text-gray-400" />
                             </Group>
                         </Paper>
                     </Grid.Col>
@@ -413,7 +548,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         {formatCurrency(campaign.current_cost?.total_cost || 0)}
                                     </Text>
                                 </div>
-                                <DollarSignIcon size={32} className="text-yellow-500" />
+                                <BanknoteIcon size={32} className="text-gray-400" />
                             </Group>
                         </Paper>
                     </Grid.Col>
@@ -429,26 +564,43 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                     {campaign.assignments?.filter(a => a.status === 'active').length || 0} of {campaign.helmet_count} riders assigned
                                 </Text>
                             </div>
-                            {(campaign.status === 'paid' || campaign.status === 'active') && (
-                                <Button
-                                    leftSection={<UserPlusIcon size={16} />}
-                                    onClick={openAssignModal}
-                                >
-                                    Assign Rider
-                                </Button>
+                            {campaign.payment_status === 'paid' && (campaign.status === 'submitted' || campaign.status === 'active') && (
+                                <Group gap="xs">
+                                    {maxAutoAssign > 0 && (
+                                        <Button
+                                            variant="light"
+                                            leftSection={<UsersIcon size={16} />}
+                                            onClick={openAutoAssignModal}
+                                        >
+                                            Auto-Assign Riders
+                                        </Button>
+                                    )}
+                                    <Button
+                                        leftSection={<UserPlusIcon size={16} />}
+                                        onClick={openAssignModal}
+                                    >
+                                        Assign Rider
+                                    </Button>
+                                </Group>
                             )}
                         </Group>
                         <Progress
-                            value={calculateProgress()}
+                            value={calculateCampaignProgress()}
                             size="xl"
                             radius="xl"
-                            color={calculateProgress() === 100 ? 'green' : 'blue'}
+                            color={calculateCampaignProgress() === 100 ? 'green' : 'blue'}
                         />
                     </Stack>
                 </Card>
 
                 {/* Tabs for detailed information */}
-                <Tabs defaultValue="details" className="bg-white dark:bg-gray-800 rounded-lg">
+                <Tabs
+                    defaultValue="details"
+                    className="bg-white dark:bg-gray-800 rounded-lg"
+                    onChange={(value) => {
+                        if (value === 'heatmap') setHeatmapVisited(true);
+                    }}
+                >
                     <Tabs.List>
                         <Tabs.Tab value="details" leftSection={<FileTextIcon size={16} />}>
                             Campaign Details
@@ -456,7 +608,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                         <Tabs.Tab value="assignments" leftSection={<UsersIcon size={16} />}>
                             Rider Assignments ({campaign.assignments?.length || 0})
                         </Tabs.Tab>
-                        <Tabs.Tab value="financials" leftSection={<DollarSignIcon size={16} />}>
+                        <Tabs.Tab value="financials" leftSection={<BanknoteIcon size={16} />}>
                             Financials
                         </Tabs.Tab>
                         <Tabs.Tab value="timeline" leftSection={<ClockIcon size={16} />}>
@@ -465,6 +617,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                         {isAdmin && (
                             <Tabs.Tab value="payment-analysis" leftSection={<BarChart2Icon size={16} />}>
                                 Payment Analysis
+                            </Tabs.Tab>
+                        )}
+                        {isAdmin && (
+                            <Tabs.Tab value="heatmap" leftSection={<MapIcon size={16} />}>
+                                Heatmap
                             </Tabs.Tab>
                         )}
                     </Tabs.List>
@@ -621,19 +778,42 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
 
                     <Tabs.Panel value="assignments" p="md">
                         <Stack gap="md">
-                            {campaign.assignments && campaign.assignments.length > 0 ? (
+                            {campaign.status === 'completed' &&
+                                campaign.assignments?.some(a => a.status === 'active') && (
+                                <Alert
+                                    icon={<AlertCircleIcon size={16} />}
+                                    title="Campaign Ended — Helmets Still Assigned"
+                                    color="orange"
+                                >
+                                    <Text size="sm" mb="sm">
+                                        This campaign is complete but {campaign.assignments.filter(a => a.status === 'active').length} helmet(s) are still marked as assigned. Revoking them returns them to the available pool so they can be used in new campaigns.
+                                    </Text>
+                                    <Button
+                                        color="orange"
+                                        size="sm"
+                                        leftSection={<XCircleIcon size={14} />}
+                                        onClick={handleRevokeAllHelmets}
+                                    >
+                                        Revoke All Helmets
+                                    </Button>
+                                </Alert>
+                            )}
+                            <Text size="sm" fw={600} c="dimmed" tt="uppercase">
+                                Current Assignments
+                            </Text>
+                            {activeAssignments.length > 0 ? (
+                                <div className="overflow-x-auto">
                                 <Table>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th>Rider</Table.Th>
                                             <Table.Th>Helmet Number</Table.Th>
                                             <Table.Th>Assigned Date</Table.Th>
-                                            <Table.Th>Status</Table.Th>
                                             <Table.Th>Actions</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>
-                                        {campaign.assignments.map((assignment) => (
+                                        {activeAssignments.map((assignment) => (
                                             <Table.Tr key={assignment.id}>
                                                 <Table.Td>
                                                     <div>
@@ -647,23 +827,13 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 </Table.Td>
                                                 <Table.Td>
                                                     <Badge variant="outline">
-                                                        {assignment.helmet?.helmet_code}
+                                                        {assignment.helmet?.helmet_code ?? '—'}
                                                     </Badge>
                                                 </Table.Td>
                                                 <Table.Td>
                                                     <Text size="sm">
                                                         {formatDate(assignment.assigned_at)}
                                                     </Text>
-                                                </Table.Td>
-                                                <Table.Td>
-                                                    <Badge
-                                                        color={
-                                                            assignment.status === 'active' ? 'green' :
-                                                                assignment.status === 'completed' ? 'blue' : 'red'
-                                                        }
-                                                    >
-                                                        {assignment.status}
-                                                    </Badge>
                                                 </Table.Td>
                                                 <Table.Td>
                                                     <Menu shadow="md" width={200}>
@@ -674,9 +844,15 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                         </Menu.Target>
                                                         <Menu.Dropdown>
                                                             <Menu.Item
+                                                                leftSection={<ActivityIcon size={14} />}
+                                                                component={Link}
+                                                                href={route('campaigns.assignment-activity', [campaign.id, assignment.id])}
+                                                            >
+                                                                View Activity for This Campaign
+                                                            </Menu.Item>
+                                                            <Menu.Item
                                                                 leftSection={<CheckCircleIcon size={14} />}
                                                                 onClick={() => handleCompleteAssignment(assignment.id)}
-                                                                disabled={assignment.status !== 'active'}
                                                             >
                                                                 Mark Complete
                                                             </Menu.Item>
@@ -684,7 +860,6 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                                 leftSection={<XCircleIcon size={14} />}
                                                                 color="red"
                                                                 onClick={() => handleRemoveAssignment(assignment.id)}
-                                                                disabled={assignment.status === 'completed'}
                                                             >
                                                                 Remove Assignment
                                                             </Menu.Item>
@@ -695,6 +870,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         ))}
                                     </Table.Tbody>
                                 </Table>
+                                </div>
                             ) : (
                                 <Paper p="xl" className="text-center">
                                     <UsersIcon size={48} className="mx-auto text-gray-400 mb-4" />
@@ -702,12 +878,70 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                     <Text size="sm" c="dimmed" mb="md">
                                         Start by assigning riders to this campaign
                                     </Text>
-                                    {(campaign.status === 'paid' || campaign.status === 'active') && (
-                                        <Button onClick={openAssignModal} leftSection={<UserPlusIcon size={16} />}>
-                                            Assign First Rider
-                                        </Button>
+                                    {campaign.payment_status === 'paid' && (campaign.status === 'submitted' || campaign.status === 'active') && (
+                                        <Group justify="center" gap="xs">
+                                            {maxAutoAssign > 0 && (
+                                                <Button variant="light" onClick={openAutoAssignModal} leftSection={<UsersIcon size={16} />}>
+                                                    Auto-Assign Riders
+                                                </Button>
+                                            )}
+                                            <Button onClick={openAssignModal} leftSection={<UserPlusIcon size={16} />}>
+                                                Assign First Rider
+                                            </Button>
+                                        </Group>
                                     )}
                                 </Paper>
+                            )}
+
+                            {historyAssignments.length > 0 && (
+                                <>
+                                    <Text size="sm" fw={600} c="dimmed" tt="uppercase" mt="md">
+                                        Assignment History
+                                    </Text>
+                                    <div className="overflow-x-auto">
+                                    <Table>
+                                        <Table.Thead>
+                                            <Table.Tr>
+                                                <Table.Th>Rider</Table.Th>
+                                                <Table.Th>Helmet Number</Table.Th>
+                                                <Table.Th>Assigned Date</Table.Th>
+                                                <Table.Th>Status</Table.Th>
+                                            </Table.Tr>
+                                        </Table.Thead>
+                                        <Table.Tbody>
+                                            {historyAssignments.map((assignment) => (
+                                                <Table.Tr key={assignment.id}>
+                                                    <Table.Td>
+                                                        <div>
+                                                            <Text size="sm" fw={500}>
+                                                                {assignment.rider?.user?.name}
+                                                            </Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                {assignment.rider?.user?.email}
+                                                            </Text>
+                                                        </div>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Badge variant="outline">
+                                                            {assignment.helmet?.helmet_code ?? '—'}
+                                                        </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Text size="sm">
+                                                            {formatDate(assignment.assigned_at)}
+                                                        </Text>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Badge color={assignment.status === 'completed' ? 'blue' : 'red'}>
+                                                            {assignment.status}
+                                                        </Badge>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                    </div>
+                                </>
                             )}
                         </Stack>
                     </Tabs.Panel>
@@ -751,7 +985,19 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
 
                             {/* Payment Status */}
                             <div>
-                                <Text size="lg" fw={700} mb="md">Payment Status</Text>
+                                <Group justify="apart" mb="md">
+                                    <Text size="lg" fw={700}>Payment Status</Text>
+                                    {isAdmin && (
+                                        <Button
+                                            size="sm"
+                                            variant="light"
+                                            leftSection={<Banknote size={15} />}
+                                            onClick={openManualPayment}
+                                        >
+                                            Record Manual Payment
+                                        </Button>
+                                    )}
+                                </Group>
                                 <Paper p="md" withBorder>
                                     <Stack gap="sm">
                                         <Group justify="apart">
@@ -769,7 +1015,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         <Group justify="apart">
                                             <Text>Balance Due</Text>
                                             <Text fw={500} c="red">
-                                                {formatCurrency((campaign.current_cost?.total_cost || 0) - (campaign.total_paid_amount || 0))}
+                                                {formatCurrency(calculateBalance(campaign.current_cost?.total_cost, campaign.total_paid_amount))}
                                             </Text>
                                         </Group>
                                         <Progress
@@ -786,6 +1032,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                             {campaign.payments && campaign.payments.length > 0 && (
                                 <div>
                                     <Text size="lg" fw={700} mb="md">Payment History</Text>
+                                    <div className="overflow-x-auto">
                                     <Table>
                                         <Table.Thead>
                                             <Table.Tr>
@@ -794,6 +1041,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 <Table.Th>Method</Table.Th>
                                                 <Table.Th>Reference Code</Table.Th>
                                                 <Table.Th>Status</Table.Th>
+                                                <Table.Th>Actions</Table.Th>
                                             </Table.Tr>
                                         </Table.Thead>
                                         <Table.Tbody>
@@ -805,17 +1053,39 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                         <Badge variant="outline">{payment.payment_method}</Badge>
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <Badge variant="outline">{payment.mpesa_receipt}</Badge>
+                                                        <Badge variant="outline">{payment.mpesa_receipt_number || '—'}</Badge>
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <Badge color={payment.status === 'completed' ? 'green' : 'yellow'}>
+                                                        <Badge color={payment.status === 'completed' ? 'green' : payment.status === 'pending_verification' ? 'yellow' : 'gray'}>
                                                             {payment.status}
                                                         </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        {payment.status === 'pending_verification' && (
+                                                            <Group gap="xs">
+                                                                <Button
+                                                                    size="xs"
+                                                                    color="green"
+                                                                    onClick={() => handleApprovePayment(payment.id)}
+                                                                >
+                                                                    Approve
+                                                                </Button>
+                                                                <Button
+                                                                    size="xs"
+                                                                    color="red"
+                                                                    variant="light"
+                                                                    onClick={() => handleRejectPayment(payment.id)}
+                                                                >
+                                                                    Reject
+                                                                </Button>
+                                                            </Group>
+                                                        )}
                                                     </Table.Td>
                                                 </Table.Tr>
                                             ))}
                                         </Table.Tbody>
                                     </Table>
+                                    </div>
                                 </div>
                             )}
                         </Stack>
@@ -833,7 +1103,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 <Stack gap="xs">
                                                     <Group justify="apart">
                                                         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total Revenue</Text>
-                                                        <DollarSignIcon size={20} className="text-blue-500" />
+                                                        <BanknoteIcon size={20} className="text-blue-500" />
                                                     </Group>
                                                     <Text size="xl" fw={700} c="blue">
                                                         {formatCurrency(paymentAnalysis.total_revenue)}
@@ -924,7 +1194,8 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                 <div>
                                     <Text size="lg" fw={700} mb="md">Per-Rider Payouts</Text>
                                     {paymentAnalysis.per_rider.length > 0 ? (
-                                        <Table highlightOnHover withTableBorder withColumnBorders>
+                                        <div className="overflow-x-auto">
+                                        <Table>
                                             <Table.Thead>
                                                 <Table.Tr>
                                                     <Table.Th>Rider</Table.Th>
@@ -976,6 +1247,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 </Table.Tr>
                                             </Table.Tbody>
                                         </Table>
+                                        </div>
                                     ) : (
                                         <Paper p="xl" className="text-center" withBorder>
                                             <UsersIcon size={36} className="mx-auto text-gray-400 mb-2" />
@@ -993,7 +1265,8 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         Rider costs accumulate each day. Profit is updated in real-time as riders earn through check-ins.
                                     </Text>
                                     {paymentAnalysis.daily_breakdown.length > 0 ? (
-                                        <Table highlightOnHover withTableBorder withColumnBorders>
+                                        <div className="overflow-x-auto">
+                                        <Table>
                                             <Table.Thead>
                                                 <Table.Tr>
                                                     <Table.Th>Date</Table.Th>
@@ -1027,6 +1300,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 ))}
                                             </Table.Tbody>
                                         </Table>
+                                        </div>
                                     ) : (
                                         <Paper p="xl" className="text-center" withBorder>
                                             <BarChart2Icon size={36} className="mx-auto text-gray-400 mb-2" />
@@ -1036,6 +1310,50 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         </Paper>
                                     )}
                                 </div>
+                            </Stack>
+                        </Tabs.Panel>
+                    )}
+
+                    {isAdmin && (
+                        <Tabs.Panel value="heatmap" p="md">
+                            <Stack gap="md">
+                                <Group justify="flex-end">
+                                    <Select
+                                        label="Period"
+                                        value={heatmapPeriod}
+                                        onChange={(value) => setHeatmapPeriod((value as HeatmapPeriod) ?? '7days')}
+                                        data={[
+                                            { value: 'today', label: 'Today' },
+                                            { value: '7days', label: 'Last 7 days' },
+                                            { value: '30days', label: 'Last 30 days' },
+                                        ]}
+                                        w={180}
+                                        allowDeselect={false}
+                                        comboboxProps={{ zIndex: 2000 }}
+                                    />
+                                </Group>
+
+                                {heatmapVisited ? (
+                                    <Suspense
+                                        fallback={
+                                            <div className="h-[500px] flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                                <span className="text-gray-500 dark:text-gray-400">Loading map…</span>
+                                            </div>
+                                        }
+                                    >
+                                        <LiveHeatmap
+                                            key={heatmapPeriod}
+                                            campaignId={campaign.id}
+                                            period={heatmapPeriod}
+                                            height={500}
+                                            apiEndpoint="/admin/tracking/heatmap"
+                                        />
+                                    </Suspense>
+                                ) : (
+                                    <div className="h-[500px] flex items-center justify-center bg-gray-50 dark:bg-gray-700 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                                        <span className="text-gray-400">Loading map…</span>
+                                    </div>
+                                )}
                             </Stack>
                         </Tabs.Panel>
                     )}
@@ -1056,7 +1374,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
 
                             {campaign.status !== 'draft' && (
                                 <Timeline.Item
-                                    bullet={<DollarSignIcon size={12} />}
+                                    bullet={<BanknoteIcon size={12} />}
                                     title="Payment Initiated"
                                     color="yellow"
                                 >
@@ -1066,7 +1384,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                 </Timeline.Item>
                             )}
 
-                            {(campaign.status === 'paid' || campaign.status === 'active' || campaign.status === 'completed') && (
+                            {campaign.payment_status === 'paid' && (
                                 <Timeline.Item
                                     bullet={<CheckCircleIcon size={12} />}
                                     title="Payment Completed"
@@ -1109,6 +1427,18 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                             {formatDate(campaign.end_date)}
                                         </Text>
                                     )}
+                                </Timeline.Item>
+                            )}
+
+                            {campaign.status === 'completed' && !!campaign.assignments?.filter(a => a.status === 'completed').length && (
+                                <Timeline.Item
+                                    bullet={<BikeIcon size={12} />}
+                                    title="Helmets Returned"
+                                    color="green"
+                                >
+                                    <Text c="dimmed" size="sm">
+                                        {campaign.assignments.filter(a => a.status === 'completed').length} helmet(s) auto-revoked and returned to the available pool. Riders were notified to drop them off.
+                                    </Text>
                                 </Timeline.Item>
                             )}
 
@@ -1249,6 +1579,157 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                     </Group>
                 </Stack>
             </Modal>
+
+            {/* Auto-Assign Riders Modal */}
+            <Modal
+                opened={autoAssignModalOpened}
+                onClose={closeAutoAssignModal}
+                title={
+                    <Group>
+                        <UsersIcon size={20} />
+                        <Text fw={700}>Auto-Assign Riders</Text>
+                    </Group>
+                }
+                size="md"
+                centered
+            >
+                <Stack gap="md">
+                    <Alert icon={<InfoIcon size={16} />} color="blue" variant="light">
+                        Automatically picks the next available approved riders and helmets and assigns them to this campaign — no need to pick each one manually.
+                    </Alert>
+
+                    <NumberInput
+                        label="Number of Riders to Assign"
+                        value={autoAssignCount}
+                        onChange={(v) => setAutoAssignCount(Number(v))}
+                        min={1}
+                        max={maxAutoAssign}
+                        required
+                        description={`Up to ${maxAutoAssign} rider(s) can be auto-assigned right now (limited by remaining helmet slots, available riders, and available helmets).`}
+                    />
+
+                    <Divider />
+
+                    <Group justify="flex-end">
+                        <Button variant="light" onClick={closeAutoAssignModal} disabled={autoAssigning}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleAutoAssign}
+                            loading={autoAssigning}
+                            disabled={autoAssignCount < 1 || autoAssignCount > maxAutoAssign}
+                            leftSection={<UsersIcon size={16} />}
+                        >
+                            Auto-Assign {autoAssignCount} Rider{autoAssignCount === 1 ? '' : 's'}
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            {/* Manual Payment Modal */}
+            <Modal
+                opened={manualPaymentOpened}
+                onClose={closeManualPayment}
+                title={
+                    <Group gap="sm">
+                        <Banknote size={20} className="text-gray-600" />
+                        <Text fw={700}>Record Manual Payment</Text>
+                    </Group>
+                }
+                size="md"
+                centered
+            >
+                <Stack gap="md">
+                    <Alert icon={<InfoIcon size={16} />} color="blue" variant="light">
+                        Record a payment collected directly — cash or M-Pesa without STK push. The campaign will be marked as <strong>paid</strong> automatically.
+                    </Alert>
+
+                    {campaign.campaign_number && (
+                        <Group justify="space-between">
+                            <Text size="sm" c="dimmed">Campaign Account No.</Text>
+                            <Badge size="lg" variant="light" color="gray">{campaign.campaign_number}</Badge>
+                        </Group>
+                    )}
+
+                    <NumberInput
+                        label="Amount (KES)"
+                        placeholder="Enter amount"
+                        value={manualAmount}
+                        onChange={setManualAmount}
+                        min={1}
+                        prefix="KES "
+                        thousandSeparator=","
+                        required
+                    />
+
+                    <Select
+                        label="Payment Method"
+                        data={[
+                            { value: 'cash', label: 'Cash' },
+                            { value: 'mpesa', label: 'M-Pesa (Manual)' },
+                        ]}
+                        value={manualMethod}
+                        onChange={(v) => setManualMethod(v || 'cash')}
+                        required
+                    />
+
+                    <TextInput
+                        label="Receipt / Reference Number"
+                        placeholder="e.g., M-Pesa code or cash receipt"
+                        value={manualReceipt}
+                        onChange={(e) => setManualReceipt(e.currentTarget.value)}
+                        description="Optional for cash, recommended for M-Pesa"
+                    />
+
+                    <Textarea
+                        label="Notes"
+                        placeholder="Any additional notes..."
+                        value={manualNotes}
+                        onChange={(e) => setManualNotes(e.currentTarget.value)}
+                        rows={2}
+                    />
+
+                    <Paper p="sm" withBorder radius="md" className="bg-gray-50">
+                        <Stack gap="xs">
+                            <Group justify="apart">
+                                <Text size="sm" c="dimmed">Campaign</Text>
+                                <Text size="sm" fw={500}>{campaign.name}</Text>
+                            </Group>
+                            <Group justify="apart">
+                                <Text size="sm" c="dimmed">Advertiser</Text>
+                                <Text size="sm" fw={500}>{campaign.advertiser?.company_name}</Text>
+                            </Group>
+                            <Group justify="apart">
+                                <Text size="sm" c="dimmed">Total Cost</Text>
+                                <Text size="sm" fw={500}>{formatCurrency(campaign.current_cost?.total_cost || 0)}</Text>
+                            </Group>
+                        </Stack>
+                    </Paper>
+
+                    <Divider />
+
+                    <Group justify="flex-end">
+                        <Button variant="light" onClick={closeManualPayment} disabled={savingManual}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleManualPayment}
+                            loading={savingManual}
+                            disabled={!manualAmount || Number(manualAmount) <= 0}
+                            leftSection={<Banknote size={16} />}
+                            color="green"
+                        >
+                            Record Payment
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            <StatusUpdateModal
+                opened={statusModalOpened}
+                onClose={closeStatusModal}
+                campaign={campaign}
+            />
         </AuthenticatedLayout>
     );
 }

@@ -42,8 +42,7 @@ class RegisterRequest extends BaseApiRequest
             'phone' => [
                 'nullable',
                 'string',
-                'max:15',
-                'regex:/^[\+]?[0-9\-\(\)\s]+$/', 
+                'regex:/^254[0-9]{9}$/',
             ],
         ];
     }
@@ -59,7 +58,7 @@ class RegisterRequest extends BaseApiRequest
             'password.required' => 'Password is required.',
             'role.required' => 'User role is required.',
             'role.in' => 'Invalid user role. Must be admin, rider, or advertiser.',
-            'phone.regex' => 'Please provide a valid phone number.',
+            'phone.regex' => 'Phone number must be in the format 254XXXXXXXXX (e.g. 254716516287).',
             'first_name.regex' => 'First name can only contain letters and spaces.',
             'last_name.regex' => 'Last name can only contain letters and spaces.',
         ];
@@ -87,7 +86,7 @@ class RegisterRequest extends BaseApiRequest
             // 'name' => trim($this->name ?? ''),
             'first_name' => trim($this->first_name ?? ''),
             'last_name' => trim($this->last_name ?? ''),
-            'phone' => $this->phone ? preg_replace('/[^\d\+\-\(\)\s]/', '', $this->phone) : null,
+            'phone' => $this->phone ? trim($this->phone) : null,
         ]);
     }
 }

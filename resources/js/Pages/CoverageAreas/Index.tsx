@@ -76,7 +76,7 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
     const [countyFilter, setCountyFilter] = useState(filters.county_id?.toString() || '');
     const [subCountyFilter, setSubCountyFilter] = useState(filters.sub_county_id?.toString() || '');
     const [wardFilter, setWardFilter] = useState(filters.ward_id?.toString() || '');
-    
+
     // Create Modal State
     const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
 
@@ -110,10 +110,10 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
             header={
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
                             Coverage Areas Management
                         </h2>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        <p className="text-sm text-gray-600 mt-1">
                             Manage coverage areas for campaigns
                         </p>
                     </div>
@@ -132,57 +132,57 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Coverage Areas</Text>
                                 <Text size="xl" fw={700}>{stats.total_coverage_areas}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <MapPinIcon size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <MapPinIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">By County</Text>
-                                <Text size="xl" fw={700} c="blue">{stats.by_county}</Text>
+                                <Text size="xl" fw={700}>{stats.by_county}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <MapPinIcon size={32} className="text-blue-400" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <MapPinIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">By Sub-County</Text>
-                                <Text size="xl" fw={700} c="cyan">{stats.by_sub_county}</Text>
+                                <Text size="xl" fw={700}>{stats.by_sub_county}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <MapPinIcon size={32} className="text-cyan-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <MapPinIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">By Ward</Text>
-                                <Text size="xl" fw={700} c="green">{stats.by_ward}</Text>
+                                <Text size="xl" fw={700}>{stats.by_ward}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <MapPinIcon size={32} className="text-green-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <MapPinIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
                 </div>
 
                 {/* Filters */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <form onSubmit={handleSearch}>
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                             <TextInput
@@ -241,64 +241,64 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
                 </Card>
 
                 {/* Coverage Areas Table */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Name
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Area Code
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Location Path
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         County
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Sub-County
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Ward
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Campaigns
                                     </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {coverageAreas.data.map((area) => (
-                                    <tr key={area.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <tr key={area.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                            <div className="text-sm font-medium text-gray-900">
                                                 {area.name}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <Badge variant="light" color="blue">
+                                            <Badge variant="light" color="gray">
                                                 {area.area_code}
                                             </Badge>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 text-sm text-gray-500">
                                             {area.location_path}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {area.county?.name || '—'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {area.subCounty?.name || '—'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {area.ward?.name || '—'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            <Badge variant="outline" color="green">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <Badge variant="outline" color="gray">
                                                 {area.campaigns_count || 0} campaigns
                                             </Badge>
                                         </td>
@@ -342,8 +342,8 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
 
                     {coverageAreas.data.length === 0 && (
                         <div className="text-center py-12">
-                            <div className="text-gray-400 text-6xl mb-4">
-                                <MapPinIcon size={64} className="mx-auto" />
+                            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <MapPinIcon size={32} className="text-gray-300" />
                             </div>
                             <Text size="lg" c="dimmed">No Coverage Areas found</Text>
                             <Text size="sm" c="dimmed">
@@ -356,8 +356,8 @@ export default function Index({ coverageAreas, stats, filters, counties, subCoun
 
                     {/* Pagination */}
                     {coverageAreas.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                            <div className="text-sm text-gray-500">
                                 Showing {coverageAreas.from} to {coverageAreas.to} of {coverageAreas.total} coverage areas
                             </div>
                             <div className="flex space-x-1">

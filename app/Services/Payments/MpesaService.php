@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Models\Campaign;
 use App\Models\Payment;
 use App\Events\PaymentStatusUpdated;
 use Illuminate\Support\Facades\Http;
@@ -81,7 +82,7 @@ class MpesaService
     /**
      * Generate user-friendly payment reference using phone number
      */
-    protected function generatePaymentReference(string $phoneNumber): string
+    protected function generatePaymentReference(?string $phoneNumber = null): string
     {
         return Payment::generatePaymentReference($phoneNumber);
     }
@@ -156,6 +157,8 @@ class MpesaService
             ]);
 
             // Prepare STK Push request
+            $accountReference = $payment->campaign?->campaign_number ?? $phoneNumber;
+
             $stkPayload = [
                 'BusinessShortCode' => $this->businessShortCode,
                 'Password' => $password,
@@ -166,7 +169,7 @@ class MpesaService
                 'PartyB' => $this->businessShortCode,
                 'PhoneNumber' => $phoneNumber,
                 'CallBackURL' => $this->callbackUrl,
-                'AccountReference' => $phoneNumber,
+                'AccountReference' => $accountReference,
                 'TransactionDesc' => $data['description'] ?? 'Campaign Payment'
             ];
 
@@ -300,10 +303,12 @@ class MpesaService
                         ])
                     ]);
 
-                    // Update campaign status if linked
+                    // Update campaign payment status if linked. STK success is
+                    // confirmed directly by M-Pesa, so it goes straight to
+                    // 'paid' — no admin review needed.
                     if ($payment->campaign) {
                         $payment->campaign->update([
-                            'status' => 'paid',
+                            'payment_status' => 'paid',
                             'payment_verification_status' => 'verified'
                         ]);
                     }
@@ -357,6 +362,10 @@ class MpesaService
      */
     protected function createPaymentRecord(array $data): Payment
     {
+        $campaignNumber = $data['campaign_id']
+            ? Campaign::find($data['campaign_id'])?->campaign_number
+            : null;
+
         return Payment::create([
             'campaign_id' => $data['campaign_id'],
             'advertiser_id' => $data['advertiser_id'],
@@ -367,7 +376,7 @@ class MpesaService
             'payment_gateway' => 'safaricom_mpesa',
             'verification_method' => 'auto_callback',
             'phone_number' => $data['phone_number'],
-            'paybill_account_number' => $data['phone_number'],
+            'paybill_account_number' => $campaignNumber ?? $data['phone_number'],
             'status' => 'pending',
             'initiated_at' => now(),
             'metadata' => [
@@ -431,10 +440,12 @@ class MpesaService
                     ])
                 ]);
 
-                // Update campaign status
+                // Update campaign payment status. STK success is confirmed
+                // directly by M-Pesa's callback, so it goes straight to
+                // 'paid' — no admin review needed.
                 if ($payment->campaign) {
                     $payment->campaign->update([
-                        'status' => 'paid',
+                        'payment_status' => 'paid',
                         'payment_verification_status' => 'verified'
                     ]);
                 }
@@ -517,6 +528,9 @@ class MpesaService
             }
 
             $paymentReference = $this->generatePaymentReference($data['phone_number']);
+            $campaignNumber = !empty($data['campaign_id'])
+                ? Campaign::find($data['campaign_id'])?->campaign_number
+                : null;
 
             // Create payment record requiring admin approval
             $payment = Payment::create([
@@ -530,7 +544,7 @@ class MpesaService
                 'verification_method' => 'manual_receipt',
                 'mpesa_receipt_number' => $data['receipt_number'],
                 'phone_number' => $data['phone_number'],
-                'paybill_account_number' => $data['phone_number'],
+                'paybill_account_number' => $campaignNumber ?? $data['phone_number'],
                 'status' => 'pending_verification',
                 'status_message' => 'Manual receipt submitted - pending admin verification',
                 'requires_admin_approval' => true,
@@ -552,7 +566,8 @@ class MpesaService
                 $campaign = \App\Models\Campaign::find($data['campaign_id']);
                 if ($campaign) {
                     $campaign->update([
-                        'payment_verification_status' => 'awaiting_admin'
+                        'payment_status' => 'pending_verification',
+                        'payment_verification_status' => 'awaiting_admin',
                     ]);
                 }
             }
@@ -599,16 +614,18 @@ class MpesaService
                 return ['success' => false, 'message' => 'Payment not found'];
             }
 
+            $accountNumber = $payment->campaign?->campaign_number ?? $payment->phone_number;
+
             $instructions = [
                 'paybill_number' => $this->businessShortCode,
-                'account_number' => $payment->phone_number,
+                'account_number' => $accountNumber,
                 'amount' => $payment->amount,
                 'steps' => [
                     '1. Go to M-Pesa menu on your phone',
                     '2. Select Lipa na M-Pesa',
                     '3. Select Pay Bill',
                     '4. Enter Business Number: ' . $this->businessShortCode,
-                    '5. Enter Account Number: ' . $payment->phone_number,
+                    '5. Enter Account Number: ' . $accountNumber,
                     '6. Enter Amount: ' . $payment->amount,
                     '7. Enter your M-Pesa PIN',
                     '8. Confirm the transaction',

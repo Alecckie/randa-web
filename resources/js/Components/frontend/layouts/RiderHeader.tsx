@@ -1,6 +1,7 @@
 import React from 'react';
 import { Badge } from '@mantine/core';
 import { Check, AlertCircle, Menu } from 'lucide-react';
+import NotificationBell from '@/Components/layouts/NotificationBell';
 
 interface RiderHeaderProps {
     onMenuClick: () => void;
@@ -22,13 +23,14 @@ const RiderHeader: React.FC<RiderHeaderProps> = ({ onMenuClick, rider }) => {
                     <div className="flex items-center space-x-4">
                         <button
                             onClick={onMenuClick}
-                            className="lg:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
                         >
                             <Menu size={20} />
                         </button>
                     </div>
 
                     <div className="flex items-center space-x-3">
+                        <NotificationBell />
                         <Badge
                             color={isApproved ? 'green' : isPending ? 'orange' : 'gray'}
                             variant="light"

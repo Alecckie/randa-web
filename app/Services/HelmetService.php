@@ -32,6 +32,12 @@ class HelmetService
 
     public function createHelmet(array $data): Helmet
     {
+        // Generate a helmet code server-side if the admin didn't type one
+        // in to match a physical asset tag.
+        if (empty($data['helmet_code'])) {
+            $data['helmet_code'] = Helmet::generateHelmetCode();
+        }
+
         // Generate QR code if not provided
         if (empty($data['qr_code'])) {
             $data['qr_code'] = $this->generateQrCode($data['helmet_code']);
@@ -48,9 +54,10 @@ class HelmetService
 
     public function deleteHelmet(Helmet $helmet): bool
     {
-        // Check if helmet has any active assignments
-        if ($helmet->currentAssignment) {
-            throw new \Exception('Cannot delete helmet with active assignments.');
+        // Check if helmet has any assignment history (active or past) so we
+        // don't orphan campaign_assignments.helmet_id, which has no FK constraint.
+        if ($helmet->assignments()->exists()) {
+            throw new \Exception('Cannot delete helmet with assignment history.');
         }
 
         return $helmet->delete();

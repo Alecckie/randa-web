@@ -2,6 +2,7 @@ import type { User } from ".";
 
 export interface Advertiser {
     id: number;
+    advertiser_number?: string;
     user_id: number;
     company_name: string;
     business_registration?: string;

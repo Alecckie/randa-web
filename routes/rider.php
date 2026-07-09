@@ -10,4 +10,6 @@ Route::middleware('auth')->group(function () {
     Route::patch('/rider/{rider}/approve',ApproveRiderController::class)->name('rider.approve');
     Route::patch('/rider/{rider}/reject',RejectRiderController::class)->name('rider.reject');
     Route::post('/riders/{user}/notify', [RiderController::class, 'notifyRider'])->name('riders.notify');
+    Route::get('/riders/{rider}/payout-audit', [RiderController::class, 'payoutAudit'])->name('riders.payout-audit');
+    Route::post('/riders/{rider}/settle-dues', [RiderController::class, 'settleDues'])->name('riders.settle-dues');
 });

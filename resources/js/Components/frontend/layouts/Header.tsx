@@ -5,13 +5,12 @@ import {
     Plus,
     ChevronDown,
     Target,
-    Image as ImageIcon,
     Users,
     FileText,
-    Bell,
     Check,
     AlertCircle,
 } from 'lucide-react';
+import NotificationBell from '@/Components/layouts/NotificationBell';
 
 interface Advertiser {
     id?: number;
@@ -42,7 +41,7 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
                         {/* Mobile Menu Button */}
                         <button
                             onClick={onMenuClick}
-                            className="lg:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
                         >
                             <MenuIcon size={20} />
                         </button>
@@ -93,9 +92,7 @@ export default function Header({ onMenuClick, user, showCreateMenu = true }: Hea
 
                     {/* Right Side */}
                     <div className="flex items-center space-x-3">
-                        <Button variant="subtle" color="gray" className="hidden sm:flex">
-                            <Bell size={18} />
-                        </Button>
+                        <NotificationBell />
 
                         {/* Status Badge */}
                         <Badge

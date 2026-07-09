@@ -40,6 +40,20 @@ class Rider extends Model
         'location_changes_count' => 'integer',
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Assign a human-readable, unique rider number once the row has an
+        // id — used to reference the rider in check-ins, payouts, support.
+        static::created(function (Rider $rider) {
+            if (!$rider->rider_number) {
+                $rider->rider_number = sprintf('RDR-%06d', $rider->id);
+                $rider->saveQuietly();
+            }
+        });
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

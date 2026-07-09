@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate, formatDateTime } from '@/utils/formatting';
 import { Link } from '@inertiajs/react';
 import { Avatar, Badge, Button, Card, Container, Grid, Group, Stack, Text, Paper, Divider, Alert } from '@mantine/core';
 import {
@@ -138,26 +139,6 @@ export default function Show({ rider }: ShowProps) {
         );
     };
 
-    const formatDate = (dateString: string | null) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
-    };
-
-    const formatDateTime = (dateString: string | null) => {
-        if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
-
     const InfoRow = ({ icon: Icon, label, value }: { icon: any; label: string; value: string | number }) => (
         <div className="flex items-start gap-3">
             <div className="mt-1 text-gray-500 dark:text-gray-400">
@@ -294,7 +275,7 @@ export default function Show({ rider }: ShowProps) {
                                     <Card shadow="sm" padding="lg" radius="md" withBorder>
                                         <div className="mb-4">
                                             <Group gap="xs">
-                                                <User size={20} className="text-blue-600" />
+                                                <User size={20} className="text-[#f79122]" />
                                                 <Text size="lg" fw={600} className="text-gray-900 dark:text-white">
                                                     Personal Information
                                                 </Text>
@@ -330,7 +311,7 @@ export default function Show({ rider }: ShowProps) {
                                     <Card shadow="sm" padding="lg" radius="md" withBorder>
                                         <div className="mb-4">
                                             <Group gap="xs">
-                                                <Wallet size={20} className="text-green-600" />
+                                                <Wallet size={20} className="text-[#f79122]" />
                                                 <Text size="lg" fw={600} className="text-gray-900 dark:text-white">
                                                     Payment Information
                                                 </Text>
@@ -354,7 +335,7 @@ export default function Show({ rider }: ShowProps) {
                                     <Card shadow="sm" padding="lg" radius="md" withBorder>
                                         <div className="mb-4">
                                             <Group gap="xs">
-                                                <Users size={20} className="text-purple-600" />
+                                                <Users size={20} className="text-[#f79122]" />
                                                 <Text size="lg" fw={600} className="text-gray-900 dark:text-white">
                                                     Emergency Contact
                                                 </Text>
@@ -486,7 +467,7 @@ export default function Show({ rider }: ShowProps) {
                                 <Card shadow="sm" padding="lg" radius="md" withBorder>
                                     <div className="mb-4">
                                         <Group gap="xs">
-                                            <FileText size={20} className="text-indigo-600" />
+                                            <FileText size={20} className="text-[#f79122]" />
                                             <Text size="lg" fw={600} className="text-gray-900 dark:text-white">
                                                 Uploaded Documents
                                             </Text>

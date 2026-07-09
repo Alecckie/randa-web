@@ -21,8 +21,9 @@ return [
     // VAT rate applied to campaign subtotal (%)
     'vat_rate' => (float) env('CAMPAIGN_VAT_RATE', 16.00),
 
-    // Rider hourly earnings rate (KES/hour) — must match RiderCheckIn::HOURLY_RATE
-    'rider_hourly_rate' => (float) env('CAMPAIGN_RIDER_HOURLY_RATE', 7.00),
+    // Rider hourly earnings rate (KES/hour) — shares RIDER_HOURLY_RATE with
+    // config/rider_shift.php so the two can never drift out of sync.
+    'rider_hourly_rate' => (float) env('RIDER_HOURLY_RATE', 7.00),
 
     // Estimated advertising impressions per kilometre ridden
     'impressions_per_km' => (int) env('CAMPAIGN_IMPRESSIONS_PER_KM', 500),

@@ -61,8 +61,12 @@ class CampaignAssignmentService
      */
     public function assignRider(Campaign $campaign, int $riderId, int $helmetId): CampaignAssignment
     {
+        if (!$campaign->canAssignRiders()) {
+            throw new \Exception('Riders can only be assigned once payment for this campaign has been completed.');
+        }
+
         return DB::transaction(function () use ($campaign, $riderId, $helmetId) {
-            
+
             Rider::where('id', $riderId)
                 ->where('status', 'approved')
                 ->firstOrFail();
@@ -255,6 +259,10 @@ class CampaignAssignmentService
      */
     public function autoAssignRiders(Campaign $campaign, int $count): array
     {
+        if (!$campaign->canAssignRiders()) {
+            throw new \Exception('Riders can only be assigned once payment for this campaign has been completed.');
+        }
+
         $availableRiders = $this->getAvailableRiders($campaign)->take($count);
         $availableHelmets = $this->getAvailableHelmets()->take($count);
 

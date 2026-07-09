@@ -19,6 +19,12 @@ use Illuminate\Support\Facades\Auth;
 
 class CampaignService
 {
+    public function __construct(
+        protected CampaignAssignmentService $assignmentService,
+        protected NotificationService $notificationService,
+    ) {
+    }
+
     public function getCampaigns(array $filters = [], ?User $user = null): LengthAwarePaginator
     {
         $user = $user ?? Auth::user();
@@ -53,11 +59,15 @@ class CampaignService
             'total_campaigns' => (clone $baseQuery)->count(),
             'active_campaigns' => (clone $baseQuery)->where('status', 'active')->count(),
             'draft_campaigns' => (clone $baseQuery)->where('status', 'draft')->count(),
-            'pending_payment' => (clone $baseQuery)->where('status', 'pending_payment')->count(),
-            'paid_campaigns' => (clone $baseQuery)->where('status', 'paid')->count(),
+            'submitted_campaigns' => (clone $baseQuery)->where('status', 'submitted')->count(),
             'completed_campaigns' => (clone $baseQuery)->where('status', 'completed')->count(),
             'paused_campaigns' => (clone $baseQuery)->where('status', 'paused')->count(),
             'cancelled_campaigns' => (clone $baseQuery)->where('status', 'cancelled')->count(),
+            // Campaigns that are fully configured but still need payment resolved.
+            'awaiting_payment' => (clone $baseQuery)
+                ->where('status', 'submitted')
+                ->whereIn('payment_status', ['unpaid', 'pending_verification', 'rejected', 'partially_paid'])
+                ->count(),
             // 'total_revenue' => $this->calculateRevenue($user),
             'coverage_areas_count' => \App\Models\CoverageArea::count(),
         ];
@@ -122,16 +132,12 @@ class CampaignService
     }
 
     /**
-     * Apply payment status filter
+     * Apply payment status filter — payment_status is its own column now,
+     * independent of campaign lifecycle status.
      */
     protected function applyPaymentStatusFilter(Builder $query, string $paymentStatus): Builder
     {
-        return match ($paymentStatus) {
-            'paid' => $query->where('status', 'paid'),
-            'pending' => $query->where('status', 'pending_payment'),
-            'unpaid' => $query->where('status', 'draft'),
-            default => $query,
-        };
+        return $query->where('payment_status', $paymentStatus);
     }
 
     /**
@@ -184,9 +190,9 @@ class CampaignService
             return true;
         }
 
-        if ($user->role === 'advertiser' && 
+        if ($user->role === 'advertiser' &&
             $campaign->advertiser_id === ($user->advertiser->id ?? null)) {
-            return in_array($campaign->status, ['draft', 'pending_payment']);
+            return in_array($campaign->status, ['draft', 'submitted']);
         }
 
         return false;
@@ -217,7 +223,8 @@ class CampaignService
                 'business_type' => $data['business_type'] ?? null,
                 'require_vat_receipt' => $data['require_vat_receipt'] ?? false,
                 'agree_to_terms' => $data['agree_to_terms'] ?? false,
-                'status' => $data['payment_id'] ? 'active' : 'active',
+                'status' => 'submitted',
+                'payment_status' => !empty($data['payment_id']) ? 'paid' : 'unpaid',
                 'special_instructions' => $data['special_instructions'] ?? null,
             ]);
 
@@ -501,11 +508,14 @@ class CampaignService
      */
     public function updateCampaignStatus(Campaign $campaign, string $status): Campaign
     {
-        // Validate status transition
+        // Campaign lifecycle is intentionally independent of payment_status —
+        // payment_status is updated separately by the payment flows
+        // (recordManualPayment, approveManualPayment, STK success). The one
+        // place they intersect is this gate: a campaign can't go live
+        // without being paid.
         $allowedTransitions = [
-            'draft' => ['pending_payment', 'cancelled'],
-            'pending_payment' => ['paid', 'cancelled'],
-            'paid' => ['active', 'cancelled'],
+            'draft' => ['submitted', 'cancelled'],
+            'submitted' => ['active', 'cancelled'],
             'active' => ['paused', 'completed'],
             'paused' => ['active', 'cancelled'],
             'completed' => [], // No transitions from completed
@@ -521,9 +531,37 @@ class CampaignService
             throw new \InvalidArgumentException("Cannot transition from {$currentStatus} to {$status}");
         }
 
+        if ($status === 'active' && $campaign->payment_status !== 'paid') {
+            throw new \InvalidArgumentException('Cannot activate a campaign until its payment status is paid.');
+        }
+
         $campaign->update(['status' => $status]);
 
+        if ($status === 'completed') {
+            $this->handleCampaignCompletion($campaign);
+        }
+
         return $campaign->fresh();
+    }
+
+    /**
+     * Auto-revoke all active helmet assignments for a just-completed campaign,
+     * returning helmets to the available pool, and notify the affected riders
+     * (return the helmet) and the advertiser (campaign wrapped up).
+     */
+    protected function handleCampaignCompletion(Campaign $campaign): void
+    {
+        $activeAssignments = $campaign->assignments()
+            ->where('status', 'active')
+            ->with(['rider.user', 'helmet'])
+            ->get();
+
+        foreach ($activeAssignments as $assignment) {
+            $this->assignmentService->completeAssignment($assignment);
+            $this->notificationService->notifyRiderHelmetReturnRequired($assignment);
+        }
+
+        $this->notificationService->notifyAdvertiserCampaignCompleted($campaign);
     }
 
     /**

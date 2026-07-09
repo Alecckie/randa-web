@@ -1,12 +1,14 @@
 import '../css/app.css';
 import './bootstrap';
 
-import { createInertiaApp } from '@inertiajs/react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { MantineProvider, createTheme } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { DatesProvider } from '@mantine/dates';
+import { showSuccessToast, showErrorToast, showWarningToast } from '@/utils/toast';
+import type { FlashProps } from '@/types';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -21,6 +23,23 @@ configureEcho({
     broadcaster: 'reverb',
 });
 
+// Global flash-message -> toast bridge. Backend controllers flash
+// 'success' / 'error' / 'warning' onto the session; every Inertia visit
+// shares that data back as page.props.flash, so we surface it here as
+// an auto-dismissing top-right toast instead of each page rendering its
+// own inline banner.
+function showFlashToasts(flash: FlashProps | undefined | null) {
+    if (!flash) return;
+
+    if (flash.success) showSuccessToast(flash.success);
+    if (flash.error) showErrorToast(flash.error);
+    if (flash.warning) showWarningToast(flash.warning);
+}
+
+router.on('success', (event) => {
+    const page = event.detail.page as { props?: { flash?: FlashProps } };
+    showFlashToasts(page.props?.flash);
+});
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 const theme = createTheme({
@@ -79,6 +98,10 @@ createInertiaApp({
                 <Notifications position="top-right" zIndex={2077} /><App {...props} />
             </DatesProvider>
         </MantineProvider>);
+
+        // Also surface flash toasts on a hard/initial page load (router.on('success')
+        // only fires for client-side Inertia visits after this).
+        showFlashToasts(props.initialPage?.props?.flash as FlashProps | undefined);
     },
     progress: {
         color: '#4B5563',

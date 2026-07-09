@@ -515,6 +515,22 @@ class RiderService
     }
 
     /**
+     * Delete a rider. Blocked if the rider has any campaign assignment
+     * history (active or past), since campaign_assignments.rider_id has no
+     * FK constraint and orphaning it would break check-ins, payments, and
+     * tracking data. To take a rider off a campaign, reassign their helmet
+     * to a different rider instead of deleting the rider record.
+     */
+    public function deleteRider(Rider $rider): bool
+    {
+        if ($rider->assignments()->exists()) {
+            throw new Exception('Cannot delete a rider with campaign assignment history. Reassign their helmet to a different rider instead.');
+        }
+
+        return $rider->delete();
+    }
+
+    /**
      * Upload file to storage (legacy method)
      */
     private function uploadFile(UploadedFile $file, string $path): string

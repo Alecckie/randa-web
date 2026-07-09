@@ -46,12 +46,11 @@ import {
     Building,
     Calendar,
     Target,
-    CreditCard,
+    AlertCircle,
 } from 'lucide-react';
 import type { User } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Advertiser } from '@/types/advertiser';
-import MpesaPaymentModal from '../payments/MpesaPaymentModal';
 
 interface CoverageArea {
     id: number;
@@ -139,14 +138,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         county_id: null as number | null,
         description: ''
     });
-
-    // Payment modal state
-    const [paymentModalOpened, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
-    const [paymentData, setPaymentData] = useState<{
-        payment_id: string;
-        reference: string;
-        mpesa_receipt: string;
-    } | null>(null);
 
     // Memoize options
     const advertiserOptions = useMemo(() =>
@@ -251,15 +242,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         setActiveStep(current => Math.max(current - 1, 0));
     }, []);
 
-    const handlePaymentSuccess = useCallback((paymentInfo: {
-        payment_id: string;
-        reference: string;
-        mpesa_receipt: string;
-    }) => {
-        setPaymentData(paymentInfo);
-        closePaymentModal();
-    }, [closePaymentModal]);
-
     const handleSubmit = useCallback((e: React.FormEvent) => {
         e.preventDefault();
 
@@ -270,11 +252,11 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 ...formData,
                 coverage_area_ids: formData.coverage_areas.map(id => parseInt(id)),
                 advertiser_id: formData.advertiser_id ? parseInt(formData.advertiser_id.toString()) : null,
-                payment_id: paymentData?.payment_id || null,
-                payment_status: paymentData ? 'paid' : 'pending'
             };
 
             router.post(route('my-campaigns.store'), submissionData, {
+                preserveState: true,
+                preserveScroll: true,
                 onSuccess: () => {
                     setSubmitting(false);
                 },
@@ -287,7 +269,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         } else {
             nextStep();
         }
-    }, [activeStep, formData, nextStep, paymentData]);
+    }, [activeStep, formData, nextStep]);
 
     const isStepValid = useMemo(() => {
         switch (activeStep) {
@@ -322,7 +304,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const StepBasicInfo = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'blue', to: 'cyan', deg: 45 }}>
+                <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                     <FileText size={24} />
                 </ThemeIcon>
                 <div>
@@ -410,7 +392,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const StepCampaignDetails = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'green', to: 'teal', deg: 45 }}>
+                <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                     <MapPin size={24} />
                 </ThemeIcon>
                 <div>
@@ -419,7 +401,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 </div>
             </div>
 
-            <Card withBorder radius="lg" p="lg" className="bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-gray-800 dark:to-gray-800 border-blue-100 dark:border-gray-700">
+            <Card withBorder radius="lg" p="lg" className="bg-blue-50/50 dark:bg-gray-800 border-blue-100 dark:border-gray-700">
                 <Grid gutter="lg">
                     <Grid.Col span={{ base: 12, sm: 6 }}>
                         <TextInput
@@ -456,7 +438,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
                     {duration > 0 && (
                         <Grid.Col span={12}>
-                            <Paper p="md" radius="md" className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+                            <Paper p="md" radius="md" className="bg-blue-500 text-white">
                                 <Group justify="space-between" align="center">
                                     <Text size="sm" fw={500}>Campaign Duration</Text>
                                     <Badge size="xl" variant="white" color="blue" radius="md">
@@ -586,7 +568,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const StepDesignRequirements = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'purple', to: 'pink', deg: 45 }}>
+                <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                     <Palette size={24} />
                 </ThemeIcon>
                 <div>
@@ -657,7 +639,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const StepAgreement = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'orange', to: 'red', deg: 45 }}>
+                <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                     <FileText size={24} />
                 </ThemeIcon>
                 <div>
@@ -700,7 +682,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
         <Stack gap="lg">
             <Group justify="space-between" align="center">
                 <div className="flex items-center gap-3">
-                    <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'emerald', to: 'green', deg: 45 }}>
+                    <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                         <Calculator size={24} />
                     </ThemeIcon>
                     <div>
@@ -721,7 +703,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
             </Group>
 
             {loadingCosts ? (
-                <Paper p="xl" radius="lg" className="text-center bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800">
+                <Paper p="xl" radius="lg" className="text-center bg-blue-50 dark:bg-gray-800">
                     <Loader size="xl" type="dots" />
                     <Text mt="md" c="dimmed" fw={500}>Calculating your campaign costs...</Text>
                 </Paper>
@@ -729,7 +711,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                 <Stack gap="lg">
                     <Grid gutter="lg">
                         <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Card withBorder p="lg" radius="lg" className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-gray-800 dark:to-gray-800 border-blue-200 dark:border-gray-700">
+                            <Card withBorder p="lg" radius="lg" className="bg-blue-50 dark:bg-gray-800 border-blue-200 dark:border-gray-700">
                                 <Stack gap="xs">
                                     <Text size="sm" c="dimmed" tt="uppercase" fw={600}>Helmets</Text>
                                     <Text fw={700} size="2rem" className="text-blue-600 dark:text-blue-400">
@@ -739,7 +721,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             </Card>
                         </Grid.Col>
                         <Grid.Col span={{ base: 12, sm: 6 }}>
-                            <Card withBorder p="lg" radius="lg" className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-800 dark:to-gray-800 border-purple-200 dark:border-gray-700">
+                            <Card withBorder p="lg" radius="lg" className="bg-purple-50 dark:bg-gray-800 border-purple-200 dark:border-gray-700">
                                 <Stack gap="xs">
                                     <Text size="sm" c="dimmed" tt="uppercase" fw={600}>Duration</Text>
                                     <Text fw={700} size="2rem" className="text-purple-600 dark:text-purple-400">
@@ -806,7 +788,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                         </Table.Tr>
                                     )}
 
-                                    <Table.Tr className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20">
+                                    <Table.Tr className="bg-emerald-50 dark:bg-emerald-900/20">
                                         <Table.Td>
                                             <Text fw={700} size="xl" className="text-emerald-700 dark:text-emerald-400">
                                                 Total Amount
@@ -831,7 +813,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                     </Alert>
                 </Stack>
             ) : (
-                <Paper p="xl" radius="lg" className="text-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800">
+                <Paper p="xl" radius="lg" className="text-center bg-gray-50 dark:bg-gray-800">
                     <div className="flex justify-center mb-4">
                         <ThemeIcon size={64} radius="xl" variant="light" color="gray">
                             <Calculator size={32} />
@@ -845,8 +827,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         onClick={calculateCosts}
                         disabled={!formData.helmet_count || !duration}
                         leftSection={<Calculator size={18} />}
-                        gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                        variant="gradient"
+                        variant="filled"
+                        color="orange"
                         size="lg"
                         radius="md"
                     >
@@ -860,7 +842,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
     const StepFinalReview = useMemo(() => (
         <Stack gap="lg">
             <div className="flex items-center gap-3 mb-2">
-                <ThemeIcon size="xl" radius="xl" variant="gradient" gradient={{ from: 'indigo', to: 'violet', deg: 45 }}>
+                <ThemeIcon size="xl" radius="xl" variant="filled" color="orange">
                     <Eye size={24} />
                 </ThemeIcon>
                 <div>
@@ -871,8 +853,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
             <Alert icon={<Info size={18} />} color="blue" variant="light" radius="md">
                 <Text size="sm" fw={500}>
-                    Please review all details carefully before submitting your campaign.
-                    You can pay now or later.
+                    Please review all details carefully. Once you click "Save Campaign" below,
+                    your campaign will be saved and you'll be taken to a simple payment page to finish up.
                 </Text>
             </Alert>
 
@@ -924,7 +906,7 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
 
                     <div>
                         <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb="xs">Total Cost</Text>
-                        <Paper p="md" radius="md" className="bg-gradient-to-r from-emerald-500 to-green-600 text-white">
+                        <Paper p="md" radius="md" className="bg-emerald-500 text-white">
                             <Group justify="space-between" align="center">
                                 <Text fw={600}>Campaign Total</Text>
                                 <Text fw={700} size="2rem">
@@ -933,19 +915,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                             </Group>
                         </Paper>
                     </div>
-
-                    {/* Payment Status */}
-                    {paymentData && (
-                        <Alert icon={<CheckCircle size={18} />} color="green" variant="filled" radius="md">
-                            <Stack gap="xs">
-                                <Text fw={700}>Payment Completed</Text>
-                                <Group gap="xs">
-                                    <Badge color="white" variant="outline">Receipt: {paymentData.mpesa_receipt}</Badge>
-                                    <Badge color="white" variant="outline">Ref: {paymentData.reference}</Badge>
-                                </Group>
-                            </Stack>
-                        </Alert>
-                    )}
                 </Stack>
             </Card>
 
@@ -959,23 +928,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                     required
                 />
             </Card>
-
-            {/* Pay Now Button */}
-            {!paymentData && costBreakdown && (
-                <Button
-                    onClick={openPaymentModal}
-                    size="xl"
-                    radius="md"
-                    leftSection={<CreditCard size={22} />}
-                    gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                    variant="gradient"
-                    fullWidth
-                >
-                    Pay Now - KES {costBreakdown.total_cost.toLocaleString()}
-                </Button>
-            )}
         </Stack>
-    ), [formData, costBreakdown, duration, coverageareas, updateFormData, paymentData, openPaymentModal]);
+    ), [formData, costBreakdown, duration, coverageareas, updateFormData]);
 
     return (
         <>
@@ -1066,6 +1020,23 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                 {activeStep === 5 && StepFinalReview}
                             </div>
 
+                            {Object.keys(errors).length > 0 && (
+                                <Alert
+                                    icon={<AlertCircle size={18} />}
+                                    color="red"
+                                    variant="light"
+                                    radius="md"
+                                    mt="lg"
+                                    title="We couldn't save your campaign"
+                                >
+                                    <Stack gap={4}>
+                                        {Object.values(errors).map((message, i) => (
+                                            <Text size="sm" key={i}>{message}</Text>
+                                        ))}
+                                    </Stack>
+                                </Alert>
+                            )}
+
                             {/* Navigation Buttons */}
                             <Group justify="space-between" pt="xl" mt="xl" className="border-t-2 border-gray-100 dark:border-gray-700">
                                 <Button
@@ -1086,10 +1057,10 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                                     rightSection={activeStep === 5 ? <Flag size={18} /> : <ArrowRight size={18} />}
                                     size="lg"
                                     radius="md"
-                                    gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                                    variant="gradient"
+                                    variant="filled"
+                                    color="orange"
                                 >
-                                    {activeStep === 5 ? 'Submit Campaign' : 'Continue'}
+                                    {activeStep === 5 ? 'Save Campaign & Continue to Payment' : 'Continue'}
                                 </Button>
                             </Group>
                         </form>
@@ -1181,8 +1152,8 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                         <Button
                             onClick={handleCreateCoverageArea}
                             disabled={!newCoverageArea.name}
-                            gradient={{ from: 'blue', to: 'purple', deg: 45 }}
-                            variant="gradient"
+                            variant="filled"
+                            color="orange"
                             radius="md"
                             size="md"
                             leftSection={<Plus size={18} />}
@@ -1192,22 +1163,6 @@ export default function CampaignForm({ advertiser, advertisers, coverageareas }:
                     </Group>
                 </Stack>
             </Modal>
-
-            {/* Payment Modal */}
-            {costBreakdown && formData.advertiser_id && (
-                <MpesaPaymentModal
-                    opened={paymentModalOpened}
-                    onClose={closePaymentModal}
-                    costBreakdown={costBreakdown}
-                    advertiserId={formData.advertiser_id}
-                    campaignData={{
-                        name: formData.name,
-                        helmet_count: formData.helmet_count,
-                        duration: duration
-                    }}
-                    onPaymentSuccess={handlePaymentSuccess}
-                />
-            )}
         </>
     );
 }

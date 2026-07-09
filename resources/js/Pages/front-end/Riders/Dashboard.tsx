@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { Modal, Button, Alert, Text } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
+import { CheckCircle, Banknote, Target, AlertTriangle, Zap, Calendar, Wallet, Map, Smartphone } from 'lucide-react';
 import RiderLayout from '@/Layouts/RiderLayout';
 import QrScanner from '@/Components/frontend/CheckIn/QrScanner';
 import ManualQrInput from '@/Components/frontend/CheckIn/ManualQrInput';
+import LocationTrackingService from '@/Services/LocationTracking';
 import axios from 'axios';
 import type { PageProps } from '@/types';
 
@@ -16,14 +18,6 @@ interface StatCard {
     change: string;
     trend: 'up' | 'down' | 'neutral';
     icon: string;
-}
-
-interface Earning {
-    id: number;
-    desc: string;
-    amount: string;
-    date: string;
-    type: 'earning' | 'withdrawal';
 }
 
 interface CurrentCampaign {
@@ -45,7 +39,9 @@ interface TodayProgress {
 
 interface TodayStatus {
     id: number;
-    status: 'active' | 'completed';
+    // Real values from CheckInService::getTodayCheckInStatus() — the raw
+    // rider_check_ins.status enum, not 'active'/'completed'.
+    status: 'started' | 'paused' | 'resumed' | 'ended';
     check_in_time: string;
     check_out_time: string;
     worked_hours: number | null;
@@ -62,12 +58,55 @@ interface CheckInConfirmation {
     daily_earning: string;
 }
 
+// ── Stat icon map — single theme-colored icon per stat, no emoji ───────────────
+
+const STAT_ICONS: Record<string, typeof Calendar> = {
+    calendar: Calendar,
+    wallet: Wallet,
+    map: Map,
+    smartphone: Smartphone,
+};
+
+function StatIcon({ icon }: { icon: string }) {
+    const Icon = STAT_ICONS[icon] ?? Wallet;
+    return (
+        <div className="w-11 h-11 rounded-lg bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center flex-shrink-0">
+            <Icon size={20} className="text-[#f79122]" />
+        </div>
+    );
+}
+
+interface EarningsSummaryDay {
+    date: string;
+    worked_hours: number;
+    payable_hours: number;
+    daily_earning: number;
+    max_possible_earning: number;
+    qualified: boolean;
+    settled: boolean;
+}
+
+interface EarningsSummary {
+    total_hours_worked: number;
+    total_earning: number;
+    total_owed: number;
+    total_settled: number;
+    days: EarningsSummaryDay[];
+}
+
+interface CheckInWindow {
+    is_open: boolean;
+    opens_at: string;
+    closes_at: string;
+    message: string | null;
+}
+
 interface Props {
     todayStatus?: TodayStatus;
     stats?: StatCard[];
     currentCampaign?: CurrentCampaign | null;
-    recentEarnings?: Earning[];
     todayProgress?: TodayProgress;
+    checkInWindow?: CheckInWindow;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -76,8 +115,8 @@ export default function RiderDashboard({
     todayStatus: initialStatus,
     stats,
     currentCampaign,
-    recentEarnings,
     todayProgress,
+    checkInWindow,
 }: Props) {
     const { auth } = usePage<PageProps>().props;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,13 +128,47 @@ export default function RiderDashboard({
     const [loading, setLoading]                 = useState(false);
     const [confirmationData, setConfirmationData] = useState<CheckInConfirmation | null>(null);
     const [showConfirmation, setShowConfirmation] = useState(false);
+    const [earningsSummary, setEarningsSummary] = useState<EarningsSummary | null>(null);
 
-    useEffect(() => { fetchTodayStatus(); }, []);
+    useEffect(() => {
+        fetchTodayStatus();
+        fetchEarningsSummary();
+        // Don't trust cached client state on unmount either — if the rider
+        // navigates away mid-shift the interval would otherwise keep firing.
+        return () => { LocationTrackingService.stopTracking(); };
+    }, []);
+
+    const fetchEarningsSummary = async () => {
+        try {
+            const res = await axios.get('/rider/check-in/earnings-summary');
+            if (res.data.success) setEarningsSummary(res.data.data);
+        } catch { /* non-critical — table just stays empty */ }
+    };
+
+    // Server is the only source of truth for whether GPS should be
+    // streaming — re-derived every time we fetch status (on mount, after
+    // check-in, after checkout), never assumed from prior client state.
+    const syncGpsTracking = (status: TodayStatus | null) => {
+        if (status && status.status !== 'ended') {
+            if (!LocationTrackingService.isTracking()) {
+                try {
+                    LocationTrackingService.startTracking();
+                } catch (err) {
+                    console.error('Failed to start location tracking:', err);
+                }
+            }
+        } else {
+            LocationTrackingService.stopTracking();
+        }
+    };
 
     const fetchTodayStatus = async () => {
         try {
             const res = await axios.get('/rider/check-in/status');
-            if (res.data.success) setTodayStatus(res.data.data);
+            if (res.data.success) {
+                setTodayStatus(res.data.data);
+                syncGpsTracking(res.data.data);
+            }
         } catch { /* silent — page already has SSR status */ }
     };
 
@@ -112,15 +185,11 @@ export default function RiderDashboard({
                 });
                 setShowConfirmation(true);
                 await fetchTodayStatus();
-                notifications.show({ title: 'Success', message: res.data.message, color: 'green' });
+                showSuccessToast(res.data.message);
             }
         } catch (error: unknown) {
             const err = error as { response?: { data?: { message?: string } } };
-            notifications.show({
-                title: 'Check-in Failed',
-                message: err.response?.data?.message ?? 'Failed to check in. Please try again.',
-                color: 'red',
-            });
+            showErrorToast(err.response?.data?.message ?? 'Failed to check in. Please try again.', { title: 'Check-in Failed' });
         } finally {
             setLoading(false);
         }
@@ -130,19 +199,16 @@ export default function RiderDashboard({
         if (!window.confirm('Are you sure you want to check out?')) return;
         setLoading(true);
         try {
-            const res = await axios.post('/rider/check-out');
+            const res = await axios.post('/rider/check-in/check-out');
             if (res.data.success) {
-                notifications.show({ title: 'Success', message: res.data.message, color: 'green' });
+                showSuccessToast(res.data.message);
                 await fetchTodayStatus();
+                await fetchEarningsSummary();
                 router.reload();
             }
         } catch (error: unknown) {
             const err = error as { response?: { data?: { message?: string } } };
-            notifications.show({
-                title: 'Check-out Failed',
-                message: err.response?.data?.message ?? 'Failed to check out. Please try again.',
-                color: 'red',
-            });
+            showErrorToast(err.response?.data?.message ?? 'Failed to check out. Please try again.', { title: 'Check-out Failed' });
         } finally {
             setLoading(false);
         }
@@ -152,6 +218,8 @@ export default function RiderDashboard({
         t === 'up' ? 'text-green-600 dark:text-green-400' :
         t === 'down' ? 'text-red-600 dark:text-red-400' :
         'text-gray-600 dark:text-gray-400';
+
+    const canCheckIn = checkInWindow?.is_open ?? true;
 
     const workedHours  = todayProgress?.worked_hours ?? todayStatus?.worked_hours ?? 0;
     const distanceKm   = todayProgress?.distance_km ?? 0;
@@ -179,7 +247,7 @@ export default function RiderDashboard({
                     <div className="space-y-4">
                         <div className="flex items-center justify-center">
                             <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                                <span className="text-3xl text-green-600">✓</span>
+                                <CheckCircle size={32} className="text-green-600" />
                             </div>
                         </div>
                         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
@@ -212,8 +280,8 @@ export default function RiderDashboard({
 
                 {/* Check-in alert */}
                 {todayStatus ? (
-                    todayStatus.status === 'active' ? (
-                        <Alert color="green" title="You're checked in!" icon="✓">
+                    todayStatus.status !== 'ended' ? (
+                        <Alert color="green" title="You're checked in!" icon={<CheckCircle size={16} />}>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                 <div>
                                     <Text size="sm">Check-in time: {todayStatus.check_in_time}</Text>
@@ -223,17 +291,21 @@ export default function RiderDashboard({
                             </div>
                         </Alert>
                     ) : (
-                        <Alert color="blue" title="Work Complete" icon="✓">
+                        <Alert color="blue" title="Work Complete" icon={<CheckCircle size={16} />}>
                             <Text size="sm">You completed your work today. Hours worked: {todayStatus.worked_hours?.toFixed(2) ?? 0} hours</Text>
                         </Alert>
                     )
                 ) : (
-                    <Alert color="yellow" title="Ready to start?" icon="⚡">
+                    <Alert color={canCheckIn ? 'yellow' : 'gray'} title="Ready to start?" icon={<Zap size={16} />}>
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <Text size="sm">Scan your helmet QR code to check in and start earning!</Text>
+                            <Text size="sm">
+                                {canCheckIn
+                                    ? 'Scan your helmet QR code to check in and start earning!'
+                                    : checkInWindow?.message ?? 'Check-in is currently closed.'}
+                            </Text>
                             <div className="flex gap-2">
-                                <Button color="green" onClick={() => setScannerOpen(true)} loading={loading}>Scan QR Code</Button>
-                                <Button variant="outline" onClick={() => setManualInputOpen(true)}>Enter Manually</Button>
+                                <Button color="green" onClick={() => setScannerOpen(true)} loading={loading} disabled={!canCheckIn}>Scan QR Code</Button>
+                                <Button variant="outline" onClick={() => setManualInputOpen(true)} disabled={!canCheckIn}>Enter Manually</Button>
                             </div>
                         </div>
                     </Alert>
@@ -255,7 +327,9 @@ export default function RiderDashboard({
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="text-2xl sm:text-3xl flex-shrink-0 ml-4">{stat.icon}</div>
+                                        <div className="ml-4">
+                                            <StatIcon icon={stat.icon} />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -274,8 +348,8 @@ export default function RiderDashboard({
                             {currentCampaign ? (
                                 <>
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <span className="text-white font-bold">🎯</span>
+                                        <div className="w-12 h-12 bg-[#f79122] rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <Target size={22} className="text-white" />
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <h4 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{currentCampaign.name}</h4>
@@ -312,10 +386,11 @@ export default function RiderDashboard({
                                         {!todayStatus ? (
                                             <button
                                                 onClick={() => setScannerOpen(true)}
-                                                disabled={loading}
+                                                disabled={loading || !canCheckIn}
+                                                title={!canCheckIn ? checkInWindow?.message ?? undefined : undefined}
                                                 className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
                                             >
-                                                {loading ? 'Processing...' : 'Check In Today'}
+                                                {loading ? 'Processing...' : canCheckIn ? 'Check In Today' : 'Check-in Closed'}
                                             </button>
                                         ) : todayStatus.can_check_out ? (
                                             <button
@@ -338,9 +413,11 @@ export default function RiderDashboard({
                                     {!todayStatus && (
                                         <button
                                             onClick={() => setScannerOpen(true)}
-                                            className="mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                                            disabled={!canCheckIn}
+                                            title={!canCheckIn ? checkInWindow?.message ?? undefined : undefined}
+                                            className="mt-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg text-sm font-medium"
                                         >
-                                            Scan QR to Check In
+                                            {canCheckIn ? 'Scan QR to Check In' : 'Check-in Closed'}
                                         </button>
                                     )}
                                 </div>
@@ -383,12 +460,12 @@ export default function RiderDashboard({
                             </div>
 
                             {/* Today's earning */}
-                            <div className={`rounded-lg p-4 ${todayStatus?.status === 'active' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-700'}`}>
+                            <div className={`rounded-lg p-4 ${todayStatus && todayStatus.status !== 'ended' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-700'}`}>
                                 <div className="flex items-center gap-3">
-                                    <span className="text-lg">💰</span>
+                                    <Banknote size={20} className="text-green-600 dark:text-green-400 flex-shrink-0" />
                                     <div>
                                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                                            {todayStatus?.status === 'active' ? "Today's Earning (In Progress)" : "Today's Earning"}
+                                            {todayStatus && todayStatus.status !== 'ended' ? "Today's Earning (In Progress)" : "Today's Earning"}
                                         </p>
                                         <p className="text-lg font-bold text-gray-900 dark:text-white">{dailyEarning}</p>
                                     </div>
@@ -398,31 +475,76 @@ export default function RiderDashboard({
                     </div>
                 </div>
 
-                {/* Recent Earnings */}
+                {/* Earnings Summary */}
                 <div className="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700">
                     <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Earnings</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Earnings Summary</h3>
                     </div>
-                    <div className="p-4 sm:p-6 space-y-3">
-                        {recentEarnings && recentEarnings.length > 0 ? (
-                            recentEarnings.map((e) => (
-                                <div key={e.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                    <div className="flex items-center space-x-3 min-w-0 flex-1">
-                                        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-green-100 dark:bg-green-800">
-                                            <span className="text-green-600 dark:text-green-400">💰</span>
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{e.desc}</p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">{e.date}</p>
-                                        </div>
-                                    </div>
-                                    <p className="text-sm font-semibold text-green-600 dark:text-green-400 flex-shrink-0 ml-2">{e.amount}</p>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-sm text-gray-400 text-center py-4">No earnings yet. Check in to start earning!</p>
-                        )}
-                    </div>
+                    {earningsSummary && earningsSummary.days.length > 0 ? (
+                        <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 420 }}>
+                            <table className="w-full text-sm">
+                                <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10">
+                                    <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase text-gray-500 dark:text-gray-400">
+                                        <th className="px-4 sm:px-6 py-2 font-medium">Date</th>
+                                        <th className="px-4 sm:px-6 py-2 font-medium text-right">Hours Worked</th>
+                                        <th className="px-4 sm:px-6 py-2 font-medium text-right">Amount Awarded</th>
+                                        <th className="px-4 sm:px-6 py-2 font-medium text-right">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    {earningsSummary.days.map((day) => (
+                                        <tr key={day.date}>
+                                            <td className="px-4 sm:px-6 py-3 text-gray-900 dark:text-white whitespace-nowrap">
+                                                {new Date(day.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </td>
+                                            <td className="px-4 sm:px-6 py-3 text-right text-gray-700 dark:text-gray-300">
+                                                {day.worked_hours.toFixed(2)}h
+                                            </td>
+                                            <td className="px-4 sm:px-6 py-3 text-right whitespace-nowrap">
+                                                <span className="text-gray-500 dark:text-gray-400">KSh </span>
+                                                <span className="font-semibold text-green-600 dark:text-green-400">
+                                                    {day.daily_earning.toFixed(2)}
+                                                </span>
+                                                <span className="text-gray-400 dark:text-gray-500"> / {day.max_possible_earning.toFixed(2)}</span>
+                                            </td>
+                                            <td className="px-4 sm:px-6 py-3 text-right">
+                                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                    !day.qualified
+                                                        ? 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                                                        : day.settled
+                                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                                }`}>
+                                                    {!day.qualified ? 'Below minimum' : day.settled ? 'Settled' : 'Pending'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-gray-200 dark:border-gray-700 font-semibold">
+                                        <td className="px-4 sm:px-6 py-3 text-gray-900 dark:text-white">Total</td>
+                                        <td className="px-4 sm:px-6 py-3 text-right text-gray-900 dark:text-white">
+                                            {earningsSummary.total_hours_worked.toFixed(2)}h
+                                        </td>
+                                        <td className="px-4 sm:px-6 py-3 text-right whitespace-nowrap">
+                                            <span className="text-gray-500 dark:text-gray-400">KSh </span>
+                                            <span className="text-green-700 dark:text-green-400">{earningsSummary.total_earning.toFixed(2)}</span>
+                                            <span className="text-gray-400 dark:text-gray-500">
+                                                {' / '}
+                                                {earningsSummary.days.reduce((sum, d) => sum + d.max_possible_earning, 0).toFixed(2)}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 sm:px-6 py-3 text-right text-xs text-gray-500 dark:text-gray-400">
+                                            {earningsSummary.total_owed > 0 ? `KSh ${earningsSummary.total_owed.toFixed(2)} owed` : 'All settled'}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-400 text-center py-8">No earnings yet. Check in to start earning!</p>
+                    )}
                 </div>
             </div>
         </RiderLayout>

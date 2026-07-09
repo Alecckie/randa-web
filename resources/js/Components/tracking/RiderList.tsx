@@ -56,7 +56,7 @@ export default function RiderList({
                             onClick={() => onRiderClick?.(rider.id)}
                             className={`
                                 p-3 rounded-lg cursor-pointer transition-all
-                                hover:bg-gray-50 dark:hover:bg-gray-700
+                                hover:bg-gray-50
                                 ${selectedRiderId === rider.id 
                                     ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500' 
                                     : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'

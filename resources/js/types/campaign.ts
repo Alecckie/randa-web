@@ -2,19 +2,33 @@ import { Advertiser } from "./advertiser";
 
 // types/campaign.ts
 
+// Pure operational lifecycle — independent of payment. A campaign may only
+// move to 'active' once CampaignPaymentStatus is 'paid'.
 export type CampaignStatus =
     | 'draft'
-    | 'pending_payment'
-    | 'paid'
+    | 'submitted'
     | 'active'
     | 'paused'
     | 'completed'
     | 'cancelled';
 
-export type PaymentStatus = 'idle' | 'initiating' | 'pending' | 'success' | 'failed' | 'timeout' | 'pending_verification';
+// Payment state for a campaign — separate from campaign lifecycle status.
+// STK push success and admin-recorded payments go straight to 'paid';
+// only advertiser-submitted receipts pass through 'pending_verification'.
+export type CampaignPaymentStatus =
+    | 'unpaid'
+    | 'pending_verification'
+    | 'rejected'
+    | 'partially_paid'
+    | 'paid';
+
+// UI-local state for the M-Pesa payment modal's own flow — NOT the same
+// thing as CampaignPaymentStatus (this is transient client-side state).
+export type PaymentFlowState = 'idle' | 'initiating' | 'pending' | 'success' | 'failed' | 'timeout' | 'pending_verification';
 
 export interface Campaign {
     id: number;
+    campaign_number?: string;
     advertiser_id: number;
     name: string;
     description: string | null;
@@ -33,7 +47,7 @@ export interface Campaign {
     updated_at: string;
     current_cost?: CampaignCost | null;
     duration_days: number;
-    payment_status?: string;
+    payment_status?: CampaignPaymentStatus;
     total_paid_amount?: number;
     coverage_areas?: CoverageArea[] | string; // Fixed: can be array of objects or string
     advertiser?: Advertiser;
@@ -118,12 +132,14 @@ export interface CampaignsIndexProps {
     };
     stats: {
         total_campaigns: number;
-        pending_applications?: number;
-        approved_campaigns?: number;
-        rejected_applications?: number;
         draft_campaigns: number;
-        completed_campaigns: number;
+        submitted_campaigns?: number;
         active_campaigns: number;
+        paused_campaigns?: number;
+        completed_campaigns: number;
+        cancelled_campaigns?: number;
+        awaiting_payment?: number;
+        coverage_areas_count?: number;
     };
     filters: {
         search?: string;

@@ -1,3 +1,6 @@
+import { useRef, useEffect } from 'react';
+import { formatDate, formatDateShort } from '@/utils/formatting';
+import { getHelmetStatusColor, getAssignmentStatusColor, getCampaignStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import {
@@ -18,7 +21,7 @@ import {
 import {
     ArrowLeft,
     HardHat,
-    QrCodeIcon,
+    QrCode,
     PencilIcon,
     Trash2Icon,
     CheckCircleIcon,
@@ -31,7 +34,10 @@ import {
     ClockIcon,
     InfoIcon,
     AlertTriangleIcon,
+    DownloadIcon,
 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { jsPDF } from 'jspdf';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -85,24 +91,57 @@ interface ShowProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Show({ helmet }: ShowProps) {
+    const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        if (helmet.qr_code && qrCanvasRef.current) {
+            QRCode.toCanvas(qrCanvasRef.current, helmet.qr_code, {
+                width: 200,
+                margin: 2,
+                color: { dark: '#000000', light: '#ffffff' },
+            });
+        }
+    }, [helmet.qr_code]);
+
+    const handleDownloadPdf = () => {
+        if (!helmet.qr_code || !qrCanvasRef.current) return;
+
+        const canvas = qrCanvasRef.current;
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+
+        // Title
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('RANDA — Helmet QR Code', pageW / 2, 24, { align: 'center' });
+
+        // Helmet code
+        pdf.setFontSize(13);
+        pdf.setFont('courier', 'bold');
+        pdf.text(helmet.helmet_code, pageW / 2, 34, { align: 'center' });
+
+        // QR image centred
+        const size = 100;
+        const x = (pageW - size) / 2;
+        pdf.addImage(imgData, 'PNG', x, 44, size, size);
+
+        // QR data string below
+        pdf.setFontSize(9);
+        pdf.setFont('courier', 'normal');
+        pdf.setTextColor(100);
+        pdf.text(helmet.helmet_code, pageW / 2, 152, { align: 'center', maxWidth: pageW - 30 });
+
+        // Footer
+        pdf.setFontSize(8);
+        pdf.setTextColor(150);
+        pdf.text(`Generated ${new Date().toLocaleDateString('en-KE')} · RANDA GPS Platform`, pageW / 2, 270, { align: 'center' });
+
+        pdf.save(`${helmet.helmet_code}.pdf`);
+    };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    const getStatusColor = (status: string): string => {
-        const colors: Record<string, string> = {
-            available:   'green',
-            assigned:    'blue',
-            maintenance: 'yellow',
-            retired:     'red',
-            active:      'blue',
-            completed:   'green',
-            cancelled:   'red',
-            pending:     'yellow',
-            approved:    'green',
-            rejected:    'red',
-        };
-        return colors[status] || 'gray';
-    };
 
     const getStatusIcon = (status: Helmet['status']): React.ReactNode => {
         const icons: Record<Helmet['status'], React.ReactNode> = {
@@ -114,35 +153,11 @@ export default function Show({ helmet }: ShowProps) {
         return icons[status] ?? null;
     };
 
-    /**
-     * Prefer first_name + last_name when populated; fall back to `name`.
-     * Returns '—' if the rider or user relation is missing.
-     */
     const getRiderFullName = (rider?: Rider | null): string => {
         if (!rider?.user) return '—';
         const { first_name, last_name, name } = rider.user;
-        if (first_name || last_name) {
-            return [first_name, last_name].filter(Boolean).join(' ');
-        }
+        if (first_name || last_name) return [first_name, last_name].filter(Boolean).join(' ');
         return name || '—';
-    };
-
-    const formatDate = (date: string | null | undefined): string => {
-        if (!date) return '—';
-        const parsed = new Date(date);
-        if (isNaN(parsed.getTime())) return '—';
-        return parsed.toLocaleDateString('en-US', {
-            year: 'numeric', month: 'long', day: 'numeric',
-        });
-    };
-
-    const formatDateShort = (date: string | null | undefined): string => {
-        if (!date) return '—';
-        const parsed = new Date(date);
-        if (isNaN(parsed.getTime())) return '—';
-        return parsed.toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-        });
     };
 
     const handleDelete = () => {
@@ -153,7 +168,7 @@ export default function Show({ helmet }: ShowProps) {
 
     // ── Derived state ─────────────────────────────────────────────────────────
 
-    const assignments    = helmet.assignments ?? [];
+    const assignments      = helmet.assignments ?? [];
     const totalAssignments = assignments.length;
     const completedCount   = assignments.filter(a => a.status === 'completed').length;
     const cancelledCount   = assignments.filter(a => a.status === 'cancelled').length;
@@ -178,7 +193,7 @@ export default function Show({ helmet }: ShowProps) {
                             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white font-mono">
                                 {helmet.helmet_code}
                             </h2>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                                 Helmet Details & Assignment History
                             </p>
                         </div>
@@ -187,7 +202,7 @@ export default function Show({ helmet }: ShowProps) {
                     <Group>
                         <Badge
                             size="lg"
-                            color={getStatusColor(helmet.status)}
+                            color={getHelmetStatusColor(helmet.status)}
                             variant="light"
                             leftSection={getStatusIcon(helmet.status)}
                         >
@@ -208,6 +223,14 @@ export default function Show({ helmet }: ShowProps) {
                                 >
                                     Edit Helmet
                                 </Menu.Item>
+                                {helmet.qr_code && (
+                                    <Menu.Item
+                                        leftSection={<DownloadIcon size={14} />}
+                                        onClick={handleDownloadPdf}
+                                    >
+                                        Download QR PDF
+                                    </Menu.Item>
+                                )}
                                 <Menu.Divider />
                                 <Menu.Item
                                     leftSection={<Trash2Icon size={14} />}
@@ -253,50 +276,24 @@ export default function Show({ helmet }: ShowProps) {
 
                 {/* ── Stats overview ── */}
                 <Grid gutter="md">
-                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-                        <Paper shadow="sm" p="md" className="bg-white dark:bg-gray-800">
-                            <Group justify="apart">
-                                <div>
-                                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total Assignments</Text>
-                                    <Text size="xl" fw={700}>{totalAssignments}</Text>
-                                </div>
-                                <ClockIcon size={32} className="text-blue-500" />
-                            </Group>
-                        </Paper>
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-                        <Paper shadow="sm" p="md" className="bg-white dark:bg-gray-800">
-                            <Group justify="apart">
-                                <div>
-                                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Completed</Text>
-                                    <Text size="xl" fw={700} c="green">{completedCount}</Text>
-                                </div>
-                                <CheckCircleIcon size={32} className="text-green-500" />
-                            </Group>
-                        </Paper>
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-                        <Paper shadow="sm" p="md" className="bg-white dark:bg-gray-800">
-                            <Group justify="apart">
-                                <div>
-                                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Cancelled</Text>
-                                    <Text size="xl" fw={700} c="red">{cancelledCount}</Text>
-                                </div>
-                                <XCircleIcon size={32} className="text-red-500" />
-                            </Group>
-                        </Paper>
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-                        <Paper shadow="sm" p="md" className="bg-white dark:bg-gray-800">
-                            <Group justify="apart">
-                                <div>
-                                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Status</Text>
-                                    <Text size="xl" fw={700} tt="capitalize">{helmet.status}</Text>
-                                </div>
-                                <HardHat size={32} className="text-purple-500" />
-                            </Group>
-                        </Paper>
-                    </Grid.Col>
+                    {[
+                        { label: 'Total Assignments', value: totalAssignments, icon: <ClockIcon size={28} className="text-gray-400" /> },
+                        { label: 'Completed',         value: completedCount,   icon: <CheckCircleIcon size={28} className="text-gray-400" /> },
+                        { label: 'Cancelled',         value: cancelledCount,   icon: <XCircleIcon size={28} className="text-gray-400" /> },
+                        { label: 'Status',            value: helmet.status.charAt(0).toUpperCase() + helmet.status.slice(1), icon: <HardHat size={28} className="text-gray-400" /> },
+                    ].map((s) => (
+                        <Grid.Col key={s.label} span={{ base: 12, sm: 6, md: 3 }}>
+                            <Paper shadow="xs" p="md" withBorder className="bg-white dark:bg-gray-900">
+                                <Group justify="apart">
+                                    <div>
+                                        <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{s.label}</Text>
+                                        <Text size="xl" fw={700}>{s.value}</Text>
+                                    </div>
+                                    {s.icon}
+                                </Group>
+                            </Paper>
+                        </Grid.Col>
+                    ))}
                 </Grid>
 
                 {/* ── Main content ── */}
@@ -307,61 +304,60 @@ export default function Show({ helmet }: ShowProps) {
                         <Stack gap="md">
 
                             {/* Helmet Details */}
-                            <Card withBorder shadow="sm" radius="md" p="lg" className="bg-white dark:bg-gray-800">
+                            <Card withBorder shadow="xs" radius="md" p="lg" className="bg-white dark:bg-gray-900">
                                 <Stack gap="md">
                                     <Group>
-                                        <HardHat size={20} className="text-blue-500" />
-                                        <Text size="md" fw={700}>Helmet Details</Text>
+                                        <HardHat size={18} className="text-gray-400" />
+                                        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>Helmet Details</Text>
                                     </Group>
                                     <Divider />
                                     <Stack gap="sm">
-                                        <Group justify="apart">
-                                            <Text size="sm" c="dimmed">Helmet Code</Text>
-                                            <Text size="sm" fw={600} className="font-mono">{helmet.helmet_code}</Text>
-                                        </Group>
-                                        <Group justify="apart">
-                                            <Text size="sm" c="dimmed">Status</Text>
-                                            <Badge
-                                                color={getStatusColor(helmet.status)}
-                                                variant="light"
-                                                leftSection={getStatusIcon(helmet.status)}
-                                            >
-                                                {helmet.status.charAt(0).toUpperCase() + helmet.status.slice(1)}
-                                            </Badge>
-                                        </Group>
-                                        <Group justify="apart">
-                                            <Text size="sm" c="dimmed">Current Branding</Text>
-                                            <Text size="sm" fw={500}>{helmet.current_branding || '—'}</Text>
-                                        </Group>
-                                        <Group justify="apart">
-                                            <Text size="sm" c="dimmed">Created</Text>
-                                            <Text size="sm">{formatDate(helmet.created_at)}</Text>
-                                        </Group>
-                                        <Group justify="apart">
-                                            <Text size="sm" c="dimmed">Last Updated</Text>
-                                            <Text size="sm">{formatDate(helmet.updated_at)}</Text>
-                                        </Group>
+                                        {[
+                                            { label: 'Helmet Code', value: <span className="font-mono font-semibold">{helmet.helmet_code}</span> },
+                                            { label: 'Status', value: <Badge color={getHelmetStatusColor(helmet.status)} variant="light" leftSection={getStatusIcon(helmet.status)}>{helmet.status.charAt(0).toUpperCase() + helmet.status.slice(1)}</Badge> },
+                                            { label: 'Current Branding', value: helmet.current_branding || '—' },
+                                            { label: 'Created', value: formatDate(helmet.created_at) },
+                                            { label: 'Last Updated', value: formatDate(helmet.updated_at) },
+                                        ].map((row) => (
+                                            <Group key={row.label} justify="apart" wrap="nowrap">
+                                                <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>{row.label}</Text>
+                                                <Text size="sm" ta="right">{row.value}</Text>
+                                            </Group>
+                                        ))}
                                     </Stack>
                                 </Stack>
                             </Card>
 
                             {/* QR Code */}
-                            <Card withBorder shadow="sm" radius="md" p="lg" className="bg-white dark:bg-gray-800">
+                            <Card withBorder shadow="xs" radius="md" p="lg" className="bg-white dark:bg-gray-900">
                                 <Stack gap="md">
-                                    <Group>
-                                        <QrCodeIcon size={20} className="text-green-500" />
-                                        <Text size="md" fw={700}>QR Code</Text>
+                                    <Group justify="apart">
+                                        <Group gap="xs">
+                                            <QrCode size={18} className="text-gray-400" />
+                                            <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>QR Code</Text>
+                                        </Group>
+                                        {helmet.qr_code && (
+                                            <Button
+                                                size="xs"
+                                                variant="light"
+                                                color="green"
+                                                leftSection={<DownloadIcon size={13} />}
+                                                onClick={handleDownloadPdf}
+                                            >
+                                                Download PDF
+                                            </Button>
+                                        )}
                                     </Group>
                                     <Divider />
                                     {helmet.qr_code ? (
-                                        <Paper p="md" className="bg-gray-50 dark:bg-gray-900" radius="sm">
-                                            <Stack align="center" gap="sm">
-                                                <QrCodeIcon size={48} className="text-gray-400" />
-                                                <Text size="xs" className="font-mono text-gray-600 dark:text-gray-400 break-all text-center">
-                                                    {helmet.qr_code}
-                                                </Text>
-                                            </Stack>
-                                        </Paper>
+                                        <Stack align="center" gap="sm">
+                                            <div className="p-3 bg-white border border-gray-200 dark:border-gray-700 rounded-lg inline-block">
+                                                <canvas ref={qrCanvasRef} />
+                                            </div>
+                                            <Text size="xs" className="font-mono text-gray-500 dark:text-gray-400 break-all text-center">
+                                                {helmet.qr_code}
+                                            </Text>
+                                        </Stack>
                                     ) : (
                                         <Text size="sm" c="dimmed" ta="center" py="md">
                                             No QR code generated for this helmet.
@@ -371,9 +367,9 @@ export default function Show({ helmet }: ShowProps) {
                             </Card>
 
                             {/* Quick Actions */}
-                            <Card withBorder shadow="sm" radius="md" p="lg" className="bg-white dark:bg-gray-800">
+                            <Card withBorder shadow="xs" radius="md" p="lg" className="bg-white dark:bg-gray-900">
                                 <Stack gap="md">
-                                    <Text size="md" fw={700}>Quick Actions</Text>
+                                    <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>Quick Actions</Text>
                                     <Divider />
                                     <Stack gap="xs">
                                         <Button
@@ -385,6 +381,17 @@ export default function Show({ helmet }: ShowProps) {
                                         >
                                             Edit Helmet
                                         </Button>
+                                        {helmet.qr_code && (
+                                            <Button
+                                                fullWidth
+                                                variant="light"
+                                                color="green"
+                                                leftSection={<DownloadIcon size={16} />}
+                                                onClick={handleDownloadPdf}
+                                            >
+                                                Download QR Code PDF
+                                            </Button>
+                                        )}
                                         <Button
                                             fullWidth
                                             variant="light"
@@ -412,19 +419,17 @@ export default function Show({ helmet }: ShowProps) {
                         <Stack gap="md">
 
                             {/* Current Assignment */}
-                            <Card withBorder shadow="sm" radius="md" p="lg" className="bg-white dark:bg-gray-800">
+                            <Card withBorder shadow="xs" radius="md" p="lg" className="bg-white dark:bg-gray-900">
                                 <Stack gap="md">
                                     <Group>
-                                        <MegaphoneIcon size={20} className="text-purple-500" />
-                                        <Text size="md" fw={700}>Current Assignment</Text>
+                                        <MegaphoneIcon size={18} className="text-gray-400" />
+                                        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>Current Assignment</Text>
                                     </Group>
                                     <Divider />
 
                                     {helmet.current_assignment ? (
                                         <Paper p="md" withBorder radius="sm">
                                             <Stack gap="sm">
-
-                                                {/* Campaign row */}
                                                 <Group justify="apart">
                                                     <Group gap="xs">
                                                         <MegaphoneIcon size={14} className="text-gray-400" />
@@ -442,86 +447,61 @@ export default function Show({ helmet }: ShowProps) {
                                                     )}
                                                 </Group>
 
-                                                {/* Rider row */}
                                                 <Group justify="apart" align="flex-start">
                                                     <Group gap="xs">
                                                         <UserIcon size={14} className="text-gray-400" />
                                                         <Text size="sm" c="dimmed">Rider</Text>
                                                     </Group>
                                                     <div className="text-right">
-                                                        <Text size="sm" fw={500}>
-                                                            {getRiderFullName(helmet.current_assignment.rider)}
-                                                        </Text>
-                                                        <Text size="xs" c="dimmed">
-                                                            {helmet.current_assignment.rider?.user?.email ?? '—'}
-                                                        </Text>
+                                                        <Text size="sm" fw={500}>{getRiderFullName(helmet.current_assignment.rider)}</Text>
+                                                        <Text size="xs" c="dimmed">{helmet.current_assignment.rider?.user?.email ?? '—'}</Text>
                                                         {helmet.current_assignment.rider?.user?.phone && (
-                                                            <Text size="xs" c="dimmed">
-                                                                {helmet.current_assignment.rider.user.phone}
-                                                            </Text>
-                                                        )}
-                                                        {helmet.current_assignment.rider?.national_id && (
-                                                            <Text size="xs" c="dimmed" className="font-mono">
-                                                                ID: {helmet.current_assignment.rider.national_id}
-                                                            </Text>
+                                                            <Text size="xs" c="dimmed">{helmet.current_assignment.rider.user.phone}</Text>
                                                         )}
                                                     </div>
                                                 </Group>
 
-                                                {/* Assigned date row */}
                                                 <Group justify="apart">
                                                     <Group gap="xs">
                                                         <CalendarIcon size={14} className="text-gray-400" />
                                                         <Text size="sm" c="dimmed">Assigned On</Text>
                                                     </Group>
-                                                    <Text size="sm">
-                                                        {formatDate(helmet.current_assignment.assigned_at)}
-                                                    </Text>
+                                                    <Text size="sm">{formatDate(helmet.current_assignment.assigned_at)}</Text>
                                                 </Group>
 
-                                                {/* Campaign status row */}
                                                 <Group justify="apart">
                                                     <Text size="sm" c="dimmed">Campaign Status</Text>
                                                     {helmet.current_assignment.campaign ? (
-                                                        <Badge
-                                                            size="sm"
-                                                            color={getStatusColor(helmet.current_assignment.campaign.status)}
-                                                            variant="light"
-                                                        >
-                                                            {helmet.current_assignment.campaign.status
-                                                                .replace('_', ' ')
-                                                                .toUpperCase()}
+                                                        <Badge size="sm" color={getCampaignStatusColor(helmet.current_assignment.campaign.status)} variant="light">
+                                                            {helmet.current_assignment.campaign.status.replace('_', ' ').toUpperCase()}
                                                         </Badge>
                                                     ) : (
                                                         <Text size="sm" c="dimmed">—</Text>
                                                     )}
                                                 </Group>
-
                                             </Stack>
                                         </Paper>
                                     ) : (
-                                        <Paper p="xl" className="text-center bg-gray-50 dark:bg-gray-900" radius="sm">
-                                            <HardHat size={40} className="mx-auto text-gray-300 mb-3" />
-                                            <Text size="sm" c="dimmed">
-                                                This helmet is not currently assigned to any campaign.
-                                            </Text>
+                                        <Paper p="xl" withBorder radius="sm" className="text-center">
+                                            <HardHat size={36} className="mx-auto text-gray-300 mb-2" />
+                                            <Text size="sm" c="dimmed">Not currently assigned to any campaign.</Text>
                                         </Paper>
                                     )}
                                 </Stack>
                             </Card>
 
                             {/* Assignment History */}
-                            <Card withBorder shadow="sm" radius="md" p="lg" className="bg-white dark:bg-gray-800">
+                            <Card withBorder shadow="xs" radius="md" p="lg" className="bg-white dark:bg-gray-900">
                                 <Stack gap="md">
                                     <Group>
-                                        <ClockIcon size={20} className="text-orange-500" />
-                                        <Text size="md" fw={700}>Assignment History</Text>
-                                        <Badge variant="light" size="sm">{totalAssignments} total</Badge>
+                                        <ClockIcon size={18} className="text-gray-400" />
+                                        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>Assignment History</Text>
+                                        <Badge variant="outline" size="sm">{totalAssignments}</Badge>
                                     </Group>
                                     <Divider />
 
                                     {assignments.length > 0 ? (
-                                        <Table highlightOnHover>
+                                        <Table withTableBorder={false}>
                                             <Table.Thead>
                                                 <Table.Tr>
                                                     <Table.Th>Campaign</Table.Th>
@@ -534,8 +514,6 @@ export default function Show({ helmet }: ShowProps) {
                                             <Table.Tbody>
                                                 {assignments.map((assignment) => (
                                                     <Table.Tr key={assignment.id}>
-
-                                                        {/* Campaign */}
                                                         <Table.Td>
                                                             {assignment.campaign ? (
                                                                 <Link
@@ -548,56 +526,25 @@ export default function Show({ helmet }: ShowProps) {
                                                                 <Text size="sm" c="dimmed">—</Text>
                                                             )}
                                                         </Table.Td>
-
-                                                        {/* Rider */}
                                                         <Table.Td>
-                                                            <Text size="sm" fw={500}>
-                                                                {getRiderFullName(assignment.rider)}
-                                                            </Text>
-                                                            <Text size="xs" c="dimmed">
-                                                                {assignment.rider?.user?.email ?? '—'}
-                                                            </Text>
-                                                            {assignment.rider?.user?.phone && (
-                                                                <Text size="xs" c="dimmed">
-                                                                    {assignment.rider.user.phone}
-                                                                </Text>
-                                                            )}
-                                                            {assignment.rider?.national_id && (
-                                                                <Text size="xs" c="dimmed" className="font-mono">
-                                                                    ID: {assignment.rider.national_id}
-                                                                </Text>
-                                                            )}
+                                                            <Text size="sm" fw={500}>{getRiderFullName(assignment.rider)}</Text>
+                                                            <Text size="xs" c="dimmed">{assignment.rider?.user?.email ?? '—'}</Text>
                                                         </Table.Td>
-
-                                                        {/* Dates */}
+                                                        <Table.Td><Text size="sm">{formatDateShort(assignment.assigned_at)}</Text></Table.Td>
+                                                        <Table.Td><Text size="sm">{formatDateShort(assignment.completed_at)}</Text></Table.Td>
                                                         <Table.Td>
-                                                            <Text size="sm">{formatDateShort(assignment.assigned_at)}</Text>
-                                                        </Table.Td>
-                                                        <Table.Td>
-                                                            <Text size="sm">{formatDateShort(assignment.completed_at)}</Text>
-                                                        </Table.Td>
-
-                                                        {/* Status */}
-                                                        <Table.Td>
-                                                            <Badge
-                                                                size="sm"
-                                                                color={getStatusColor(assignment.status)}
-                                                                variant="light"
-                                                            >
+                                                            <Badge size="sm" color={getAssignmentStatusColor(assignment.status)} variant="light">
                                                                 {assignment.status}
                                                             </Badge>
                                                         </Table.Td>
-
                                                     </Table.Tr>
                                                 ))}
                                             </Table.Tbody>
                                         </Table>
                                     ) : (
-                                        <Paper p="xl" className="text-center bg-gray-50 dark:bg-gray-900" radius="sm">
-                                            <ClockIcon size={40} className="mx-auto text-gray-300 mb-3" />
-                                            <Text size="sm" c="dimmed">
-                                                No assignment history found for this helmet.
-                                            </Text>
+                                        <Paper p="xl" withBorder radius="sm" className="text-center">
+                                            <ClockIcon size={36} className="mx-auto text-gray-300 mb-2" />
+                                            <Text size="sm" c="dimmed">No assignment history found.</Text>
                                         </Paper>
                                     )}
                                 </Stack>

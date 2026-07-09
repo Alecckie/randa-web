@@ -3,7 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Modal, ScrollArea, Text, Title, Divider, Stack, Button } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { Eye, EyeOff, Mail, Phone, User, Lock, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Phone, User, Lock, AlertCircle, Megaphone, Bike } from 'lucide-react';
 
 // ── Terms content ────────────────────────────────────────────────────────────
 
@@ -52,37 +52,35 @@ function LegalModal({ opened, onClose, title, sections }: {
             centered
             overlayProps={{ opacity: 0.7, blur: 4 }}
             styles={{
-                content: { borderRadius: 16, background: '#1a1a1f', border: '1px solid rgba(255,255,255,0.08)' },
-                header: { background: '#1a1a1f', padding: '20px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' },
-                title: { color: 'white' },
-                close: { color: '#9ca3af' },
-                body: { padding: 0, background: '#1a1a1f' },
+                content: { borderRadius: 16 },
+                header: { padding: '20px 24px 16px', borderBottom: '1px solid #f3f4f6' },
+                body: { padding: 0 },
             }}
         >
             <ScrollArea h={isMobile ? 360 : 480} type="auto" offsetScrollbars>
                 <Stack gap="md" p={24}>
                     <Text size="xs" c="dimmed">Last Updated: November 2025</Text>
-                    <Divider color="rgba(255,255,255,0.1)" />
+                    <Divider />
                     {sections.map((s, i) => (
                         <div key={i}>
-                            <Title order={5} fw={700} mb={6} c="white">{s.title}</Title>
-                            {s.content && <Text size="sm" lh={1.7} c="gray.4">{s.content}</Text>}
-                            {s.intro && <Text size="sm" lh={1.7} c="gray.4">{s.intro}</Text>}
+                            <Title order={5} fw={700} mb={6}>{s.title}</Title>
+                            {s.content && <Text size="sm" lh={1.7} c="dimmed">{s.content}</Text>}
+                            {s.intro && <Text size="sm" lh={1.7} c="dimmed">{s.intro}</Text>}
                             {s.list && (
-                                <Text size="sm" lh={1.7} component="ul" pl="md" c="gray.4">
+                                <Text size="sm" lh={1.7} component="ul" pl="md" c="dimmed">
                                     {s.list.map((item, j) => <li key={j}>{item}</li>)}
                                 </Text>
                             )}
-                            {s.footer && <Text size="sm" lh={1.7} mt={4} fw={600} c="gray.3">{s.footer}</Text>}
+                            {s.footer && <Text size="sm" lh={1.7} mt={4} fw={600} c="dark">{s.footer}</Text>}
                         </div>
                     ))}
                     <div>
-                        <Title order={5} fw={700} mb={6} c="white">Contact</Title>
-                        <Text size="sm" c="gray.4">For questions, contact: <Text component="a" href="mailto:info@randamedia.co.ke" c="#f79122" fw={600}>info@randamedia.co.ke</Text></Text>
+                        <Title order={5} fw={700} mb={6}>Contact</Title>
+                        <Text size="sm" c="dimmed">For questions, contact: <Text component="a" href="mailto:info@randamedia.co.ke" c="#f79122" fw={600}>info@randamedia.co.ke</Text></Text>
                     </div>
                 </Stack>
             </ScrollArea>
-            <div className="border-t border-white/8 p-4">
+            <div className="border-t border-gray-100 p-4">
                 <Button fullWidth onClick={onClose} styles={{ root: { background: '#f79122', borderRadius: 10, fontWeight: 600 } }}>
                     Close
                 </Button>
@@ -91,9 +89,9 @@ function LegalModal({ opened, onClose, title, sections }: {
     );
 }
 
-// ── Dark input class ──────────────────────────────────────────────────────────
+// ── Input class ───────────────────────────────────────────────────────────────
 
-const inputCls = 'block w-full pl-10 pr-4 py-3 text-sm border border-white/8 rounded-xl bg-white/5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition';
+const inputCls = 'block w-full pl-10 pr-4 py-3 text-sm border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition';
 
 // ── Password toggle field ────────────────────────────────────────────────────
 
@@ -104,9 +102,9 @@ function PasswordField({ id, label, value, onChange, error, autoComplete, placeh
     const [show, setShow] = useState(false);
     return (
         <div>
-            <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+            <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
             <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                     <Lock size={15} />
                 </div>
                 <input
@@ -116,10 +114,10 @@ function PasswordField({ id, label, value, onChange, error, autoComplete, placeh
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={placeholder ?? '••••••••'}
-                    className="block w-full pl-10 pr-11 py-3 text-sm border border-white/8 rounded-xl bg-white/5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition"
+                    className="block w-full pl-10 pr-11 py-3 text-sm border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition"
                 />
                 <button type="button" onClick={() => setShow((v) => !v)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-gray-300 transition-colors">
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors">
                     {show ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
             </div>
@@ -164,67 +162,49 @@ export default function Register() {
             <LegalModal opened={termsOpened} onClose={() => setTermsOpened(false)} title="Terms of Service" sections={sections_terms} />
             <LegalModal opened={privacyOpened} onClose={() => setPrivacyOpened(false)} title="Privacy Policy" sections={sections_privacy} />
 
-            <div className="min-h-screen flex bg-[#111114]">
+            <div className="min-h-screen flex bg-white">
                 {/* ── Left branding panel ── */}
-                <div className="hidden lg:flex lg:w-[40%] bg-[#0d0d10] relative overflow-hidden flex-col justify-between p-12 xl:p-16 border-r border-white/5">
-                    <div className="absolute inset-0 opacity-[0.045]">
-                        <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                                <pattern id="g2" width="40" height="40" patternUnits="userSpaceOnUse">
-                                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1" />
-                                </pattern>
-                            </defs>
-                            <rect width="100%" height="100%" fill="url(#g2)" />
-                        </svg>
-                    </div>
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-[#f79122] opacity-[0.07] rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-                    <div className="absolute bottom-0 left-0 w-56 h-56 bg-[#f79122] opacity-[0.05] rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
-
-                    <div className="relative z-10">
-                        <img src="/assets/randa_white_logo_landscape-01-01-01-01.png" alt="RANDA" className="h-12 w-auto" />
+                <div className="hidden lg:flex lg:w-[40%] bg-slate-50 flex-col justify-between p-12 xl:p-16 border-r border-gray-200">
+                    <div>
+                        <img src="/assets/logo.png" alt="RANDA" className="h-12 w-auto" />
                     </div>
 
-                    <div className="relative z-10 space-y-8">
+                    <div className="space-y-8">
                         <div>
-                            <h1 className="text-4xl xl:text-5xl font-bold text-white leading-tight tracking-tight">
+                            <h1 className="text-4xl xl:text-5xl font-bold text-slate-800 leading-tight tracking-tight">
                                 Join the<br />
-                                <span className="text-[#f79122]">Revolution.</span>
+                                <span className="text-[#f79122]">RANDA Network.</span>
                             </h1>
-                            <p className="mt-4 text-gray-400 text-base leading-relaxed max-w-sm">
-                                Whether you're a brand or a rider, RANDA puts you at the heart of real-world advertising.
+                            <p className="mt-4 text-slate-500 text-base leading-relaxed max-w-sm">
+                                Whether you're a brand or a rider, RANDA connects you to Kenya's mobile advertising ecosystem.
                             </p>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                             {[
-                                { icon: '🚀', text: 'Launch campaigns in minutes' },
-                                { icon: '🏍️', text: 'Connect with verified riders' },
-                                { icon: '📊', text: 'Real-time performance tracking' },
-                                { icon: '💡', text: 'Innovative helmet technology' },
+                                'GPS-verified daily campaigns',
+                                'Connect with verified riders',
+                                'Real-time performance tracking',
+                                'M-Pesa payouts for riders',
                             ].map((f) => (
-                                <div key={f.text} className="flex items-center gap-4">
-                                    <span className="text-xl">{f.icon}</span>
-                                    <span className="text-gray-300 text-sm">{f.text}</span>
+                                <div key={f} className="flex items-center gap-3">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#f79122] flex-shrink-0" />
+                                    <span className="text-gray-600 text-sm">{f}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <div className="relative z-10 grid grid-cols-3 gap-4 pt-8 border-t border-white/8">
-                        {[['500+', 'Brands'], ['10K+', 'Riders'], ['98%', 'Satisfaction']].map(([v, l]) => (
-                            <div key={l} className="text-center">
-                                <div className="text-2xl font-bold text-white">{v}</div>
-                                <div className="text-xs text-gray-500 mt-0.5">{l}</div>
-                            </div>
-                        ))}
+                    <div className="pt-8 border-t border-gray-200">
+                        <p className="text-xs text-gray-400">&copy; {new Date().getFullYear()} RANDA Media Limited. Kenya.</p>
                     </div>
                 </div>
 
                 {/* ── Right form panel ── */}
-                <div className="flex-1 flex flex-col bg-[#111114] relative overflow-y-auto">
+                <div className="flex-1 flex flex-col bg-white relative overflow-y-auto">
                     <div className="absolute top-6 right-6 sm:top-8 sm:right-8">
                         <Link href={route('login')}
-                            className="text-sm font-medium text-gray-400 hover:text-[#f79122] transition-colors">
+                            className="text-sm font-medium text-gray-500 hover:text-[#f79122] transition-colors">
                             Have an account?{' '}
                             <span className="text-[#f79122] font-semibold">Sign in</span>
                         </Link>
@@ -233,22 +213,19 @@ export default function Register() {
                     <div className="flex-1 flex items-center justify-center px-6 sm:px-10 lg:px-12 py-20">
                         <div className="w-full max-w-lg">
                             {/* Mobile logo */}
-                            <div className="lg:hidden mb-10 flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-[#f79122] flex items-center justify-center shadow-lg shadow-[#f79122]/30">
-                                    <span className="text-white font-bold text-lg">R</span>
-                                </div>
-                                <span className="text-xl font-bold text-white">RANDA</span>
+                            <div className="lg:hidden mb-10">
+                                <img src="/assets/logo.png" alt="RANDA" className="h-9 w-auto" />
                             </div>
 
                             <div className="mb-8">
-                                <h2 className="text-3xl font-bold text-white">Create your account</h2>
-                                <p className="mt-2 text-gray-400 text-sm">Start your journey with RANDA today</p>
+                                <h2 className="text-3xl font-bold text-gray-900">Create your account</h2>
+                                <p className="mt-2 text-gray-500 text-sm">Start your journey with RANDA today</p>
                             </div>
 
                             <form onSubmit={submit} className="space-y-6">
                                 {/* Role selector */}
                                 <div>
-                                    <p className="text-sm font-semibold text-gray-300 mb-3">I'm joining as a…</p>
+                                    <p className="text-sm font-semibold text-gray-700 mb-3">I'm joining as a…</p>
                                     <div className="grid grid-cols-2 gap-3">
                                         {(['advertiser', 'rider'] as const).map((role) => (
                                             <button
@@ -257,12 +234,14 @@ export default function Register() {
                                                 onClick={() => setData('role', role)}
                                                 className={`flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all duration-200 ${
                                                     data.role === role
-                                                        ? 'border-[#f79122] bg-[#f79122]/8 shadow-sm shadow-[#f79122]/10'
-                                                        : 'border-white/8 hover:border-white/15 bg-white/3'
+                                                        ? 'border-[#f79122] bg-orange-50'
+                                                        : 'border-gray-200 hover:border-gray-300 bg-white'
                                                 }`}
                                             >
-                                                <span className="text-lg mb-1">{role === 'advertiser' ? '📢' : '🏍️'}</span>
-                                                <span className={`font-semibold text-sm capitalize ${data.role === role ? 'text-[#f79122]' : 'text-gray-300'}`}>
+                                                <span className={`mb-2 ${data.role === role ? 'text-[#f79122]' : 'text-gray-400'}`}>
+                                                    {role === 'advertiser' ? <Megaphone size={20} /> : <Bike size={20} />}
+                                                </span>
+                                                <span className={`font-semibold text-sm capitalize ${data.role === role ? 'text-[#f79122]' : 'text-gray-700'}`}>
                                                     {role}
                                                 </span>
                                                 <span className="text-xs text-gray-500 mt-0.5">
@@ -276,11 +255,11 @@ export default function Register() {
                                 {/* Name row */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label htmlFor="first_name" className="block text-sm font-medium text-gray-300 mb-1.5">
+                                        <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1.5">
                                             {isRider ? 'First Name' : 'Company Name'}
                                         </label>
                                         <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                                                 <User size={15} />
                                             </div>
                                             <input id="first_name" type="text" autoComplete="given-name"
@@ -292,11 +271,11 @@ export default function Register() {
                                         {errors.first_name && <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400"><AlertCircle size={11} /> {errors.first_name}</p>}
                                     </div>
                                     <div>
-                                        <label htmlFor="last_name" className="block text-sm font-medium text-gray-300 mb-1.5">
+                                        <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1.5">
                                             {isRider ? 'Last Name' : 'Contact Person'}
                                         </label>
                                         <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                                                 <User size={15} />
                                             </div>
                                             <input id="last_name" type="text" autoComplete="family-name"
@@ -311,9 +290,9 @@ export default function Register() {
 
                                 {/* Email */}
                                 <div>
-                                    <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">Email address</label>
+                                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
                                     <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                                             <Mail size={15} />
                                         </div>
                                         <input id="email" type="email" autoComplete="email"
@@ -327,9 +306,9 @@ export default function Register() {
 
                                 {/* Phone */}
                                 <div>
-                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-1.5">Phone number</label>
+                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1.5">Phone number</label>
                                     <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                                             <Phone size={15} />
                                         </div>
                                         <input id="phone" type="tel" autoComplete="tel"
@@ -365,8 +344,8 @@ export default function Register() {
                                 <label className="flex items-start gap-3 cursor-pointer group">
                                     <input type="checkbox" checked={termsAccepted}
                                         onChange={(e) => setTermsAccepted(e.target.checked)}
-                                        className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-white/5 text-[#f79122] focus:ring-[#f79122] cursor-pointer flex-shrink-0" />
-                                    <span className="text-sm text-gray-400 leading-relaxed">
+                                        className="mt-0.5 w-4 h-4 rounded border-gray-300 bg-white text-[#f79122] focus:ring-[#f79122] cursor-pointer flex-shrink-0" />
+                                    <span className="text-sm text-gray-500 leading-relaxed">
                                         I agree to the{' '}
                                         <button type="button" onClick={(e) => { e.preventDefault(); setTermsOpened(true); }}
                                             className="text-[#f79122] hover:text-[#e07a1a] font-semibold underline underline-offset-2">
@@ -384,7 +363,7 @@ export default function Register() {
                                 <button
                                     type="submit"
                                     disabled={processing || !termsAccepted}
-                                    className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-[#f79122] hover:bg-[#e07a1a] text-white text-sm font-semibold shadow-lg shadow-[#f79122]/20 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-[#f79122] hover:bg-[#e07a1a] text-white text-sm font-semibold transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     {processing ? (
                                         <>
@@ -408,7 +387,7 @@ export default function Register() {
                     </div>
 
                     <div className="px-6 pb-6 text-center">
-                        <p className="text-xs text-gray-600">© {new Date().getFullYear()} RANDA Media. All rights reserved.</p>
+                        <p className="text-xs text-gray-400">© {new Date().getFullYear()} RANDA Media. All rights reserved.</p>
                     </div>
                 </div>
             </div>

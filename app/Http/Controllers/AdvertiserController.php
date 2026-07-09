@@ -7,6 +7,7 @@ use App\Models\Advertiser;
 use App\Models\RejectionReason;
 use App\Models\User;
 use App\Services\AdvertiserService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Inertia\Inertia;
@@ -15,10 +16,12 @@ class AdvertiserController extends Controller
 {
 
     protected $advertiserService;
+    protected $notificationService;
 
-    public function __construct(AdvertiserService $advertiserService)
+    public function __construct(AdvertiserService $advertiserService, NotificationService $notificationService)
     {
         $this->advertiserService = $advertiserService;
+        $this->notificationService = $notificationService;
     }
 
     /**
@@ -176,6 +179,7 @@ class AdvertiserController extends Controller
         }
 
         $this->advertiserService->updateStatus($advertiser, 'approved');
+        $this->notificationService->notifyAdvertiserApproved($advertiser);
 
         return back()->with('success', 'Advertiser approved successfully.');
     }
@@ -191,6 +195,7 @@ class AdvertiserController extends Controller
         ]);
 
         $this->advertiserService->updateStatus($advertiser, 'rejected', $validated['reason']);
+        $this->notificationService->notifyAdvertiserRejected($advertiser, $validated['reason']);
 
         RejectionReason::create([
             'rejected_by' => auth()->id(),

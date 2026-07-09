@@ -31,16 +31,42 @@ class RiderDashboardController extends Controller
         $props = [
             'user'  => $this->formatUserData($user),
             'rider' => $rider ? $this->formatRiderData($rider) : null,
+            'checkInWindow' => $this->buildCheckInWindow(),
         ];
 
         if ($rider) {
             $props['stats']          = $this->buildRiderStats($rider);
             $props['currentCampaign']= $this->buildCurrentCampaign($rider);
-            $props['recentEarnings'] = $this->buildRecentEarnings($rider);
             $props['todayProgress']  = $this->buildTodayProgress($rider);
         }
 
         return Inertia::render('front-end/Riders/Dashboard', $props);
+    }
+
+    /**
+     * Whether a rider is currently allowed to check in (config-backed
+     * allowed hours — see config/rider_shift.php), so the frontend can
+     * disable the scan/check-in buttons instead of letting the rider hit a
+     * rejection from CheckInService::checkIn() after the fact.
+     */
+    private function buildCheckInWindow(): array
+    {
+        $now = Carbon::now();
+        $earliestHour = RiderCheckIn::earliestCheckInHour();
+        $latestHour = RiderCheckIn::latestCheckInHour();
+
+        $opensAt = Carbon::today()->setHour($earliestHour);
+        $closesAt = Carbon::today()->setHour($latestHour);
+        $isOpen = $now->hour >= $earliestHour && $now->hour < $latestHour;
+
+        return [
+            'is_open' => $isOpen,
+            'opens_at' => $opensAt->format('h:i A'),
+            'closes_at' => $closesAt->format('h:i A'),
+            'message' => $isOpen
+                ? null
+                : "Check-ins are only allowed between {$opensAt->format('h:i A')} and {$closesAt->format('h:i A')}.",
+        ];
     }
 
     private function buildRiderStats(Rider $rider): array
@@ -64,10 +90,10 @@ class RiderDashboardController extends Controller
         $qrScans        = $totalCheckins * 2;
 
         return [
-            ['name' => 'Days Worked',       'value' => (string) $daysWorked,                                           'change' => '', 'trend' => 'neutral', 'icon' => '📅'],
-            ['name' => 'Total Earnings',    'value' => 'KSh ' . number_format($totalEarnings, 2),                      'change' => '', 'trend' => 'neutral', 'icon' => '💰'],
-            ['name' => 'Distance Covered',  'value' => number_format($totalDistance, 1) . ' km',                       'change' => '', 'trend' => 'neutral', 'icon' => '🗺️'],
-            ['name' => 'QR Scans',          'value' => (string) $qrScans,                                              'change' => '', 'trend' => 'neutral', 'icon' => '📱'],
+            ['name' => 'Days Worked',       'value' => (string) $daysWorked,                                           'change' => '', 'trend' => 'neutral', 'icon' => 'calendar'],
+            ['name' => 'Total Earnings',    'value' => 'KSh ' . number_format($totalEarnings, 2),                      'change' => '', 'trend' => 'neutral', 'icon' => 'wallet'],
+            ['name' => 'Distance Covered',  'value' => number_format($totalDistance, 1) . ' km',                       'change' => '', 'trend' => 'neutral', 'icon' => 'map'],
+            ['name' => 'QR Scans',          'value' => (string) $qrScans,                                              'change' => '', 'trend' => 'neutral', 'icon' => 'smartphone'],
         ];
     }
 
@@ -103,33 +129,6 @@ class RiderDashboardController extends Controller
         ];
     }
 
-    private function buildRecentEarnings(Rider $rider): array
-    {
-        $assignmentIds = CampaignAssignment::where('rider_id', $rider->id)->pluck('id');
-
-        return RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)
-            ->where('status', 'ended')
-            ->orderByDesc('check_in_date')
-            ->take(5)
-            ->get()
-            ->map(function ($ci) {
-                $date  = $ci->check_in_date;
-                $today = Carbon::today();
-                $label = $date->isToday() ? 'Today'
-                    : ($date->isYesterday() ? 'Yesterday'
-                    : $date->diffInDays($today) . ' days ago');
-
-                return [
-                    'id'     => $ci->id,
-                    'desc'   => 'Daily earning - ' . $ci->check_in_date->format('M j'),
-                    'amount' => '+KSh ' . number_format((float) $ci->daily_earning, 2),
-                    'date'   => $label,
-                    'type'   => 'earning',
-                ];
-            })
-            ->values()
-            ->toArray();
-    }
 
     private function buildTodayProgress(Rider $rider): array
     {

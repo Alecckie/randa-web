@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCampaignRequest;
+use App\Http\Requests\UpdateCampaignRequest;
 use App\Models\Campaign;
 use App\Models\CampaignStatusHistory;
 use App\Services\CampaignAssignmentService;
@@ -35,6 +36,12 @@ class CampaignController extends Controller
 
         $campaigns = $this->campaignService->getCampaigns($filters, $user);
         $stats = $this->campaignService->getCampaignStats($user);
+
+        // total_paid_amount is a computed accessor (not eager-loaded); payment_status
+        // is a real column now and already included automatically.
+        $campaigns->getCollection()->each(
+            fn($campaign) => $campaign->append(['total_paid_amount'])
+        );
 
         // Only show advertiser filter to admins
         $advertisers = $user->role === 'admin'
@@ -72,10 +79,10 @@ class CampaignController extends Controller
     public function store(StoreCampaignRequest $request)
     {
         try {
-            $this->campaignService->createCampaign($request->validated());
+            $campaign = $this->campaignService->createCampaign($request->validated());
 
             return redirect()
-                ->route('campaigns.index')
+                ->route('campaigns.show', $campaign)
                 ->with('success', 'Campaign created successfully.');
         } catch (\Exception $e) {
             return redirect()
@@ -191,21 +198,37 @@ class CampaignController extends Controller
     public function edit(Campaign $campaign)
     {
         $advertisers = $this->campaignService->getApprovedAdvertisers();
-        // $coverageAreas = $this->campaignService->getAvailableCoverageAreas();
+        $coverageAreas = $this->coverageAreasService->forSelect();
+
+        $campaign->load(['advertiser.user', 'coverageAreas', 'riderDemographics']);
 
         return Inertia::render('Campaigns/Edit', [
-            'campaign' => $campaign->load('advertiser.user'),
+            'campaign' => $campaign,
             'advertisers' => $advertisers,
-            // 'coverageAreas' => $coverageAreas,
+            'coverageareas' => $coverageAreas,
         ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Campaign $campaign)
+    public function update(UpdateCampaignRequest $request, Campaign $campaign)
     {
-        //
+        try {
+            $this->campaignService->updateCampaign(
+                $campaign,
+                $request->validated(),
+                $request->file('design_file')
+            );
+
+            return redirect()
+                ->route('campaigns.show', $campaign->id)
+                ->with('success', 'Campaign updated successfully.');
+        } catch (\Exception $e) {
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to update campaign: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -262,7 +285,7 @@ class CampaignController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => ['required', 'string', 'in:draft,pending_payment,paid,active,paused,completed,cancelled'],
+            'status' => ['required', 'string', 'in:draft,submitted,active,paused,completed,cancelled'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 

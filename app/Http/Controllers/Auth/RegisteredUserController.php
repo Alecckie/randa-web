@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,7 +38,7 @@ class RegisteredUserController extends Controller
             'phone' => [
                 'required',
                 'string',
-                'regex:/^0[0-9]{9}$/',
+                'regex:/^254[0-9]{9}$/',
                 'unique:users,phone',
             ],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
@@ -46,7 +47,7 @@ class RegisteredUserController extends Controller
 
 
 
-        $data['name'] = $data['first_name'] . $data['last_name'];
+        $data['name'] = trim($data['first_name'] . ' ' . $data['last_name']);
 
         $user = User::create([
             'first_name' => $data['first_name'],
@@ -59,6 +60,12 @@ class RegisteredUserController extends Controller
         ]);
 
         event(new Registered($user));
+
+        $notificationService = app(NotificationService::class);
+
+        if ($user->role === 'advertiser') {
+            $notificationService->notifyAdvertiserRegistered($user);
+        }
 
         // Auth::login($user);
 

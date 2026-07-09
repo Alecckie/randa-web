@@ -1,4 +1,5 @@
 import { useState, FormEventHandler, useRef } from 'react';
+import { initials as getInitials } from '@/utils/formatting';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import type { PageProps } from '@/types';
@@ -110,15 +111,9 @@ function PasswordField({
 // ── Initials avatar ──────────────────────────────────────────────────────────
 
 function Avatar({ name }: { name: string }) {
-    const initials = name
-        .split(' ')
-        .map((w) => w[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
     return (
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#f79122] to-[#e07a1a] flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-2xl">{initials}</span>
+        <div className="w-20 h-20 rounded-2xl bg-[#f79122] flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-2xl">{getInitials(name)}</span>
         </div>
     );
 }
@@ -205,7 +200,7 @@ export default function ProfileEdit({
                 {/* ── Profile hero card ── */}
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                     {/* Gradient banner */}
-                    <div className="h-24 bg-gradient-to-r from-[#f79122] via-orange-400 to-amber-400" />
+                    <div className="h-24 bg-[#f79122]" />
 
                     <div className="px-6 pb-6">
                         {/* Avatar overlaps banner */}
@@ -243,8 +238,8 @@ export default function ProfileEdit({
                 {/* ── Profile Information ── */}
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-                            <User size={16} className="text-blue-600 dark:text-blue-400" />
+                        <div className="w-8 h-8 rounded-lg bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center">
+                            <User size={16} className="text-[#f79122]" />
                         </div>
                         <div>
                             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Profile Information</h2>
@@ -311,8 +306,8 @@ export default function ProfileEdit({
                     className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden"
                 >
                     <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
-                            <Shield size={16} className="text-purple-600 dark:text-purple-400" />
+                        <div className="w-8 h-8 rounded-lg bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center">
+                            <Shield size={16} className="text-[#f79122]" />
                         </div>
                         <div>
                             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Change Password</h2>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import AdvertiserLayout from '@/Layouts/AdvertiserLayout';
@@ -41,6 +41,16 @@ export default function AdvertiserAnalytics({ campaigns }: Props) {
             setLoading(false);
         }
     };
+
+    // Deep-link support: /advertiser/analytics?campaign=123 preselects that campaign.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const campaignParam = params.get('campaign');
+        if (campaignParam) {
+            handleSelect(Number(campaignParam));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <AdvertiserLayout title="Analytics" activeNav="analytics">

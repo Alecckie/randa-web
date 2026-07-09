@@ -2,10 +2,26 @@ import axios from 'axios';
 
 type TrackingStatus = 'stopped' | 'active' | 'paused';
 
+// A rider parked/idling shouldn't rack up full-frequency pings — pay is
+// based on actual movement (see RiderMovementAnalyzer server-side), and
+// there's no point spending battery/data confirming "still here" every
+// 15 seconds. Below this distance since the last SENT point, a tick is
+// skipped rather than posted.
+const STATIONARY_DISTANCE_METERS = 15;
+
+// ...but never go fully silent for long — a heartbeat at this interval
+// keeps the rider visible on live tracking views (a real stop shouldn't
+// look identical to a dead app) and gives the backend's movement analyzer
+// a data point to confirm the stationary period is still ongoing rather
+// than inferring it from a large gap.
+const HEARTBEAT_INTERVAL_MS = 120_000; // 2 minutes
+
 class LocationTrackingService {
   private intervalId: number | null = null;
   private status: TrackingStatus = 'stopped';
   private locationQueue: any[] = []; // For offline storage
+  private sendInProgress = false;
+  private lastSent: { latitude: number; longitude: number; at: number } | null = null;
 
   /**
    * Start tracking - sends location every 15 seconds
@@ -44,6 +60,8 @@ class LocationTrackingService {
       this.intervalId = null;
     }
     this.status = 'stopped';
+    this.sendInProgress = false;
+    this.lastSent = null;
     console.log('🛑 Location tracking stopped');
   }
 
@@ -101,13 +119,27 @@ class LocationTrackingService {
    * Get current position and send to server
    */
   private async sendLocation(): Promise<void> {
+    // Skip this tick if the previous lookup is still in flight (e.g. weak GPS
+    // signal taking close to the 10s timeout) so requests can't pile up.
+    if (this.sendInProgress) {
+      console.warn('⏭️ Skipping location tick — previous lookup still in progress');
+      return;
+    }
+    this.sendInProgress = true;
+
     try {
       // Get current position from browser
       const position = await this.getCurrentPosition();
+      const { latitude, longitude } = position.coords;
+
+      if (this.shouldSkipAsStationary(latitude, longitude)) {
+        console.log('🅿️ Stationary — skipping this tick (no meaningful movement since last send)');
+        return;
+      }
 
       const locationData = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
+        latitude,
+        longitude,
         accuracy: position.coords.accuracy,
         altitude: position.coords.altitude,
         speed: position.coords.speed,
@@ -117,6 +149,7 @@ class LocationTrackingService {
 
       // Send to server
       await this.postLocationToServer(locationData);
+      this.lastSent = { latitude, longitude, at: Date.now() };
 
       // Dispatch success event
       this.dispatchEvent('location:sent', { location: locationData });
@@ -127,12 +160,53 @@ class LocationTrackingService {
       console.error('❌ Failed to send location:', error);
       
       // Dispatch error event
-      this.dispatchEvent('location:error', { 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.dispatchEvent('location:error', {
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
 
       // Don't stop tracking on error - just log and continue
+    } finally {
+      this.sendInProgress = false;
     }
+  }
+
+  /**
+   * True if the rider hasn't moved meaningfully since the last point we
+   * actually sent, and the heartbeat interval hasn't elapsed yet. The
+   * heartbeat override matters even while stationary — see
+   * HEARTBEAT_INTERVAL_MS above.
+   */
+  private shouldSkipAsStationary(latitude: number, longitude: number): boolean {
+    if (!this.lastSent) {
+      return false;
+    }
+
+    const distanceMeters = LocationTrackingService.haversineMeters(
+      this.lastSent.latitude,
+      this.lastSent.longitude,
+      latitude,
+      longitude
+    );
+
+    if (distanceMeters >= STATIONARY_DISTANCE_METERS) {
+      return false;
+    }
+
+    const elapsedSinceLastSend = Date.now() - this.lastSent.at;
+    return elapsedSinceLastSend < HEARTBEAT_INTERVAL_MS;
+  }
+
+  private static haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const earthRadiusM = 6_371_000;
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+
+    return earthRadiusM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   /**

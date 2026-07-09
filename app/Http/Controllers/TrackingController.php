@@ -160,9 +160,11 @@ class TrackingController extends Controller
                 'avg_speed'            => $route->avg_speed,
                 'max_speed'            => $route->max_speed,
                 'location_points_count' => $route->location_points_count,
-                'tracking_status'      => $route->tracking_status,
+                'tracking_status'      => $route->checkIn?->isPaused() ? 'paused' : ($route->ended_at ? 'stopped' : 'active'),
                 'total_pause_duration' => $route->total_pause_duration,
-                'pause_history'        => $route->pause_history,
+                'pause_history'        => $route->pauseEvents()
+                    ->get(['paused_at', 'resumed_at', 'duration_minutes', 'reason'])
+                    ->toArray(),
             ],
             'rider' => [
                 'id'    => $route->rider->id,

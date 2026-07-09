@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { formatDateTime } from '@/utils/formatting';
+import { getPersonStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
 import {
@@ -15,7 +17,7 @@ import {
     Table,
 } from '@mantine/core';
 import { ArrowLeft, Download, CheckCircle, XCircle, Edit, Building2, User, Mail, Phone, MapPin, FileText, Calendar, AlertCircle, Target, Eye } from 'lucide-react';
-import { notifications } from '@mantine/notifications';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
 
 interface User {
     id: number;
@@ -29,6 +31,7 @@ interface User {
 
 interface Advertiser {
     id: number;
+    advertiser_number?: string;
     user_id: number;
     company_name: string;
     business_registration?: string;
@@ -60,18 +63,7 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
         reason: '',
     });
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'approved':
-                return 'green';
-            case 'rejected':
-                return 'red';
-            case 'pending':
-                return 'yellow';
-            default:
-                return 'gray';
-        }
-    };
+    const getStatusColor = getPersonStatusColor;
 
     const handleApprove = () => {
         if (confirm('Are you sure you want to approve this advertiser? This will activate their account.')) {
@@ -79,20 +71,8 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
                 route('advertiser.approve', advertiser.id),
                 {},
                 {
-                    onSuccess: () => {
-                        notifications.show({
-                            title: 'Success',
-                            message: 'Advertiser approved successfully',
-                            color: 'green',
-                        });
-                    },
-                    onError: () => {
-                        notifications.show({
-                            title: 'Error',
-                            message: 'Failed to approve advertiser',
-                            color: 'red',
-                        });
-                    },
+                    onSuccess: () => showSuccessToast('Advertiser approved successfully'),
+                    onError: () => showErrorToast('Failed to approve advertiser'),
                 }
             );
         }
@@ -100,33 +80,19 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
 
     const handleRejectSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!data.reason.trim()) {
-            notifications.show({
-                title: 'Error',
-                message: 'Please provide a reason for rejection',
-                color: 'red',
-            });
+            showErrorToast('Please provide a reason for rejection');
             return;
         }
 
         post(route('advertiser.reject', advertiser.id), {
             onSuccess: () => {
-                notifications.show({
-                    title: 'Success',
-                    message: 'Advertiser rejected successfully',
-                    color: 'green',
-                });
+                showSuccessToast('Advertiser rejected successfully');
                 setRejectModalOpened(false);
                 reset();
             },
-            onError: () => {
-                notifications.show({
-                    title: 'Error',
-                    message: 'Failed to reject advertiser',
-                    color: 'red',
-                });
-            },
+            onError: () => showErrorToast('Failed to reject advertiser'),
         });
     };
 
@@ -134,15 +100,6 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
         window.open(route('advertiser.download-pdf', advertiser.id), '_blank');
     };
 
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
 
     return (
         <AuthenticatedLayout
@@ -162,6 +119,7 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
                                 Advertiser Details
                             </h2>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                {advertiser.advertiser_number && <span className="font-semibold text-gray-700 dark:text-gray-300">{advertiser.advertiser_number} &middot; </span>}
                                 View and manage advertiser information
                             </p>
                         </div>
@@ -334,14 +292,14 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
                             <Grid.Col span={{ base: 12, md: 6 }}>
                                 <div className="space-y-1">
                                     <Text size="sm" c="dimmed">Application Submitted</Text>
-                                    <Text size="md">{formatDate(advertiser.created_at)}</Text>
+                                    <Text size="md">{formatDateTime(advertiser.created_at)}</Text>
                                 </div>
                             </Grid.Col>
 
                             <Grid.Col span={{ base: 12, md: 6 }}>
                                 <div className="space-y-1">
                                     <Text size="sm" c="dimmed">Last Updated</Text>
-                                    <Text size="md">{formatDate(advertiser.updated_at)}</Text>
+                                    <Text size="md">{formatDateTime(advertiser.updated_at)}</Text>
                                 </div>
                             </Grid.Col>
                         </Grid>
@@ -366,7 +324,7 @@ export default function AdvertiserShow({ advertiser, rejectionReasons = [] }: Ad
                                         variant="light"
                                     >
                                         <Text size="sm" fw={500} mb={4}>
-                                            Rejected on {formatDate(rejection.created_at)}
+                                            Rejected on {formatDateTime(rejection.created_at)}
                                             {rejection.rejected_by_user && (
                                                 <span className="text-gray-600"> by {rejection.rejected_by_user.name}</span>
                                             )}

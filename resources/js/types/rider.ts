@@ -4,6 +4,7 @@ import type { Payment } from "./payment";
 
 export interface Rider {
     id: number;
+    rider_number?: string;
     user_id: number;
     national_id: string;
     national_id_front_photo: string;
@@ -21,7 +22,8 @@ export interface Rider {
     wallet_balance: string;
     created_at: string;
     updated_at: string;
-    
+    current_campaign_name?: string | null;
+
     user?: User;
     current_assignment?: CampaignAssignment;
     campaign_assignments?: CampaignAssignment[];

@@ -8,6 +8,7 @@ use App\Http\Requests\Api\Auth\RegisterRequest;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdatePasswordRequest;
 use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 class AuthController extends BaseApiController
 {
     public function __construct(
-        private UserService $userService
+        private UserService $userService,
+        private NotificationService $notificationService
     ) {}
 
     /**
@@ -31,12 +33,16 @@ class AuthController extends BaseApiController
             $user = $this->userService->createUser([
                 'first_name' => $validated['first_name'] ?? null,
                 'last_name' => $validated['last_name'] ?? null,
-                'name' => $validated['first_name'] . $validated['last_name'],
+                'name' => trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? '')),
                 'email' => $validated['email'],
                 'password' => $validated['password'],
                 'role' => $validated['role'],
                 'phone' => $validated['phone'] ?? null,
             ]);
+
+            if ($user->role === 'advertiser') {
+                $this->notificationService->notifyAdvertiserRegistered($user);
+            }
 
             // Create token
             $token = $user->createToken('mobile-app')->plainTextToken;

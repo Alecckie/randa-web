@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { formatCurrency, formatDate } from '@/utils/formatting';
+import { getCampaignStatusColor, getPaymentStatusColor } from '@/utils/status';
+import { calculateBalance, hasBalance, calculatePaymentProgress } from '@/utils/calculations';
 import { Link, router } from '@inertiajs/react';
 import {
     Button,
@@ -25,7 +28,7 @@ import {
     Calendar,
     MapPin,
     Users,
-    DollarSign,
+    Banknote,
     FileText,
     Clock,
     CheckCircle,
@@ -42,6 +45,9 @@ import {
     Eye,
     Palette,
     Receipt,
+    BarChart2,
+    Bike,
+    Zap,
 } from 'lucide-react';
 import { Advertiser } from '@/types/advertiser';
 import MpesaPaymentModal from '@/Components/payments/MpesaPaymentModal';
@@ -79,12 +85,14 @@ interface Payment {
     payment_method: string;
     mpesa_receipt_number: string;
     status: string;
+    status_message?: string | null;
     created_at: string;
     completed_at: string | null;
 }
 
 interface Campaign {
     id: number;
+    campaign_number: string;
     name: string;
     description: string;
     business_type: string;
@@ -115,6 +123,7 @@ interface Campaign {
     current_cost: CostBreakdown;
     payments: Payment[];
     duration_days: number;
+    helmets_returned_count?: number;
 }
 
 interface CampaignShowProps {
@@ -165,50 +174,27 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
         };
     }, [advertiser?.id, campaign?.id]);
 
-    const getStatusColor = (status: string): string => {
-        const colors: Record<string, string> = {
-            draft: 'yellow',
-            active: 'blue',
-            paused: 'orange',
-            completed: 'green',
-            cancelled: 'red',
-            pending_payment: 'yellow',
-            paid: 'teal'
-        };
-        return colors[status] || 'gray';
-    };
+    const getStatusColor = getCampaignStatusColor;
+    const getStatusColorPayment = getPaymentStatusColor;
+    const campaignBalance = () => calculateBalance(campaign.current_cost?.total_cost, campaign.total_paid_amount);
+    const campaignHasBalance = () => hasBalance(campaign.current_cost?.total_cost, campaign.total_paid_amount);
+    // Don't nag for payment again if a receipt has already been submitted and is awaiting admin review.
+    const needsPayment = (campaign.status === 'draft' || campaign.status === 'submitted')
+        && campaignHasBalance()
+        && campaign.payment_status !== 'pending_verification';
+    const rejectedPayment = campaign.payment_status === 'rejected'
+        ? [...campaign.payments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+        : null;
+    const rejectionReason = rejectedPayment?.status_message?.replace(/^Rejected:\s*/, '') || null;
 
-    const getPaymentStatusColor = (status: string): string => {
-        const colors: Record<string, string> = {
-            fully_paid: 'green',
-            partially_paid: 'yellow',
-            unpaid: 'red',
-        };
-        return colors[status] || 'gray';
-    };
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-KE', {
-            style: 'currency',
-            currency: 'KES',
-        }).format(amount);
-    };
-
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
-    };
-
-    const calculateBalance = () => {
-        return (campaign.current_cost?.total_cost || 0) - (campaign.total_paid_amount || 0);
-    };
-
-    const hasBalance = () => {
-        return calculateBalance() > 0;
-    };
+    // Force the advertiser straight to payment when they land on an unpaid campaign.
+    // Only fires once on load — closing the modal lets them keep browsing the page.
+    useEffect(() => {
+        if (needsPayment) {
+            openPaymentModal();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handlePaymentSuccess = (paymentData: {
         payment_id: string;
@@ -220,83 +206,250 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
         router.reload({ only: ['campaign'] });
     };
 
+    // ── Campaign journey helpers ───────────────────────────────────────────────
+    type JourneyStep = 'done' | 'active' | 'pending' | 'cancelled';
+
+    function journeySteps(status: string, paymentStatus?: string): JourneyStep[] {
+        // [created, paid, riders_assigned, live, done]
+        // Campaign lifecycle (status) and payment (paymentStatus) are
+        // independent — a 'submitted' campaign can be unpaid, pending
+        // verification, rejected, or paid, so the "paid" step needs both.
+        if (status === 'cancelled') {
+            return ['done', 'cancelled', 'cancelled', 'cancelled', 'cancelled'];
+        }
+        if (status === 'completed') {
+            return ['done', 'done', 'done', 'done', 'done'];
+        }
+        if (status === 'active' || status === 'paused') {
+            return ['done', 'done', 'done', 'active', 'pending'];
+        }
+        if (status === 'submitted') {
+            return paymentStatus === 'paid'
+                ? ['done', 'done', 'active', 'pending', 'pending']
+                : ['done', 'active', 'pending', 'pending', 'pending'];
+        }
+        // draft
+        return ['active', 'pending', 'pending', 'pending', 'pending'];
+    }
+
+    const stepLabels = [
+        { label: 'Campaign Created',     icon: FileText },
+        { label: 'Payment Complete',     icon: CheckCircle },
+        { label: 'Riders Being Assigned', icon: Bike },
+        { label: 'Campaign Live',        icon: Zap },
+        { label: 'Completed',            icon: CheckCircle },
+    ];
+
+    const steps = journeySteps(campaign.status, campaign.payment_status);
+
     return (
         <AdvertiserLayout title={`Campaign: ${campaign.name}`} activeNav="campaigns">
             <div className="pb-12">
-                    {/* Page Header */}
-                    <div className="mb-8">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                            <div className="flex items-center gap-4">
+                {/* ── Page Header ── */}
+                <div className="flex items-center gap-3 mb-6">
+                    <Button
+                        variant="subtle"
+                        leftSection={<ArrowLeft size={16} />}
+                        component={Link}
+                        href={route('my-campaigns.index')}
+                        size="sm"
+                        className="text-gray-500 hover:text-gray-800"
+                    >
+                        My Campaigns
+                    </Button>
+                </div>
+
+                <div className="mb-8">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <Group gap="sm" align="center">
+                                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                                    {campaign.name}
+                                </h1>
+                                <Badge size="lg" color={getStatusColorPayment(campaign.payment_status)}>
+                                    {campaign.payment_status?.replace('_', ' ').toUpperCase() || 'UNPAID'}
+                                </Badge>
+                            </Group>
+                            <p className="text-sm text-gray-500 mt-1">
+                                <Text component="span" fw={600} className="text-gray-700 dark:text-gray-300">{campaign.campaign_number}</Text>
+                                {' '}&middot; {campaign.business_type?.replace('_', ' ')} &middot; Started {formatDate(campaign.start_date)}
+                            </p>
+                        </div>
+                        <Group>
+                            {needsPayment && (
                                 <Button
-                                    variant="subtle"
-                                    leftSection={<ArrowLeft size={18} />}
-                                    component={Link}
-                                    href={route('my-campaigns.index')}
-                                    size="md"
-                                    className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                                >
-                                    Back
-                                </Button>
-                                <div>
-                                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                        {campaign.name}
-                                    </h1>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                        Campaign Details & Management
-                                    </p>
-                                </div>
-                            </div>
-                            <Group>
-                                <Badge
+                                    onClick={openPaymentModal}
                                     size="lg"
-                                    color={getStatusColor(campaign?.status)}
+                                    leftSection={<CreditCard size={18} />}
+                                    color="orange"
+                                    variant="filled"
+                                >
+                                    Pay Now — {formatCurrency(campaignBalance())}
+                                </Button>
+                            )}
+                            {campaign.status === 'draft' && (
+                                <Button
+                                    component={Link}
+                                    href={route('my-campaigns.edit', campaign.id)}
+                                    leftSection={<Edit size={16} />}
                                     variant="light"
                                 >
-                                    {campaign?.status?.toUpperCase()?.replace('_', ' ')}
-                                </Badge>
-                                {campaign.status === 'draft' && (
-                                    <Button
-                                        component={Link}
-                                        href={route('my-campaigns.edit', campaign.id)}
-                                        leftSection={<Edit size={16} />}
-                                        variant="light"
-                                    >
-                                        Edit
-                                    </Button>
-                                )}
-                            </Group>
+                                    Edit Campaign
+                                </Button>
+                            )}
+                            {(campaign.status === 'active' || campaign.status === 'completed') && (
+                                <Button
+                                    component={Link}
+                                    href={route('advertiser.analytics', { campaign: campaign.id })}
+                                    leftSection={<BarChart2 size={16} />}
+                                    color="orange"
+                                    variant="filled"
+                                >
+                                    View Analytics
+                                </Button>
+                            )}
+                        </Group>
+                    </div>
+
+                    {/* ── Campaign Journey ── */}
+                    <Paper shadow="sm" p="xl" radius="lg" className="bg-white dark:bg-gray-800 mb-6">
+                        <Text size="sm" fw={600} c="dimmed" tt="uppercase" mb="lg" style={{ letterSpacing: '0.05em' }}>
+                            Campaign Progress
+                        </Text>
+
+                        {/* Step track */}
+                        <div className="relative">
+                            {/* Connecting line */}
+                            <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 mx-8 hidden sm:block" />
+
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 sm:gap-2 relative">
+                                {stepLabels.map((step, i) => {
+                                    const state = steps[i];
+                                    const Icon = step.icon;
+                                    return (
+                                        <div key={i} className="flex flex-col items-center text-center gap-2 relative">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center z-10 flex-shrink-0 transition-all ${
+                                                state === 'done'      ? 'bg-green-500 text-white shadow-md' :
+                                                state === 'active'    ? 'bg-[#f79122] text-white shadow-md ring-4 ring-orange-100' :
+                                                state === 'cancelled' ? 'bg-red-400 text-white' :
+                                                                        'bg-gray-200 text-gray-400 dark:bg-gray-700'
+                                            }`}>
+                                                {state === 'done' ? (
+                                                    <CheckCircle size={18} />
+                                                ) : state === 'cancelled' ? (
+                                                    <XCircle size={18} />
+                                                ) : (
+                                                    <Icon size={18} />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <Text
+                                                    size="xs"
+                                                    fw={state === 'active' ? 700 : 500}
+                                                    c={state === 'active' ? '#f79122' : state === 'done' ? 'green' : state === 'cancelled' ? 'red' : 'dimmed'}
+                                                >
+                                                    {step.label}
+                                                </Text>
+                                                {state === 'active' && campaign.status !== 'cancelled' && (
+                                                    <Text size="xs" c="dimmed" mt={2}>Now</Text>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Alert for pending actions */}
-                        {(campaign.status === 'draft' || campaign.status === 'pending_payment') && hasBalance() && (
-                            <Alert 
-                                icon={<AlertCircle size={16} />} 
-                                title="Payment Required" 
-                                color="yellow"
-                                className="mb-4"
-                            >
-                                <Stack gap="xs">
+                        {/* Contextual message for current step */}
+                        <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-700">
+                            {campaign.status === 'draft' && (
+                                <Alert icon={<Info size={16} />} color="gray" variant="light">
+                                    Your campaign is saved as a draft. Complete payment to get it started.
+                                </Alert>
+                            )}
+                            {rejectionReason && (
+                                <Alert icon={<XCircle size={16} />} color="red" title="Payment Rejected" mt="sm">
                                     <Text size="sm">
-                                        This campaign requires payment to be activated. Outstanding balance: {formatCurrency(calculateBalance())}
+                                        Your last payment submission was rejected. Reason: <strong>{rejectionReason}</strong>.
+                                        Please review and submit a new payment below.
                                     </Text>
-                                    <Button
-                                        onClick={openPaymentModal}
-                                        size="sm"
-                                        leftSection={<CreditCard size={16} />}
-                                        color="yellow"
-                                    >
-                                        Pay Now
+                                </Alert>
+                            )}
+                            {needsPayment && (
+                                <Alert icon={<AlertCircle size={16} />} color="yellow" title="Action Required: Complete Payment" mt="sm">
+                                    <Text size="sm" mb="sm">
+                                        Outstanding balance: <strong>{formatCurrency(campaignBalance())}</strong>. Pay now to activate your campaign.
+                                    </Text>
+                                    <Button onClick={openPaymentModal} size="sm" leftSection={<CreditCard size={14} />} color="orange">
+                                        Pay Now — {formatCurrency(campaignBalance())}
                                     </Button>
-                                </Stack>
-                            </Alert>
-                        )}
-
-                        {campaign.status === 'paid' && (
-                            <Alert icon={<CheckCircle size={16} />} title="Payment Complete" color="green" className="mb-4">
-                                Your campaign has been paid and is being processed. It will be activated shortly.
-                            </Alert>
-                        )}
-                    </div>
+                                </Alert>
+                            )}
+                            {campaign.payment_status === 'pending_verification' && (
+                                <Alert icon={<Clock size={16} />} color="blue" title="Payment Submitted — Awaiting Verification" mt="sm">
+                                    <Text size="sm">
+                                        We've received your M-Pesa receipt and it's pending admin review. This usually takes under 1 business hour —
+                                        no need to pay again in the meantime.
+                                    </Text>
+                                </Alert>
+                            )}
+                            {campaign.status === 'submitted' && campaign.payment_status === 'paid' && (
+                                <Alert icon={<Bike size={16} />} color="blue" title="We're Getting Your Riders Ready">
+                                    <Text size="sm">
+                                        Payment received — thank you! Our team is now assigning riders and helmets to your campaign.
+                                        This usually takes <strong>1–2 business days</strong>. You'll see your campaign go live once riders are assigned.
+                                    </Text>
+                                </Alert>
+                            )}
+                            {campaign.status === 'active' && (
+                                <Alert icon={<Zap size={16} />} color="green" title="Your Campaign is Live!">
+                                    <Stack gap="xs">
+                                        <Text size="sm">
+                                            Riders are out there right now displaying your brand across Nairobi. Check your analytics to see real-time impressions and reach.
+                                        </Text>
+                                        <Button
+                                            component={Link}
+                                            href={route('advertiser.analytics', { campaign: campaign.id })}
+                                            size="sm"
+                                            leftSection={<BarChart2 size={14} />}
+                                            color="green"
+                                        >
+                                            View Live Analytics
+                                        </Button>
+                                    </Stack>
+                                </Alert>
+                            )}
+                            {campaign.status === 'paused' && (
+                                <Alert icon={<PauseCircle size={16} />} color="orange" title="Campaign Paused">
+                                    <Text size="sm">Your campaign has been temporarily paused. Contact us if you have questions.</Text>
+                                </Alert>
+                            )}
+                            {campaign.status === 'completed' && (
+                                <Alert icon={<CheckCircle size={16} />} color="green" title="Campaign Complete — Great Work!">
+                                    <Stack gap="xs">
+                                        <Text size="sm">
+                                            Your campaign has wrapped up successfully. View your full analytics report to see the total reach and impressions delivered.
+                                        </Text>
+                                        <Button
+                                            component={Link}
+                                            href={route('advertiser.analytics', { campaign: campaign.id })}
+                                            size="sm"
+                                            leftSection={<BarChart2 size={14} />}
+                                            color="green"
+                                        >
+                                            View Full Report
+                                        </Button>
+                                    </Stack>
+                                </Alert>
+                            )}
+                            {campaign.status === 'cancelled' && (
+                                <Alert icon={<XCircle size={16} />} color="red" title="Campaign Cancelled">
+                                    <Text size="sm">This campaign was cancelled. Contact us if you believe this is an error.</Text>
+                                </Alert>
+                            )}
+                        </div>
+                    </Paper>
+                </div>
 
                     {/* Overview Cards */}
                     <Grid gutter="md" className="mb-6">
@@ -348,7 +501,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                         </Text>
                                     </div>
                                     <ThemeIcon size={48} radius="md" variant="light" color="yellow">
-                                        <DollarSign size={24} />
+                                        <Banknote size={24} />
                                     </ThemeIcon>
                                 </Group>
                             </Paper>
@@ -361,11 +514,11 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                                             Balance Due
                                         </Text>
-                                        <Text size="xl" fw={700} c={hasBalance() ? 'red' : 'green'}>
-                                            {formatCurrency(calculateBalance())}
+                                        <Text size="xl" fw={700} c={campaignHasBalance() ? 'red' : 'green'}>
+                                            {formatCurrency(campaignBalance())}
                                         </Text>
                                     </div>
-                                    <ThemeIcon size={48} radius="md" variant="light" color={hasBalance() ? 'red' : 'green'}>
+                                    <ThemeIcon size={48} radius="md" variant="light" color={campaignHasBalance() ? 'red' : 'green'}>
                                         <Receipt size={24} />
                                     </ThemeIcon>
                                 </Group>
@@ -384,22 +537,22 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                             {formatCurrency(campaign.total_paid_amount || 0)} of {formatCurrency(campaign.current_cost.total_cost)} paid
                                         </Text>
                                     </div>
-                                    {hasBalance() && (
+                                    {campaignHasBalance() && (
                                         <Button
                                             leftSection={<CreditCard size={16} />}
                                             onClick={openPaymentModal}
-                                            gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                                            variant="gradient"
+                                            variant="filled"
+                                            color="orange"
                                         >
                                             Pay Balance
                                         </Button>
                                     )}
                                 </Group>
                                 <Progress
-                                    value={((campaign.total_paid_amount || 0) / campaign.current_cost.total_cost) * 100}
+                                    value={calculatePaymentProgress(campaign.total_paid_amount, campaign.current_cost.total_cost)}
                                     size="xl"
                                     radius="xl"
-                                    color={hasBalance() ? 'yellow' : 'green'}
+                                    color={campaignHasBalance() ? 'yellow' : 'green'}
                                 />
                             </Stack>
                         </Card>
@@ -411,7 +564,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                             <Tabs.Tab value="details" leftSection={<FileText size={16} />}>
                                 Campaign Details
                             </Tabs.Tab>
-                            <Tabs.Tab value="financials" leftSection={<DollarSign size={16} />}>
+                            <Tabs.Tab value="financials" leftSection={<Banknote size={16} />}>
                                 Financials
                             </Tabs.Tab>
                             <Tabs.Tab value="timeline" leftSection={<Clock size={16} />}>
@@ -655,7 +808,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                         <Stack gap="sm">
                                             <Group justify="apart">
                                                 <Text>Payment Status</Text>
-                                                <Badge size="lg" color={getPaymentStatusColor(campaign.payment_status)}>
+                                                <Badge size="lg" color={getStatusColorPayment(campaign.payment_status)}>
                                                     {campaign.payment_status?.replace('_', ' ').toUpperCase() || 'UNPAID'}
                                                 </Badge>
                                             </Group>
@@ -667,26 +820,26 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                             </Group>
                                             <Group justify="apart">
                                                 <Text>Balance Due</Text>
-                                                <Text fw={500} c={hasBalance() ? 'red' : 'green'}>
-                                                    {formatCurrency(calculateBalance())}
+                                                <Text fw={500} c={campaignHasBalance() ? 'red' : 'green'}>
+                                                    {formatCurrency(campaignBalance())}
                                                 </Text>
                                             </Group>
                                             <Progress
-                                                value={((campaign.total_paid_amount || 0) / (campaign.current_cost?.total_cost || 1)) * 100}
-                                                color={hasBalance() ? 'yellow' : 'green'}
+                                                value={calculatePaymentProgress(campaign.total_paid_amount, campaign.current_cost?.total_cost)}
+                                                color={campaignHasBalance() ? 'yellow' : 'green'}
                                                 size="lg"
                                                 radius="xl"
                                             />
-                                            {hasBalance() && (
+                                            {campaignHasBalance() && (
                                                 <Button
                                                     onClick={openPaymentModal}
                                                     fullWidth
                                                     size="lg"
                                                     leftSection={<CreditCard size={18} />}
-                                                    gradient={{ from: 'green', to: 'teal', deg: 45 }}
-                                                    variant="gradient"
+                                                    variant="filled"
+                                                    color="orange"
                                                 >
-                                                    Pay Balance - {formatCurrency(calculateBalance())}
+                                                    Pay Balance - {formatCurrency(campaignBalance())}
                                                 </Button>
                                             )}
                                         </Stack>
@@ -748,7 +901,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
 
                                 {campaign.status !== 'draft' && (
                                     <Timeline.Item
-                                        bullet={<DollarSign size={12} />}
+                                        bullet={<Banknote size={12} />}
                                         title="Payment Initiated"
                                         color="yellow"
                                     >
@@ -758,7 +911,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                     </Timeline.Item>
                                 )}
 
-                                {(campaign.status === 'paid' || campaign.status === 'active' || campaign.status === 'completed') && (
+                                {campaign.payment_status === 'paid' && (
                                     <Timeline.Item
                                         bullet={<CheckCircle size={12} />}
                                         title="Payment Completed"
@@ -800,6 +953,18 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                     </Timeline.Item>
                                 )}
 
+                                {campaign.status === 'completed' && !!campaign.helmets_returned_count && (
+                                    <Timeline.Item
+                                        bullet={<Bike size={12} />}
+                                        title="Helmets Returned"
+                                        color="green"
+                                    >
+                                        <Text c="dimmed" size="sm">
+                                            {campaign.helmets_returned_count} helmet{campaign.helmets_returned_count === 1 ? '' : 's'} returned to the pool. Riders have been notified to drop them off.
+                                        </Text>
+                                    </Timeline.Item>
+                                )}
+
                                 {campaign.status === 'paused' && (
                                     <Timeline.Item
                                         bullet={<PauseCircle size={12} />}
@@ -829,7 +994,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                 </div>
 
             {/* Payment Modal */}
-            {campaign.current_cost && advertiser.id && hasBalance() && (
+            {campaign.current_cost && advertiser.id && campaignHasBalance() && (
                 <MpesaPaymentModal
                     opened={paymentModalOpened}
                     onClose={closePaymentModal}
@@ -841,11 +1006,12 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                         design_cost: campaign.current_cost.design_cost,
                         subtotal: campaign.current_cost.subtotal,
                         vat_amount: campaign.current_cost.vat_amount,
-                        total_cost: calculateBalance(),
+                        total_cost: campaignBalance(),
                         currency: 'KES'
                     }}
                     advertiserId={advertiser.id}
                     campaignId={campaign.id}
+                    campaignNumber={campaign.campaign_number}
                     campaignData={{
                         name: campaign.name,
                         helmet_count: campaign.helmet_count,

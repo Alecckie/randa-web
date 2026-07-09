@@ -1,3 +1,5 @@
+import { fmtNumber, formatDateKE } from '@/utils/formatting';
+import { getCampaignStatusColor } from '@/utils/status';
 import { Badge, RingProgress, Text } from '@mantine/core';
 import {
     Users, CheckCircle, Eye, MapPin, TrendingUp,
@@ -54,27 +56,6 @@ export interface CampaignAnalyticsData {
     }[];
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function fmt(n: number): string {
-    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
-    return n.toString();
-}
-
-function statusColor(s: string) {
-    const map: Record<string, string> = {
-        active: 'green', paused: 'yellow', completed: 'gray',
-        draft: 'blue', pending_payment: 'orange', paid: 'teal',
-    };
-    return map[s] ?? 'gray';
-}
-
-function fmtDate(d: string | null) {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function MetricCard({
@@ -88,10 +69,10 @@ function MetricCard({
 }) {
     const bg: Record<string, string> = {
         orange: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]',
-        blue:   'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
-        green:  'bg-green-50 dark:bg-green-900/20 text-green-600',
-        purple: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600',
-        teal:   'bg-teal-50 dark:bg-teal-900/20 text-teal-600',
+        blue:   'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]',
+        green:  'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]',
+        purple: 'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]',
+        teal:   'bg-orange-50 dark:bg-orange-900/20 text-[#f79122]',
     };
     return (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
@@ -142,12 +123,12 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                     <div>
                         <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">{campaign.name}</h3>
-                            <Badge color={statusColor(campaign.status)} variant="light" size="sm" tt="capitalize">
+                            <Badge color={getCampaignStatusColor(campaign.status)} variant="light" size="sm" tt="capitalize">
                                 {campaign.status.replace('_', ' ')}
                             </Badge>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            {fmtDate(campaign.start_date)} → {fmtDate(campaign.end_date)}
+                            {formatDateKE(campaign.start_date)} → {formatDateKE(campaign.end_date)}
                             {campaign.total_days > 0 && ` · ${campaign.total_days} days total`}
                         </p>
                     </div>
@@ -172,7 +153,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                         </div>
                         <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-gradient-to-r from-[#f79122] to-[#e07a1a] rounded-full transition-all"
+                                className="h-full bg-[#f79122] rounded-full transition-all"
                                 style={{ width: `${progressPct}%` }}
                             />
                         </div>
@@ -201,7 +182,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                     <MetricCard
                         icon={<Eye size={16} />}
                         label="Est. Impressions"
-                        value={fmt(summary.estimated_impressions)}
+                        value={fmtNumber(summary.estimated_impressions)}
                         sub={`${summary.impressions_per_km}/km estimate`}
                         color="orange"
                     />
@@ -343,7 +324,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                 {daily_breakdown.map((day) => (
-                                    <tr key={day.date} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                    <tr key={day.date} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">
                                             {new Date(day.date).toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric' })}
                                         </td>
@@ -355,7 +336,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                                         </td>
                                         <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{day.distance_km} km</td>
                                         <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{day.active_hours} h</td>
-                                        <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{fmt(day.impressions)}</td>
+                                        <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{fmtNumber(day.impressions)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -388,10 +369,10 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                                     .slice()
                                     .sort((a, b) => b.qualified_days - a.qualified_days)
                                     .map((rider, i) => (
-                                        <tr key={rider.rider_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                        <tr key={rider.rider_id} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#f79122] to-[#e07a1a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                    <div className="w-7 h-7 rounded-full bg-[#f79122] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                                         {rider.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <span className="font-medium text-gray-800 dark:text-gray-200">{rider.name}</span>

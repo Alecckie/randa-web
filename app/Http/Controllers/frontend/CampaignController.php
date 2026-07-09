@@ -68,11 +68,11 @@ class CampaignController extends Controller
     public function store(StoreCampaignRequest $request)
     {
              try {
-            $this->campaignService->createCampaign($request->validated());
+            $campaign = $this->campaignService->createCampaign($request->validated());
 
             return redirect()
-                ->route('my-campaigns.index')
-                ->with('success', 'Campaign created successfully.');
+                ->route('my-campaigns.show', $campaign)
+                ->with('success', 'Your campaign has been saved! Complete payment below to get it started.');
         } catch (\Exception $e) {
             return redirect()
                 ->back()
@@ -94,82 +94,84 @@ class CampaignController extends Controller
             'coverageAreas.ward',
             'riderDemographics',
             'currentCost',
+            'assignments',
             'payments' => function ($query) {
                 $query->orderBy('created_at', 'desc');
             }
         ]);
 
-        // Calculate duration if not already set
-        if (!isset($campaign->duration_days)) {
-            $campaign->duration_days = $campaign->current_cost?->duration_days ?? 0;
-        }
-
         // Format coverage areas
-        $campaign->coverage_areas = $campaign->coverageAreas->map(function ($area) {
+        $coverageAreas = $campaign->coverageAreas->map(function ($area) {
             return [
                 'id' => $area->id,
                 'name' => $area->name,
                 'full_name' => $area->full_name ?? $area->name,
             ];
-        });
+        })->values();
 
         // Format rider demographics
-        $campaign->rider_demographics = $campaign->riderDemographics->map(function ($demographic) {
+        $riderDemographics = $campaign->riderDemographics->map(function ($demographic) {
             return [
                 'id' => $demographic->id,
                 'age_group' => $demographic->age_group,
                 'gender' => $demographic->gender,
                 'rider_type' => $demographic->rider_type,
             ];
-        });
+        })->values();
 
         // Format current cost
-        if ($campaign->currentCost) {
-            $campaign->current_cost = [
-                'id' => $campaign->currentCost->id,
-                'helmet_count' => $campaign->currentCost->helmet_count,
-                'duration_days' => $campaign->currentCost->duration_days,
-                'helmet_daily_rate' => $campaign->currentCost->helmet_daily_rate,
-                'base_cost' => $campaign->currentCost->base_cost,
-                'includes_design' => $campaign->currentCost->includes_design,
-                'design_cost' => $campaign->currentCost->design_cost,
-                'subtotal' => $campaign->currentCost->subtotal,
-                'vat_rate' => $campaign->currentCost->vat_rate,
-                'vat_amount' => $campaign->currentCost->vat_amount,
-                'total_cost' => $campaign->currentCost->total_cost,
-                'status' => $campaign->currentCost->status,
-            ];
-        }
+        $currentCost = $campaign->currentCost ? [
+            'id' => $campaign->currentCost->id,
+            'helmet_count' => $campaign->currentCost->helmet_count,
+            'duration_days' => $campaign->currentCost->duration_days,
+            'daily_rate' => $campaign->currentCost->helmet_daily_rate,
+            'base_cost' => $campaign->currentCost->base_cost,
+            'includes_design' => $campaign->currentCost->includes_design,
+            'design_cost' => $campaign->currentCost->design_cost,
+            'subtotal' => $campaign->currentCost->subtotal,
+            'vat_rate' => $campaign->currentCost->vat_rate,
+            'vat_amount' => $campaign->currentCost->vat_amount,
+            'total_cost' => $campaign->currentCost->total_cost,
+            'status' => $campaign->currentCost->status,
+        ] : null;
 
         // Format payments
-        $campaign->payments = $campaign->payments->map(function ($payment) {
+        $payments = $campaign->payments->map(function ($payment) {
             return [
                 'id' => $payment->id,
                 'amount' => $payment->amount,
                 'payment_method' => $payment->payment_method,
                 'mpesa_receipt_number' => $payment->getMpesaReceipt(),
                 'status' => $payment->status,
+                'status_message' => $payment->status_message,
                 'created_at' => $payment->created_at->toIso8601String(),
                 'completed_at' => $payment->completed_at?->toIso8601String(),
             ];
-        });
+        })->values();
 
-        // Calculate payment status
-        $totalCost = $campaign->currentCost?->total_cost ?? 0;
-        $totalPaid = $campaign->payments->where('status', 'completed')->sum('amount');
+        // total_paid_amount is a live sum, not a column. payment_status IS a
+        // real persisted column (kept in sync by the payment flows —
+        // recordManualPayment, approveManualPayment, rejectManualPayment,
+        // and STK success), so it flows through via $campaign->toArray()
+        // below without needing to be recomputed here.
+        $totalPaid = (float) $campaign->payments->where('status', 'completed')->sum('amount');
 
-        $campaign->total_paid_amount = $totalPaid;
-        
-        if ($totalPaid >= $totalCost) {
-            $campaign->payment_status = 'fully_paid';
-        } elseif ($totalPaid > 0) {
-            $campaign->payment_status = 'partially_paid';
-        } else {
-            $campaign->payment_status = 'unpaid';
-        }
+        // Eloquent's toArray() re-serializes loaded relations under their
+        // snake_cased key (e.g. currentCost -> current_cost) and that would
+        // silently clobber the formatted versions above if we assigned them
+        // back onto the model. Build a plain array instead so our formatted
+        // values are what's actually sent to the frontend.
+        $campaignData = array_merge($campaign->toArray(), [
+            'coverage_areas' => $coverageAreas,
+            'rider_demographics' => $riderDemographics,
+            'current_cost' => $currentCost,
+            'payments' => $payments,
+            'total_paid_amount' => $totalPaid,
+            'helmets_returned_count' => $campaign->assignments->where('status', 'completed')->count(),
+        ]);
 
         return Inertia::render('front-end/Campaigns/Show', [
-            'campaign' => $campaign,
+            'campaign' => $campaignData,
             'advertiser' => $advertiser,
         ]);
     }
@@ -203,7 +205,7 @@ public function updateStatus(Request $request, Campaign $campaign)
     }
 
     $validated = $request->validate([
-        'status' => ['required', 'string', 'in:draft,pending_payment,paid,active,paused,completed,cancelled'],
+        'status' => ['required', 'string', 'in:draft,submitted,active,paused,completed,cancelled'],
         'notes' => ['nullable', 'string', 'max:1000'],
     ]);
 

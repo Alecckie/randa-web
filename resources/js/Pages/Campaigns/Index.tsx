@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { formatStatus } from '@/utils/formatting';
+import { getCampaignStatusColor, getPaymentStatusColor, getPaymentStatusLabel } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { Button, TextInput, Select, Badge, Card, Group, Text, ActionIcon, Menu } from '@mantine/core';
-import { Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon, FullscreenIcon, RefreshCw } from 'lucide-react';
+import { Button, TextInput, Select, Badge, Card, Group, Text, ActionIcon, Menu, Tooltip } from '@mantine/core';
+import { Clock1Icon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon, CheckIcon, Building2Icon, DraftingCompass, ActivitySquareIcon, PauseIcon, Fullscreen, BookLockIcon, RefreshCw } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
 import type { Campaign,CampaignsIndexProps, CampaignStatus } from '@/types/campaign';
 
@@ -37,28 +39,16 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
         setStatusModalOpened(true);
     };
 
-    const getStatusColor = (status: CampaignStatus): string => {
-        const colors: Record<CampaignStatus, string> = {
-            draft: 'yellow',
-            active: 'blue',
-            paused: 'grape',
-            completed: 'green',
-            cancelled: 'red',
-            pending_payment:'orange',
-            paid: 'green'
-        };
-        return colors[status];
-    };
+    const getStatusColor = (status: CampaignStatus): string => getCampaignStatusColor(status);
 
     const getStatusIcon = (status: CampaignStatus) => {
         const icons = {
             draft: <DraftingCompass size={14} />,
+            submitted: <Clock1Icon size={14} />,
             active: <ActivitySquareIcon size={14} />,
             paused: <PauseIcon size={14} />,
             completed: <Fullscreen size={14} />,
             cancelled: <BookLockIcon size={14} />,
-            pending_payment:<Clock1Icon size={14} />,
-            paid: <FullscreenIcon size={14}/>
         };
         return icons[status];
     };
@@ -66,58 +56,6 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
     const canUpdateStatus = (campaign: Campaign): boolean => {
         // Only allow status updates for campaigns not in completed/cancelled state
         return !['completed', 'cancelled'].includes(campaign.status);
-    };
-
-    // Helper function to safely render coverage areas
-    const renderCoverageAreas = (coverageAreas: any) => {
-        if (!coverageAreas) return '—';
-        
-        if (Array.isArray(coverageAreas)) {
-            if (coverageAreas.length === 0) return '—';
-            
-            // Check if it's an array of objects
-            if (typeof coverageAreas[0] === 'object') {
-                return (
-                    <div className="flex flex-wrap gap-1">
-                        {coverageAreas.slice(0, 2).map((area: any, idx: number) => (
-                            <Badge key={idx} variant="outline" color="blue" size="sm">
-                                {area?.name || area?.full_name || area?.location_path || 'Unknown'}
-                            </Badge>
-                        ))}
-                        {coverageAreas.length > 2 && (
-                            <Badge variant="outline" color="gray" size="sm">
-                                +{coverageAreas.length - 2}
-                            </Badge>
-                        )}
-                    </div>
-                );
-            }
-            // If it's an array of strings
-            return (
-                <div className="flex flex-wrap gap-1">
-                    {coverageAreas.slice(0, 2).map((area: string, idx: number) => (
-                        <Badge key={idx} variant="outline" color="blue" size="sm">
-                            {String(area)}
-                        </Badge>
-                    ))}
-                    {coverageAreas.length > 2 && (
-                        <Badge variant="outline" color="gray" size="sm">
-                            +{coverageAreas.length - 2}
-                        </Badge>
-                    )}
-                </div>
-            );
-        }
-        
-        // If it's a single value
-        return <span>{String(coverageAreas)}</span>;
-    };
-
-    const formatStatus = (status: string): string => {
-        return status
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
     };
 
     return (
@@ -148,57 +86,57 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-white dark:bg-gray-800 shadow-md">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Campaigns</Text>
                                 <Text size="xl" fw={700}>{stats.total_campaigns || 0}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <Building2Icon size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Building2Icon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800 shadow-md">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Active Campaigns</Text>
-                                <Text size="xl" fw={700} c="blue">{stats.active_campaigns || 0}</Text>
+                                <Text size="xl" fw={700}>{stats.active_campaigns || 0}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <ActivitySquareIcon size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <ActivitySquareIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800 shadow-md">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Draft Campaigns</Text>
-                                <Text size="xl" fw={700} c="yellow">{stats.draft_campaigns || 0}</Text>
+                                <Text size="xl" fw={700}>{stats.draft_campaigns || 0}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <DraftingCompass size={32} className="text-yellow-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <DraftingCompass size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
 
-                    <Card className="bg-white dark:bg-gray-800 shadow-md">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Completed</Text>
-                                <Text size="xl" fw={700} c="green">{stats.completed_campaigns || 0}</Text>
+                                <Text size="xl" fw={700}>{stats.completed_campaigns || 0}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <CheckIcon size={32} className="text-green-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <CheckIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
                 </div>
 
                 {/* Filters */}
-                <Card className="bg-white dark:bg-gray-800 shadow-md">
+                <Card className="bg-white">
                     <form onSubmit={handleSearch}>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                             <TextInput
@@ -213,8 +151,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                 data={[
                                     { value: '', label: 'All Status' },
                                     { value: 'draft', label: 'Draft' },
-                                    { value: 'pending_payment', label: 'Pending Payment' },
-                                    { value: 'paid', label: 'Paid' },
+                                    { value: 'submitted', label: 'Submitted' },
                                     { value: 'active', label: 'Active' },
                                     { value: 'paused', label: 'Paused' },
                                     { value: 'completed', label: 'Completed' },
@@ -249,55 +186,32 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                 </Card>
 
                 {/* Campaigns Table */}
-                <Card className="bg-white dark:bg-gray-800 shadow-md">
+                <Card className="bg-white">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Campaign
-                                    </th>
-                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Advertiser
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Start Date
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        End Date
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Coverage Areas
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Helmet Count
-                                    </th>
-                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Total Cost
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Campaign</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Advertiser</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Date</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">End Date</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {campaigns.data.map((campaign) => (
-                                    <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div>
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {campaign?.name ?? "—"}
-                                                </div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    {campaign?.description ?? '—'}
-                                                </div>
+                                    <tr key={campaign.id} className="hover:bg-gray-50/60 transition-colors">
+                                        <td className="px-6 py-4 w-48 max-w-[12rem]">
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-medium text-gray-900 truncate">{campaign?.name ?? "—"}</div>
+                                                <div className="text-sm text-gray-500 truncate">{campaign?.description ?? '—'}</div>
                                             </div>
                                         </td>
-                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900 dark:text-white">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-900">
                                                 {campaign?.advertiser?.company_name ?? campaign?.advertiser?.user?.name ?? "—"}
                                             </div>
                                         </td>
@@ -310,22 +224,35 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                 {formatStatus(campaign.status)}
                                             </Badge>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <Badge
+                                                color={getPaymentStatusColor(campaign.payment_status ?? 'unpaid')}
+                                                variant="light"
+                                            >
+                                                {getPaymentStatusLabel(campaign.payment_status ?? 'unpaid')}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {new Date(campaign.start_date).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {new Date(campaign.end_date).toLocaleDateString()}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                            {renderCoverageAreas(campaign.coverage_areas)}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {campaign.helmet_count || 0}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                            KES {campaign?.current_cost?.total_cost?.toLocaleString() || '0.00'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <Group gap="xs" justify="flex-end" wrap="nowrap">
+                                                <Tooltip label="View Details">
+                                                    <ActionIcon
+                                                        variant="light"
+                                                        color="blue"
+                                                        component={Link}
+                                                        href={route('campaigns.show', campaign.id)}
+                                                    >
+                                                        <EyeIcon size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                             <Menu shadow="md" width={200}>
                                                 <Menu.Target>
                                                     <ActionIcon variant="subtle">
@@ -349,7 +276,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                             Update Status
                                                         </Menu.Item>
                                                     )}
-                                                    {(campaign.status === 'draft' || campaign.status === 'pending_payment') && (
+                                                    {(campaign.status === 'draft' || campaign.status === 'submitted') && (
                                                         <Menu.Item
                                                             leftSection={<PencilIcon size={14} />}
                                                             component={Link}
@@ -360,6 +287,7 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
                                                     )}
                                                 </Menu.Dropdown>
                                             </Menu>
+                                            </Group>
                                         </td>
                                     </tr>
                                 ))}
@@ -383,8 +311,8 @@ export default function Index({ campaigns, stats, filters, advertisers }: Campai
 
                     {/* Pagination */}
                     {campaigns.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                            <div className="text-sm text-gray-500">
                                 Showing {campaigns.from} to {campaigns.to} of {campaigns.total} campaigns
                             </div>
                             <div className="flex flex-wrap gap-1">

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { getPersonStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import {
@@ -21,10 +23,12 @@ import {
     Timeline,
     Tooltip,
     Textarea,
+    Table,
+    Loader,
     rem
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import {
     ArrowLeft,
     Download,
@@ -36,7 +40,6 @@ import {
     CreditCard,
     User,
     Calendar,
-    DollarSign,
     Clock,
     CheckCircle,
     XCircle,
@@ -57,6 +60,7 @@ import {
 interface RiderShowProps {
     rider: {
         id: number;
+        rider_number?: string;
         status: 'pending' | 'approved' | 'rejected';
         national_id: string;
         mpesa_number: string;
@@ -120,25 +124,67 @@ interface RiderShowProps {
             created_at: string;
         }>;
     };
+    tripStats: {
+        total_check_ins: number;
+        completed_check_ins: number;
+        total_earnings: string;
+        total_hours_worked: number;
+        this_month_check_ins: number;
+        this_month_earnings: string;
+        average_hours_per_day: number;
+    };
+    activityTimeline: Array<{
+        type: string;
+        title: string;
+        description: string;
+        timestamp: string;
+        time_human: string;
+    }>;
 }
 
-export default function RiderShow({ rider }: RiderShowProps) {
+const ACTIVITY_ICONS: Record<string, { icon: typeof User; color: string }> = {
+    application_submitted: { icon: User, color: 'gray' },
+    application_approved: { icon: CheckCircle, color: 'green' },
+    application_rejected: { icon: XCircle, color: 'red' },
+    campaign_assigned: { icon: MapPin, color: 'blue' },
+    campaign_assignment_completed: { icon: CheckCircle, color: 'teal' },
+    shift_started: { icon: Clock, color: 'green' },
+    shift_ended: { icon: CheckCircle, color: 'gray' },
+    shift_auto_closed: { icon: AlertTriangle, color: 'orange' },
+};
+
+export default function RiderShow({ rider, tripStats, activityTimeline }: RiderShowProps) {
     const [activeTab, setActiveTab] = useState('overview');
     const [imageModalOpened, { open: openImageModal, close: closeImageModal }] = useDisclosure(false);
     const [rejectModalOpened, { open: openRejectModal, close: closeRejectModal }] = useDisclosure(false);
     const [selectedImage, setSelectedImage] = useState<{ src: string; title: string } | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
     const [loading, setLoading] = useState(false);
+    const [payoutSummary, setPayoutSummary] = useState<{
+        total_hours_worked: number;
+        total_earning: number;
+        total_owed: number;
+        total_settled: number;
+        days: Array<{
+            date: string;
+            worked_hours: number;
+            daily_earning: number;
+            max_possible_earning: number;
+            qualified: boolean;
+            settled: boolean;
+        }>;
+    } | null>(null);
+    const [payoutLoading, setPayoutLoading] = useState(true);
 
+    useEffect(() => {
+        axios
+            .get(`/riders/${rider.id}/payout-audit`, { params: { from: '2020-01-01', to: new Date().toISOString().slice(0, 10) } })
+            .then((res) => { if (res.data.success) setPayoutSummary(res.data.data); })
+            .catch(() => { /* table just stays empty */ })
+            .finally(() => setPayoutLoading(false));
+    }, [rider.id]);
 
-    const getStatusColor = (status: string) => {
-        const colors = {
-            pending: 'yellow',
-            approved: 'green',
-            rejected: 'red',
-        };
-        return colors[status as keyof typeof colors];
-    };
+    const getStatusColor = getPersonStatusColor;
 
     const getStatusIcon = (status: string) => {
         const icons = {
@@ -165,31 +211,15 @@ export default function RiderShow({ rider }: RiderShowProps) {
     const handleApprove = () => {
         setLoading(true);
         router.patch(route('rider.approve', rider.id), {}, {
-            onSuccess: () => {
-                notifications.show({
-                    title: 'Success',
-                    message: 'Rider approved successfully',
-                    color: 'green',
-                });
-            },
-            onError: () => {
-                notifications.show({
-                    title: 'Error',
-                    message: 'Failed to approve rider',
-                    color: 'red',
-                });
-            },
+            onSuccess: () => showSuccessToast('Rider approved successfully'),
+            onError: () => showErrorToast('Failed to approve rider'),
             onFinish: () => setLoading(false),
         });
     };
 
     const handleReject = () => {
         if (!rejectionReason.trim()) {
-            notifications.show({
-                title: 'Error',
-                message: 'Please provide a reason for rejection',
-                color: 'red',
-            });
+            showErrorToast('Please provide a reason for rejection');
             return;
         }
 
@@ -198,21 +228,11 @@ export default function RiderShow({ rider }: RiderShowProps) {
             reason: rejectionReason
         }, {
             onSuccess: () => {
-                notifications.show({
-                    title: 'Success',
-                    message: 'Rider rejected successfully',
-                    color: 'green',
-                });
+                showSuccessToast('Rider rejected successfully');
                 closeRejectModal();
                 setRejectionReason('');
             },
-            onError: () => {
-                notifications.show({
-                    title: 'Error',
-                    message: 'Failed to reject rider',
-                    color: 'red',
-                });
-            },
+            onError: () => showErrorToast('Failed to reject rider'),
             onFinish: () => setLoading(false),
         });
     };
@@ -244,6 +264,7 @@ export default function RiderShow({ rider }: RiderShowProps) {
                                 Rider Details
                             </h2>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                {rider.rider_number && <span className="font-semibold text-gray-700 dark:text-gray-300">{rider.rider_number} &middot; </span>}
                                 View complete rider information and documents
                             </p>
                         </div>
@@ -356,18 +377,81 @@ export default function RiderShow({ rider }: RiderShowProps) {
                                 </div>
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 lg:w-48">
-                            <Paper p="sm" className="text-center bg-blue-50 dark:bg-blue-900/20">
-                                <Text size="xs" c="dimmed" mb="xs">Daily Rate</Text>
-                                <Text size="lg" fw={700} c="blue">KSh {parseFloat(rider.daily_rate).toFixed(2)}</Text>
-                            </Paper>
-                            <Paper p="sm" className="text-center bg-green-50 dark:bg-green-900/20">
-                                <Text size="xs" c="dimmed" mb="xs">Wallet Balance</Text>
-                                <Text size="lg" fw={700} c="green">KSh {parseFloat(rider.wallet_balance).toFixed(2)}</Text>
-                            </Paper>
-                        </div>
                     </div>
+                </Card>
+
+                {/* Earnings Breakdown */}
+                <Card withBorder radius="md" p="lg">
+                    <Group justify="space-between" mb="md">
+                        <Text fw={600} size="lg">Earnings Breakdown</Text>
+                        {payoutSummary && payoutSummary.total_owed > 0 && (
+                            <Badge color="orange" size="lg" variant="light">
+                                KSh {payoutSummary.total_owed.toFixed(2)} owed
+                            </Badge>
+                        )}
+                    </Group>
+
+                    {payoutLoading ? (
+                        <Group justify="center" py="xl"><Loader size="sm" /></Group>
+                    ) : payoutSummary && payoutSummary.days.length > 0 ? (
+                        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                        <Table.ScrollContainer minWidth={500}>
+                            <Table verticalSpacing="sm" stickyHeader>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Date</Table.Th>
+                                        <Table.Th ta="right">Hours Worked</Table.Th>
+                                        <Table.Th ta="right">Amount Awarded</Table.Th>
+                                        <Table.Th ta="right">Status</Table.Th>
+                                    </Table.Tr>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {payoutSummary.days.map((day) => (
+                                        <Table.Tr key={day.date}>
+                                            <Table.Td>{new Date(day.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</Table.Td>
+                                            <Table.Td ta="right">{day.worked_hours.toFixed(2)}h</Table.Td>
+                                            <Table.Td ta="right">
+                                                <Text span c="dimmed">KSh </Text>
+                                                <Text span fw={600} c="green">{day.daily_earning.toFixed(2)}</Text>
+                                                <Text span c="dimmed"> / {day.max_possible_earning.toFixed(2)}</Text>
+                                            </Table.Td>
+                                            <Table.Td ta="right">
+                                                <Badge
+                                                    size="sm"
+                                                    color={!day.qualified ? 'gray' : day.settled ? 'blue' : 'yellow'}
+                                                    variant="light"
+                                                >
+                                                    {!day.qualified ? 'Below minimum' : day.settled ? 'Settled' : 'Pending'}
+                                                </Badge>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                </Table.Tbody>
+                                <Table.Tfoot>
+                                    <Table.Tr>
+                                        <Table.Th>Total</Table.Th>
+                                        <Table.Th ta="right">{payoutSummary.total_hours_worked.toFixed(2)}h</Table.Th>
+                                        <Table.Th ta="right">
+                                            <Text span c="dimmed" fw={400}>KSh </Text>
+                                            <Text span c="green">{payoutSummary.total_earning.toFixed(2)}</Text>
+                                            <Text span c="dimmed" fw={400}>
+                                                {' / '}
+                                                {payoutSummary.days.reduce((sum, d) => sum + d.max_possible_earning, 0).toFixed(2)}
+                                            </Text>
+                                        </Table.Th>
+                                        <Table.Th ta="right">
+                                            {payoutSummary.total_owed > 0
+                                                ? `KSh ${payoutSummary.total_owed.toFixed(2)} owed`
+                                                : 'All settled'}
+                                        </Table.Th>
+                                    </Table.Tr>
+                                </Table.Tfoot>
+                            </Table>
+                        </Table.ScrollContainer>
+                        </div>
+                    ) : (
+                        <Text c="dimmed" ta="center" py="xl" size="sm">No completed shifts yet.</Text>
+                    )}
                 </Card>
 
                 {/* Current Assignment Alert */}
@@ -605,7 +689,7 @@ export default function RiderShow({ rider }: RiderShowProps) {
                                         <Paper
                                             p="md"
                                             withBorder
-                                            className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                                            className="hover:bg-gray-50 transition-colors cursor-pointer"
                                             onClick={() => doc.file && handleImageView(`/storage/${doc.file}`, doc.label)}
                                         >
                                             <div className="flex items-center justify-between mb-2">
@@ -651,64 +735,30 @@ export default function RiderShow({ rider }: RiderShowProps) {
                     <Tabs.Panel value="activity" pt="md">
                         <Card>
                             <Text size="lg" fw={600} mb="md">Activity Timeline</Text>
-                            <Timeline active={2} bulletSize={24} lineWidth={2}>
-                                <Timeline.Item
-                                    bullet={<User size={12} />}
-                                    title="Application Submitted"
-                                >
-                                    <Text c="dimmed" size="sm">
-                                        Rider application was submitted with all required documents
-                                    </Text>
-                                    <Text size="xs" mt={4} c="dimmed">
-                                        {new Date(rider.created_at).toLocaleString()}
-                                    </Text>
-                                </Timeline.Item>
-
-                                {rider.status === 'approved' && (
-                                    <Timeline.Item
-                                        bullet={<CheckCircle size={12} />}
-                                        title="Application Approved"
-                                        color="green"
-                                    >
-                                        <Text c="dimmed" size="sm">
-                                            Application has been reviewed and approved
-                                        </Text>
-                                        <Text size="xs" mt={4} c="dimmed">
-                                            {new Date(rider.updated_at).toLocaleString()}
-                                        </Text>
-                                    </Timeline.Item>
-                                )}
-
-                                {rider.status === 'rejected' && (
-                                    <Timeline.Item
-                                        bullet={<XCircle size={12} />}
-                                        title="Application Rejected"
-                                        color="red"
-                                    >
-                                        <Text c="dimmed" size="sm">
-                                            Application was rejected after review
-                                        </Text>
-                                        <Text size="xs" mt={4} c="dimmed">
-                                            {new Date(rider.updated_at).toLocaleString()}
-                                        </Text>
-                                    </Timeline.Item>
-                                )}
-
-                                {rider.currentAssignment && (
-                                    <Timeline.Item
-                                        bullet={<MapPin size={12} />}
-                                        title="Campaign Assignment"
-                                        color="blue"
-                                    >
-                                        <Text c="dimmed" size="sm">
-                                            Assigned to campaign: {rider.currentAssignment.campaign.name}
-                                        </Text>
-                                        <Text size="xs" mt={4} c="dimmed">
-                                            {new Date(rider.currentAssignment.assigned_at).toLocaleString()}
-                                        </Text>
-                                    </Timeline.Item>
-                                )}
-                            </Timeline>
+                            {activityTimeline.length > 0 ? (
+                                <div style={{ maxHeight: 480, overflowY: 'auto' }} className="pr-2">
+                                    <Timeline active={activityTimeline.length} bulletSize={24} lineWidth={2}>
+                                        {activityTimeline.map((event, index) => {
+                                            const { icon: Icon, color } = ACTIVITY_ICONS[event.type] ?? { icon: Clock, color: 'gray' };
+                                            return (
+                                                <Timeline.Item
+                                                    key={`${event.type}-${event.timestamp}-${index}`}
+                                                    bullet={<Icon size={12} />}
+                                                    title={event.title}
+                                                    color={color}
+                                                >
+                                                    <Text c="dimmed" size="sm">{event.description}</Text>
+                                                    <Text size="xs" mt={4} c="dimmed">
+                                                        {new Date(event.timestamp).toLocaleString()} · {event.time_human}
+                                                    </Text>
+                                                </Timeline.Item>
+                                            );
+                                        })}
+                                    </Timeline>
+                                </div>
+                            ) : (
+                                <Text c="dimmed" size="sm" ta="center" py="xl">No activity recorded yet.</Text>
+                            )}
                         </Card>
                     </Tabs.Panel>
                 </Tabs>

@@ -119,7 +119,10 @@ class AdminTrackingController extends Controller
                         'distance'            => (float) $route->total_distance,
                         'duration'            => $route->total_duration,
                         'avg_speed'           => $route->avg_speed ? (float) $route->avg_speed : null,
-                        'coverage_areas_count' => count($route->coverage_areas ?? []),
+                        // rider_routes.coverage_areas was dropped (see
+                        // 2026_02_26_143937_drop_rider_routes_columns.php)
+                        // with no replacement data source.
+                        'coverage_areas_count' => 0,
                     ] : null,
                     'locations' => $gpsPoints->map(fn($p) => $this->formatGpsPoint($p)),
                     'polyline'  => $route?->route_polyline,
@@ -256,7 +259,9 @@ class AdminTrackingController extends Controller
                     ] : null,
                     'locations'     => $gpsPoints->map(fn($p) => $this->formatGpsPoint($p, detailed: true)),
                     'polyline'      => $route->route_polyline,
-                    'pause_history' => $route->pause_history,
+                    'pause_history' => $route->pauseEvents()
+                        ->get(['paused_at', 'resumed_at', 'duration_minutes', 'reason'])
+                        ->toArray(),
                 ],
             ]);
 
@@ -309,7 +314,7 @@ class AdminTrackingController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'No campaigns found.',
-                    'data'    => ['points' => [], 'total_points' => 0, 'max_intensity' => 0],
+                    'data'    => ['points' => [], 'total_points' => 0, 'max_intensity' => 0, 'live_riders' => [], 'live_riders_count' => 0],
                 ]);
             }
 
@@ -328,7 +333,9 @@ class AdminTrackingController extends Controller
                 $query->whereDate('recorded_at', '>=', now()->subDays(7));
             }
 
-            $heatmapPoints = $query
+            $pointsQuery = clone $query;
+
+            $heatmapPoints = $pointsQuery
                 ->select(
                     DB::raw('ROUND(latitude, 4) as lat'),
                     DB::raw('ROUND(longitude, 4) as lng'),
@@ -339,18 +346,29 @@ class AdminTrackingController extends Controller
                 ->limit(10000)
                 ->get();
 
+            $liveRiders = $this->liveRidersForCampaigns($activeCampaignIds);
+            $isHistorical = false;
+
+            if ($liveRiders->isEmpty()) {
+                $liveRiders = $this->participantsForQuery($query);
+                $isHistorical = $liveRiders->isNotEmpty();
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Heatmap data retrieved successfully.',
                 'data'    => [
-                    'points'        => $heatmapPoints->map(fn($p) => [
+                    'points'                 => $heatmapPoints->map(fn($p) => [
                         'lat'       => (float) $p->lat,
                         'lng'       => (float) $p->lng,
                         'intensity' => $p->intensity,
                     ]),
-                    'total_points'  => $heatmapPoints->count(),
-                    'max_intensity' => $heatmapPoints->max('intensity') ?? 0,
-                    'campaign_ids'  => $activeCampaignIds,
+                    'total_points'           => $heatmapPoints->count(),
+                    'max_intensity'          => $heatmapPoints->max('intensity') ?? 0,
+                    'campaign_ids'           => $activeCampaignIds,
+                    'live_riders'            => $liveRiders,
+                    'live_riders_count'      => $liveRiders->count(),
+                    'live_riders_historical' => $isHistorical,
                 ],
             ]);
 
@@ -399,7 +417,12 @@ class AdminTrackingController extends Controller
                 $query->whereDate('recorded_at', '>=', now()->subDays(7));
             }
 
-            $heatmapPoints = $query
+            // Clone before the aggregation below mutates $query into a
+            // grouped/selected builder — needed as a fallback if nobody is
+            // currently live for this selection (e.g. a historical period).
+            $pointsQuery = clone $query;
+
+            $heatmapPoints = $pointsQuery
                 ->select(
                     DB::raw('ROUND(latitude, 4) as lat'),
                     DB::raw('ROUND(longitude, 4) as lng'),
@@ -411,23 +434,95 @@ class AdminTrackingController extends Controller
                 ->limit(10000)
                 ->get();
 
+            $liveRiders = $this->liveRidersForCampaigns($request->campaign_id ? [(int) $request->campaign_id] : null);
+            $isHistorical = false;
+
+            if ($liveRiders->isEmpty()) {
+                $liveRiders = $this->participantsForQuery($query);
+                $isHistorical = $liveRiders->isNotEmpty();
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Heatmap data retrieved successfully.',
                 'data'    => [
-                    'points'        => $heatmapPoints->map(fn($p) => [
+                    'points'                 => $heatmapPoints->map(fn($p) => [
                         'lat'       => (float) $p->lat,
                         'lng'       => (float) $p->lng,
                         'intensity' => $p->intensity,
                     ]),
-                    'total_points'  => $heatmapPoints->count(),
-                    'max_intensity' => $heatmapPoints->max('intensity'),
+                    'total_points'           => $heatmapPoints->count(),
+                    'max_intensity'          => $heatmapPoints->max('intensity'),
+                    'live_riders'            => $liveRiders,
+                    'live_riders_count'      => $liveRiders->count(),
+                    'live_riders_historical' => $isHistorical,
                 ],
             ]);
 
         } catch (Exception $e) {
             return $this->serverError($e);
         }
+    }
+
+    /**
+     * Riders whose most recent GPS point is within the last 10 minutes —
+     * same "live" threshold used elsewhere (see ridersList()) — optionally
+     * scoped to a set of campaign IDs. Used to show who's currently on the
+     * heatmap, not just the density blob.
+     *
+     * @param  array<int>|null  $campaignIds  null = across all campaigns
+     */
+    private function liveRidersForCampaigns(?array $campaignIds): \Illuminate\Support\Collection
+    {
+        $query = RiderGpsPoint::query()
+            ->where('recorded_at', '>=', now()->subMinutes(10));
+
+        if ($campaignIds !== null) {
+            $query->whereHas('campaignAssignment', fn($q) => $q->whereIn('campaign_id', $campaignIds));
+        }
+
+        return $this->ridersFromLatestPointQuery($query);
+    }
+
+    /**
+     * Riders who have any GPS point matching $query, regardless of
+     * recency — heatmap sidebar fallback for when nobody is currently
+     * "live" for the selection (e.g. a historical period), so the
+     * admin/advertiser still sees who actually generated this heatmap.
+     * $query must not already have select()/groupBy() applied; it's
+     * cloned so the caller's copy is unaffected.
+     */
+    private function participantsForQuery($query): \Illuminate\Support\Collection
+    {
+        return $this->ridersFromLatestPointQuery(clone $query);
+    }
+
+    private function ridersFromLatestPointQuery($query): \Illuminate\Support\Collection
+    {
+        $latestByRider = $query
+            ->select('rider_id', DB::raw('MAX(recorded_at) as latest_time'))
+            ->groupBy('rider_id')
+            ->get()
+            ->keyBy('rider_id');
+
+        if ($latestByRider->isEmpty()) {
+            return collect();
+        }
+
+        return Rider::whereIn('id', $latestByRider->keys())
+            ->with('user')
+            ->get()
+            ->map(function (Rider $rider) use ($latestByRider) {
+                $latestTime = Carbon::parse($latestByRider[$rider->id]->latest_time);
+
+                return [
+                    'id' => $rider->id,
+                    'name' => $rider->user->name,
+                    'last_seen' => $latestTime->toIso8601String(),
+                    'last_seen_human' => $latestTime->diffForHumans(),
+                ];
+            })
+            ->values();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -608,7 +703,7 @@ class AdminTrackingController extends Controller
             'avg_speed'            => $route->avg_speed  ? (float) $route->avg_speed  : null,
             'max_speed'            => $route->max_speed  ? (float) $route->max_speed  : null,
             'location_points_count' => $route->location_points_count,
-            'tracking_status'      => $route->tracking_status,
+            'tracking_status'      => $route->checkIn?->isPaused() ? 'paused' : ($route->ended_at ? 'stopped' : 'active'),
         ];
     }
 

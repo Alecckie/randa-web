@@ -4,6 +4,7 @@ import L from 'leaflet';
 import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
 import { Loader } from '@mantine/core';
+import { Users } from 'lucide-react';
 
 // Types for leaflet.heat are declared in resources/js/types/leaflet-heat.d.ts
 
@@ -79,6 +80,13 @@ interface LiveHeatmapProps {
     apiEndpoint?: string;
 }
 
+interface LiveRider {
+    id: number;
+    name: string;
+    last_seen: string;
+    last_seen_human: string;
+}
+
 export default function LiveHeatmap({
     campaignId,
     campaignIds = [],
@@ -89,13 +97,15 @@ export default function LiveHeatmap({
     const [points, setPoints] = useState<HeatPoint[]>([]);
     const [maxIntensity, setMaxIntensity] = useState(1);
     const [loading, setLoading] = useState(true);
+    const [liveRiders, setLiveRiders] = useState<LiveRider[]>([]);
+    const [ridersAreHistorical, setRidersAreHistorical] = useState(false);
 
-    // ── Fetch historical heatmap data ─────────────────────────────────────────
+    // ── Fetch historical heatmap data (+ who's currently live) ────────────────
 
     useEffect(() => {
-        const fetchHeatmap = async () => {
+        const fetchHeatmap = async (isBackgroundRefresh = false) => {
             try {
-                setLoading(true);
+                if (!isBackgroundRefresh) setLoading(true);
 
                 const params: Record<string, string | number> = {};
 
@@ -131,15 +141,23 @@ export default function LiveHeatmap({
                     );
                     setMaxIntensity(data.max_intensity || 1);
                 }
+                setLiveRiders(data?.live_riders ?? []);
+                setRidersAreHistorical(Boolean(data?.live_riders_historical));
             } catch (err) {
                 console.error('[LiveHeatmap] fetch failed', err);
             } finally {
-                setLoading(false);
+                if (!isBackgroundRefresh) setLoading(false);
             }
         };
 
         fetchHeatmap();
-    }, [campaignId, period]);
+
+        // Who's "live" changes as riders move/stop even when the selected
+        // period/campaign doesn't — refresh periodically without the full
+        // loading-spinner treatment.
+        const liveRefreshInterval = window.setInterval(() => fetchHeatmap(true), 20000);
+        return () => window.clearInterval(liveRefreshInterval);
+    }, [campaignId, period, apiEndpoint]);
 
     // ── Live WebSocket updates ─────────────────────────────────────────────────
 
@@ -168,59 +186,102 @@ export default function LiveHeatmap({
     // ── Render ─────────────────────────────────────────────────────────────────
 
     return (
-        <div style={{ height, position: 'relative' }}>
-            {loading && (
-                <div
-                    className="absolute inset-0 z-[500] flex items-center justify-center rounded-lg"
-                    style={{ background: 'rgba(255,255,255,0.7)' }}
-                >
-                    <Loader size="md" />
-                </div>
-            )}
-
-            <MapContainer
-                center={[-1.286389, 36.817223]} // Nairobi default
-                zoom={12}
-                style={{ height: '100%', width: '100%', borderRadius: '0.5rem' }}
-                scrollWheelZoom
-            >
-                <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-
-                {points.length > 0 && (
-                    <HeatLayerController points={points} maxIntensity={maxIntensity} />
+        <div className="flex flex-col md:flex-row gap-3" style={{ height }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 0, height: '100%' }}>
+                {loading && (
+                    <div
+                        className="absolute inset-0 z-[500] flex items-center justify-center rounded-lg"
+                        style={{ background: 'rgba(255,255,255,0.7)' }}
+                    >
+                        <Loader size="md" />
+                    </div>
                 )}
-            </MapContainer>
 
-            {/* Gradient legend */}
-            <div className="absolute bottom-3 right-3 z-[1000] bg-white/90 dark:bg-gray-800/90 px-3 py-2 rounded-lg shadow text-xs">
-                <p className="font-semibold mb-1 text-gray-700 dark:text-gray-200">Rider Density</p>
-                <div
-                    className="h-3 w-32 rounded"
-                    style={{
-                        background:
-                            'linear-gradient(to right, #3b82f6, #06b6d4, #84cc16, #facc15, #ef4444)',
-                    }}
-                />
-                <div className="flex justify-between mt-0.5 text-gray-500 dark:text-gray-400">
-                    <span>Low</span>
-                    <span>High</span>
-                </div>
-            </div>
+                <MapContainer
+                    center={[-1.286389, 36.817223]} // Nairobi default
+                    zoom={12}
+                    style={{ height: '100%', width: '100%', borderRadius: '0.5rem' }}
+                    scrollWheelZoom
+                >
+                    <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    />
 
-            {/* Empty state overlay */}
-            {!loading && points.length === 0 && (
-                <div className="absolute inset-0 z-[400] flex items-center justify-center pointer-events-none">
-                    <div className="text-center bg-white/80 dark:bg-gray-800/80 rounded-xl p-6 shadow">
-                        <div className="text-4xl mb-2">🗺️</div>
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                            No tracking data for this period
-                        </p>
+                    {points.length > 0 && (
+                        <HeatLayerController points={points} maxIntensity={maxIntensity} />
+                    )}
+                </MapContainer>
+
+                {/* Gradient legend */}
+                <div className="absolute bottom-3 right-3 z-[1000] bg-white/90 dark:bg-gray-800/90 px-3 py-2 rounded-lg shadow text-xs">
+                    <p className="font-semibold mb-1 text-gray-700 dark:text-gray-200">Rider Density</p>
+                    <div
+                        className="h-3 w-32 rounded"
+                        style={{
+                            background:
+                                'linear-gradient(to right, #3b82f6, #06b6d4, #84cc16, #facc15, #ef4444)',
+                        }}
+                    />
+                    <div className="flex justify-between mt-0.5 text-gray-500 dark:text-gray-400">
+                        <span>Low</span>
+                        <span>High</span>
                     </div>
                 </div>
-            )}
+
+                {/* Empty state overlay */}
+                {!loading && points.length === 0 && (
+                    <div className="absolute inset-0 z-[400] flex items-center justify-center pointer-events-none">
+                        <div className="text-center bg-white/80 dark:bg-gray-800/80 rounded-xl p-6 shadow">
+                            <div className="text-4xl mb-2">🗺️</div>
+                            <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                                No tracking data for this period
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Live riders sidebar — who's currently on this heatmap, at a glance */}
+            <div
+                className="flex-shrink-0 w-full md:w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col"
+                style={{ maxHeight: '100%' }}
+            >
+                <div className="px-3 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 flex-shrink-0">
+                    <Users size={16} className="text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {ridersAreHistorical
+                            ? `${liveRiders.length} rider${liveRiders.length !== 1 ? 's' : ''} participated`
+                            : `${liveRiders.length} rider${liveRiders.length !== 1 ? 's' : ''} live`}
+                    </span>
+                </div>
+                <div className="overflow-y-auto flex-1">
+                    {liveRiders.length === 0 ? (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 px-3 py-4 text-center">
+                            No riders sent location for this selection.
+                        </p>
+                    ) : (
+                        liveRiders.map((rider) => (
+                            <div
+                                key={rider.id}
+                                className="px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0 flex items-center gap-2"
+                            >
+                                <span
+                                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                        ridersAreHistorical ? 'bg-gray-400' : 'bg-green-500 animate-pulse'
+                                    }`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm text-gray-800 dark:text-gray-100 truncate">{rider.name}</p>
+                                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                                        {ridersAreHistorical ? `Last seen ${rider.last_seen_human}` : rider.last_seen_human}
+                                    </p>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

@@ -28,6 +28,7 @@ class Campaign extends Model
         'require_vat_receipt',
         'agree_to_terms',
         'status',
+        'payment_status',
         'special_instructions'
     ];
 
@@ -38,6 +39,20 @@ class Campaign extends Model
         'require_vat_receipt' => 'boolean',
         'agree_to_terms' => 'boolean',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Assign a human-readable, unique campaign number once the row has
+        // an id — used as the M-Pesa paybill account number for its payments.
+        static::created(function (Campaign $campaign) {
+            if (!$campaign->campaign_number) {
+                $campaign->campaign_number = sprintf('CMP-%06d', $campaign->id);
+                $campaign->saveQuietly();
+            }
+        });
+    }
 
     // Relationships
     public function advertiser(): BelongsTo
@@ -105,14 +120,24 @@ class Campaign extends Model
                     ->whereDate('end_date', '>=', now());
     }
 
-    public function scopePaid($query)
+    public function scopeSubmitted($query)
     {
-        return $query->where('status', 'paid');
+        return $query->where('status', 'submitted');
     }
 
-    public function scopePendingPayment($query)
+    /**
+     * Submitted and paid — configured, funded, just waiting on riders to be
+     * assigned and the campaign to be activated.
+     */
+    public function scopeReadyToActivate($query)
     {
-        return $query->where('status', 'pending_payment');
+        return $query->where('status', 'submitted')->where('payment_status', 'paid');
+    }
+
+    public function scopeAwaitingPayment($query)
+    {
+        return $query->where('status', 'submitted')
+                    ->whereIn('payment_status', ['unpaid', 'pending_verification', 'rejected', 'partially_paid']);
     }
 
     // Accessors & Mutators
@@ -173,29 +198,17 @@ class Campaign extends Model
                    ->sum('amount');
     }
 
-    public function getPaymentStatusAttribute(): string
-    {
-        if (!$this->currentCost) {
-            return 'no_cost_calculated';
-        }
-
-        $totalPaid = $this->total_paid_amount;
-        $totalCost = $this->currentCost->total_cost;
-
-        if ($totalPaid >= $totalCost) {
-            return 'fully_paid';
-        } elseif ($totalPaid > 0) {
-            return 'partially_paid';
-        } else {
-            return 'unpaid';
-        }
-    }
+    // `payment_status` is now a real persisted column (see fillable above) —
+    // no computed accessor needed. Kept here only as historical context:
+    // it used to be derived from total_paid_amount vs currentCost, which
+    // silently ignored pending_verification/rejected payments.
 
     // Helper methods
     public function canBeActivated(): bool
     {
-        return $this->status === 'paid' && 
-               $this->agree_to_terms && 
+        return $this->status === 'submitted' &&
+               $this->payment_status === 'paid' &&
+               $this->agree_to_terms &&
                $this->start_date &&
                $this->end_date &&
                !$this->is_expired;
@@ -208,7 +221,16 @@ class Campaign extends Model
 
     public function canBeCancelled(): bool
     {
-        return in_array($this->status, ['draft', 'pending_payment', 'paid', 'paused']);
+        return in_array($this->status, ['draft', 'submitted', 'paused']);
+    }
+
+    /**
+     * Riders may only be assigned once the campaign is genuinely paid —
+     * either while awaiting activation, or after it's already live.
+     */
+    public function canAssignRiders(): bool
+    {
+        return in_array($this->status, ['submitted', 'active']) && $this->payment_status === 'paid';
     }
 
     public function hasDesignRequirement(): bool

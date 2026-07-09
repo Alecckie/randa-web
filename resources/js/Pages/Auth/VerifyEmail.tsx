@@ -15,29 +15,15 @@ export default function VerifyEmail({ status }: { status?: string }) {
         <GuestLayout>
             <Head title="Verify Email" />
 
-            <div className="min-h-screen bg-[#1e1d20] flex items-center justify-center px-4 py-12 relative overflow-hidden">
-                {/* Background decorations */}
-                <div className="absolute inset-0 opacity-[0.04]">
-                    <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse">
-                                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1" />
-                            </pattern>
-                        </defs>
-                        <rect width="100%" height="100%" fill="url(#g)" />
-                    </svg>
-                </div>
-                <div className="absolute top-0 right-0 w-96 h-96 bg-[#f79122] opacity-[0.05] rounded-full -translate-y-1/2 translate-x-1/2" />
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#f79122] opacity-[0.05] rounded-full translate-y-1/2 -translate-x-1/2" />
-
-                <div className="relative z-10 w-full max-w-md">
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+                <div className="w-full max-w-md">
                     {/* Logo */}
                     <div className="flex items-center justify-center mb-8">
-                        <img src="/assets/randa_white_logo_landscape-01-01-01-01.png" alt="RANDA" className="h-10 w-auto" />
+                        <img src="/assets/logo.png" alt="RANDA" className="h-10 w-auto" />
                     </div>
 
                     <div className="bg-white rounded-2xl shadow-2xl shadow-black/40 overflow-hidden">
-                        <div className="h-1.5 bg-gradient-to-r from-[#f79122] to-[#e07a1a]" />
+                        <div className="h-1.5 bg-[#f79122]" />
 
                         <div className="px-8 py-10 text-center">
                             {/* Icon */}

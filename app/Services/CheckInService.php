@@ -8,12 +8,18 @@ use App\Models\Rider;
 use App\Models\RiderCheckIn;
 use App\Models\RiderPauseEvent;
 use App\Models\RiderRoute;
+use App\Services\Shift\ShiftEarningsCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Exception;
 
 class CheckInService
 {
+    public function __construct(
+        private ShiftEarningsCalculator $earningsCalculator,
+        private NotificationService $notificationService,
+    ) {}
+
     /**
      * Process rider check-in via QR code scan
      */
@@ -44,25 +50,36 @@ class CheckInService
                 throw new Exception('No active campaign assignment found for this helmet and rider.');
             }
 
-            // Check if campaign is active or paid
-            if (!in_array($assignment->campaign->status, ['active', 'paid'])) {
+            // Check if campaign is live and genuinely paid
+            if (!in_array($assignment->campaign->status, ['active', 'submitted']) || $assignment->campaign->payment_status !== 'paid') {
                 throw new Exception('The campaign associated with this helmet is not active or paid.');
             }
 
-            if (Carbon::now()->hour < RiderCheckIn::EARLIEST_CHECK_IN_HOUR) {
-                $earliest = Carbon::today()->setHour(RiderCheckIn::EARLIEST_CHECK_IN_HOUR)->format('h:i A');
+            if (Carbon::now()->hour < RiderCheckIn::earliestCheckInHour()) {
+                $earliest = Carbon::today()->setHour(RiderCheckIn::earliestCheckInHour())->format('h:i A');
                 throw new Exception("Check-in is not allowed before {$earliest}.");
             }
 
-            // Check if rider already checked in today
+            if (Carbon::now()->hour >= RiderCheckIn::latestCheckInHour()) {
+                $latest = Carbon::today()->setHour(RiderCheckIn::latestCheckInHour())->format('h:i A');
+                throw new Exception("Check-in is not allowed after {$latest}.");
+            }
+
+            // Check if rider already has a shift record today, in any state.
+            // A rider gets exactly one rider_check_ins row per day (enforced
+            // by a DB unique constraint on rider_id+check_in_date), so this
+            // must catch paused/resumed/ended too, not just 'started' —
+            // otherwise the guard passes and the INSERT below fails with a
+            // raw unique-constraint error instead of a friendly message.
             $existingCheckIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
-                ->where('status', 'started')
                 ->first();
 
             if ($existingCheckIn) {
-                throw new Exception('You have already checked in today at ' .
-                    $existingCheckIn->check_in_time->format('h:i A'));
+                throw new Exception($existingCheckIn->status === RiderCheckIn::STATUS_ENDED
+                    ? 'You have already completed your shift for today.'
+                    : 'You have already checked in today at ' .
+                        $existingCheckIn->check_in_time->format('h:i A'));
             }
 
             $checkIn = RiderCheckIn::create([
@@ -90,14 +107,37 @@ class CheckInService
     }
 
     /**
-     * Process rider check-out
-     */
-    /**
-     * Process rider check-out with accurate earnings calculation
+     * End today's shift normally ("End Shift" button).
      */
     public function checkOut(int $riderId, ?float $latitude = null, ?float $longitude = null): array
     {
-        return DB::transaction(function () use ($riderId, $latitude, $longitude) {
+        return $this->finalizeShift($riderId, $latitude, $longitude, RiderCheckIn::END_REASON_COMPLETED);
+    }
+
+    /**
+     * End today's shift early for a reason other than a normal finish —
+     * e.g. sickness or an emergency ("Leave Shift" / "Stop Shift" button).
+     * Pay is calculated exactly the same way as a normal check-out; only
+     * the recorded reason differs.
+     */
+    public function leaveShift(
+        int $riderId,
+        string $reason = RiderCheckIn::END_REASON_OTHER,
+        ?float $latitude = null,
+        ?float $longitude = null
+    ): array {
+        return $this->finalizeShift($riderId, $latitude, $longitude, $reason);
+    }
+
+    /**
+     * Shared implementation for every way a shift can end (normal
+     * check-out, sickness, emergency, ...). This is the one place that
+     * calculates and records a day's pay — update it here and every ending
+     * path picks up the change.
+     */
+    private function finalizeShift(int $riderId, ?float $latitude, ?float $longitude, string $reason): array
+    {
+        return DB::transaction(function () use ($riderId, $latitude, $longitude, $reason) {
             // Find today's active check-in
             $checkIn = RiderCheckIn::where('rider_id', $riderId)
                 ->whereDate('check_in_date', Carbon::today())
@@ -108,34 +148,48 @@ class CheckInService
                 throw new Exception('No active check-in found for today.');
             }
 
-            // Calculate time and earnings
             $checkOutTime = Carbon::now();
-            $totalMinutes = $checkIn->check_in_time->diffInMinutes($checkOutTime);
-            $totalHours = $totalMinutes / 60;
+            $earnings = $this->earningsCalculator->calculate($checkIn, $checkOutTime);
 
-            // Get total paused time from pause events
-            $pausedMinutes = RiderPauseEvent::where('check_in_id', $checkIn->id)
-                ->whereNotNull('resumed_at')
-                ->sum('duration_minutes');
+            // If the rider ended their shift without resuming from a pause,
+            // close that pause out too so pause history stays consistent
+            // with the final status.
+            $openPause = RiderPauseEvent::where('check_in_id', $checkIn->id)
+                ->whereNull('resumed_at')
+                ->latest('paused_at')
+                ->first();
 
-            $pausedHours = $pausedMinutes / 60;
-            $workedHours = max(0, $totalHours - $pausedHours);
+            if ($openPause) {
+                $openPause->update([
+                    'resumed_at' => $checkOutTime,
+                    'duration_minutes' => max(0, $openPause->paused_at->diffInMinutes($checkOutTime, false)),
+                ]);
+            }
 
-            // Calculate earnings: KSh 7 per hour worked
-            $dailyEarning = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
-
-            // Update check-in
             $checkIn->update([
                 'check_out_time' => $checkOutTime,
                 'status' => RiderCheckIn::STATUS_ENDED,
-                'daily_earning' => $dailyEarning,
+                'end_reason' => $reason,
+                'daily_earning' => $earnings['daily_earning'],
+                'worked_hours' => $earnings['worked_hours'],
+                'payable_hours' => $earnings['payable_hours'],
+                'stationary_hours' => $earnings['stationary_hours'],
+                'hourly_rate_applied' => $earnings['hourly_rate'],
                 'check_out_latitude' => $latitude,
                 'check_out_longitude' => $longitude
             ]);
 
-            // Update rider's wallet balance
             $rider = Rider::findOrFail($riderId);
-            $rider->increment('wallet_balance', $dailyEarning);
+
+            if ($earnings['qualifies_for_payment']) {
+                $rider->increment('wallet_balance', $earnings['daily_earning']);
+            } else {
+                $this->notificationService->notifyRiderShiftNotQualified(
+                    $rider,
+                    $earnings['worked_hours'],
+                    RiderCheckIn::minQualifyingHours()
+                );
+            }
 
             // Finalize route if exists
             $route = RiderRoute::where('check_in_id', $checkIn->id)->first();
@@ -146,22 +200,118 @@ class CheckInService
                 $route->updatePauseSummary();
             }
 
+            $message = $earnings['qualifies_for_payment']
+                ? 'Check-out successful! Your earnings have been added to your wallet.'
+                : sprintf(
+                    'Shift ended. You worked %.1f hour(s), below the %.1f-hour minimum required to qualify for payment — no earnings were recorded for today.',
+                    $earnings['worked_hours'],
+                    RiderCheckIn::minQualifyingHours()
+                );
+
             return [
                 'success' => true,
-                'message' => 'Check-out successful! Your earnings have been added to your wallet.',
+                'message' => $message,
                 'data' => [
                     'check_out_time' => $checkIn->formatted_check_out_time,
-                    'total_hours' => round($totalHours, 2),
-                    'worked_hours' => round($workedHours, 2),
-                    'paused_hours' => round($pausedHours, 2),
-                    'paused_minutes' => $pausedMinutes,
+                    'end_reason' => $reason,
+                    'total_hours' => $earnings['total_hours'],
+                    'worked_hours' => $earnings['worked_hours'],
+                    'payable_hours' => $earnings['payable_hours'],
+                    'paused_hours' => $earnings['paused_hours'],
+                    'paused_minutes' => $earnings['paused_minutes'],
+                    'stationary_hours' => $earnings['stationary_hours'],
                     'pause_count' => RiderPauseEvent::where('check_in_id', $checkIn->id)->count(),
-                    'hourly_rate' => RiderCheckIn::HOURLY_RATE,
+                    'hourly_rate' => $earnings['hourly_rate'],
+                    'max_hours_per_day' => RiderCheckIn::maxHoursPerDay(),
+                    'min_qualifying_hours' => RiderCheckIn::minQualifyingHours(),
+                    'qualifies_for_payment' => $earnings['qualifies_for_payment'],
                     'daily_earning' => $checkIn->formatted_daily_earning,
                     'new_wallet_balance' => 'KSh ' . number_format($rider->wallet_balance, 2)
                 ]
             ];
         });
+    }
+
+    /**
+     * Close out any check-in still open (started/paused/resumed) past that
+     * shift's own day's closure time (RiderCheckIn::latestCheckInHour(),
+     * e.g. 6:00 PM) — a rider who forgets to check out doesn't stay
+     * "active" indefinitely. Uses that day's closure time as the checkout
+     * moment (not "now"), so hours worked never extend past the daily
+     * cutoff. Intended to run on a daily schedule (see routes/console.php),
+     * but is idempotent and safe to run any time — it only touches rows
+     * whose own closure time has already passed, so it also sweeps up any
+     * pre-existing backlog of abandoned shifts the first time it runs.
+     *
+     * @return array{closed_count: int, total_paid: float}
+     */
+    public function autoCloseAbandonedShifts(): array
+    {
+        $latestHour = RiderCheckIn::latestCheckInHour();
+        $closedCount = 0;
+        $totalPaid = 0.0;
+
+        RiderCheckIn::where('status', '!=', RiderCheckIn::STATUS_ENDED)
+            ->get()
+            ->each(function (RiderCheckIn $checkIn) use ($latestHour, &$closedCount, &$totalPaid) {
+                $closureTime = $checkIn->check_in_date->copy()->setHour($latestHour)->startOfHour();
+
+                if (Carbon::now()->lt($closureTime)) {
+                    return; // that shift's own day hasn't reached its cutoff yet
+                }
+
+                DB::transaction(function () use ($checkIn, $closureTime, &$closedCount, &$totalPaid) {
+                    $earnings = $this->earningsCalculator->calculate($checkIn, $closureTime);
+
+                    $openPause = RiderPauseEvent::where('check_in_id', $checkIn->id)
+                        ->whereNull('resumed_at')
+                        ->latest('paused_at')
+                        ->first();
+
+                    if ($openPause) {
+                        $openPause->update([
+                            'resumed_at' => $closureTime,
+                            'duration_minutes' => max(0, $openPause->paused_at->diffInMinutes($closureTime, false)),
+                        ]);
+                    }
+
+                    $checkIn->update([
+                        'check_out_time' => $closureTime,
+                        'status' => RiderCheckIn::STATUS_ENDED,
+                        'end_reason' => RiderCheckIn::END_REASON_AUTO_CLOSED,
+                        'daily_earning' => $earnings['daily_earning'],
+                        'worked_hours' => $earnings['worked_hours'],
+                        'payable_hours' => $earnings['payable_hours'],
+                        'stationary_hours' => $earnings['stationary_hours'],
+                        'hourly_rate_applied' => $earnings['hourly_rate'],
+                    ]);
+
+                    $rider = Rider::findOrFail($checkIn->rider_id);
+
+                    if ($earnings['qualifies_for_payment']) {
+                        $rider->increment('wallet_balance', $earnings['daily_earning']);
+                    }
+
+                    $route = RiderRoute::where('check_in_id', $checkIn->id)->first();
+                    if ($route) {
+                        $route->update(['ended_at' => $closureTime]);
+                        $route->updatePauseSummary();
+                    }
+
+                    $this->notificationService->notifyRiderShiftAutoClosed(
+                        $rider,
+                        $checkIn->check_in_date,
+                        $earnings['worked_hours'],
+                        $earnings['daily_earning'],
+                        $earnings['qualifies_for_payment']
+                    );
+
+                    $closedCount++;
+                    $totalPaid += $earnings['qualifies_for_payment'] ? $earnings['daily_earning'] : 0.0;
+                });
+            });
+
+        return ['closed_count' => $closedCount, 'total_paid' => round($totalPaid, 2)];
     }
 
     /**
@@ -330,21 +480,16 @@ class CheckInService
             if ($todayCheckIn->status === 'ended') {
                 $todayEarning = (float) $todayCheckIn->daily_earning;
             } else {
-                // Check-in is still active — estimate earnings so far
-                $pausedMinutes = RiderPauseEvent::where('check_in_id', $todayCheckIn->id)
-                    ->whereNotNull('resumed_at')
-                    ->sum('duration_minutes');
-
-                $elapsedMinutes  = $todayCheckIn->check_in_time->diffInMinutes($now);
-                $workedMinutes   = max(0, $elapsedMinutes - $pausedMinutes);
-                $workedHours     = $workedMinutes / 60.0;
-                $todayEarning    = round($workedHours * RiderCheckIn::HOURLY_RATE, 2);
+                // Check-in is still active — estimate earnings so far using
+                // the same rules that will apply when the shift actually ends.
+                $todayEarning = $this->earningsCalculator->calculate($todayCheckIn, $now)['daily_earning'];
             }
         }
 
 
-        $hoursPerDay             = 12;   // 6 AM to 7 PM
-        $hourlyRate              = RiderCheckIn::HOURLY_RATE; // 7
+        $rider                   = Rider::findOrFail($riderId);
+        $hoursPerDay             = RiderCheckIn::maxHoursPerDay();
+        $hourlyRate              = RiderCheckIn::hourlyRateFor($rider);
         $expectedDailyEarning    = $hoursPerDay * $hourlyRate;
         $expectedRemainingEarnings = $remainingDays * $expectedDailyEarning;
 
@@ -386,7 +531,7 @@ class CheckInService
                 'total_campaign_formatted'  => 'KSh ' . number_format((float) $stats->total_earnings, 2),
                 'expected_remaining'        => $expectedRemainingEarnings,
                 'expected_remaining_formatted' => 'KSh ' . number_format($expectedRemainingEarnings, 2),
-                'expected_remaining_note'   => "Based on working {$hoursPerDay} hrs/day (6AM–6PM) × KSh {$hourlyRate}/hr for {$remainingDays} remaining day(s)",
+                'expected_remaining_note'   => "Based on working a full {$hoursPerDay}-hour day × KSh {$hourlyRate}/hr for {$remainingDays} remaining day(s)",
                 'hourly_rate'               => $hourlyRate,
             ],
 

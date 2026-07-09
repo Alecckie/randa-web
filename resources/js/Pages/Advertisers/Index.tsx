@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { formatDateShort } from '@/utils/formatting';
+import { getPersonStatusColor, getPersonStatusLabel } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, TextInput, Select, Badge, Card, Group, Text, Stack, ActionIcon, Menu, Modal, Textarea } from '@mantine/core';
@@ -33,14 +35,7 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
         router.get(route('advertisers.index'));
     };
 
-    const getStatusColor = (status: Advertiser['status']) => {
-        const colors = {
-            pending: 'yellow',
-            approved: 'green',
-            rejected: 'red',
-        };
-        return colors[status];
-    };
+    const getStatusColor = (status: Advertiser['status']) => getPersonStatusColor(status);
 
     const getStatusIcon = (status: Advertiser['status']) => {
         const icons = {
@@ -100,57 +95,57 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Advertisers</Text>
                                 <Text size="xl" fw={700}>{stats.total_advertisers}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <Building2Icon size={32} className="text-blue-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Building2Icon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Pending Applications</Text>
-                                <Text size="xl" fw={700} c="yellow">{stats.pending_applications}</Text>
+                                <Text size="xl" fw={700}>{stats.pending_applications}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <Clock1Icon size={32} className="text-yellow-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Clock1Icon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Approved Advertisers</Text>
-                                <Text size="xl" fw={700} c="green">{stats.approved_advertisers}</Text>
+                                <Text size="xl" fw={700}>{stats.approved_advertisers}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <CheckIcon size={32} className="text-green-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <CheckIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Rejected Applications</Text>
-                                <Text size="xl" fw={700} c="red">{stats.rejected_applications}</Text>
+                                <Text size="xl" fw={700}>{stats.rejected_applications}</Text>
                             </div>
-                            <div className="text-3xl">
-                                <XIcon size={32} className="text-red-500" />
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <XIcon size={20} className="text-gray-500" />
                             </div>
                         </Group>
                     </Card>
                 </div>
 
                 {/* Filters */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <form onSubmit={handleSearch}>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                             <TextInput
@@ -195,51 +190,31 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
                 </Card>
 
                 {/* Advertisers Table */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Company Details
-                                    </th>
-                                    
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Contact Info
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Applied Date
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company Details</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Info</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied Date</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {advertisers.data.map((advertiser) => (
-                                    <tr key={advertiser.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <tr key={advertiser.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {advertiser.company_name}
-                                                </div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    {advertiser.business_registration || 'No registration'}
-                                                </div>
+                                                <div className="text-sm font-medium text-gray-900">{advertiser.company_name}</div>
+                                                <div className="text-sm text-gray-500">{advertiser.business_registration || 'No registration'}</div>
                                             </div>
                                         </td>
-                                       
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
-                                                <div className="text-sm text-gray-900 dark:text-white">
-                                                    {advertiser.user?.email}
-                                                </div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    {advertiser.user?.phone || 'No phone'}
-                                                </div>
+                                                <div className="text-sm text-gray-900">{advertiser.user?.email}</div>
+                                                <div className="text-sm text-gray-500">{advertiser.user?.phone || 'No phone'}</div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -251,8 +226,8 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
                                                 {advertiser.status.charAt(0).toUpperCase() + advertiser.status.slice(1)}
                                             </Badge>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {new Date(advertiser.created_at).toLocaleDateString()}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {formatDateShort(advertiser.created_at)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>
@@ -310,8 +285,8 @@ export default function Index({ advertisers, stats, filters, users }: Advertiser
 
                     {/* Pagination */}
                     {advertisers.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                            <div className="text-sm text-gray-500">
                                 Showing {advertisers.from} to {advertisers.to} of {advertisers.total} advertisers
                             </div>
                             <div className="flex space-x-1">

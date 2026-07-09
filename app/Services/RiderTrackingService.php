@@ -24,14 +24,12 @@ class RiderTrackingService
         try {
             $checkIn = $this->getActiveCheckIn($riderId);
 
+            // getActiveCheckIn() already excludes paused check-ins (only
+            // started/resumed qualify as "tracking"), so a paused rider
+            // lands here as null and throwNoActiveCheckInError() below
+            // reports the precise "tracking is paused" message.
             if (!$checkIn) {
-                throw new \Exception('No active check-in found for this rider');
-            }
-
-            $route = $this->getTodayRoute($riderId);
-
-            if ($route && $route->tracking_status === 'paused') {
-                throw new \Exception('Location tracking is currently paused. Please resume to continue recording.');
+                $this->throwNoActiveCheckInError($riderId);
             }
 
             $gpsPoint = RiderGpsPoint::create([
@@ -89,7 +87,7 @@ class RiderTrackingService
             $checkIn = $this->getActiveCheckIn($riderId);
 
             if (!$checkIn) {
-                throw new \Exception('No active check-in found');
+                $this->throwNoActiveCheckInError($riderId);
             }
 
             $records = collect($locations)->map(fn($loc) => [
@@ -147,7 +145,10 @@ class RiderTrackingService
         DB::beginTransaction();
 
         try {
-            $checkIn = $this->getActiveCheckIn($riderId);
+            // Not getActiveCheckIn() — that excludes paused check-ins by
+            // design (it gates GPS recording). Pause/resume need to find
+            // the check-in regardless of started/paused/resumed.
+            $checkIn = $this->getTodayCheckIn($riderId);
 
             if (!$checkIn) {
                 throw new \Exception('No active check-in found');
@@ -188,6 +189,8 @@ class RiderTrackingService
 
             DB::commit();
 
+            $this->clearRiderCache($riderId);
+
             return [
                 'check_in' => $checkIn->fresh(),
                 'pause_event' => $pauseEvent,
@@ -204,7 +207,7 @@ class RiderTrackingService
         DB::beginTransaction();
 
         try {
-            $checkIn = $this->getActiveCheckIn($riderId);
+            $checkIn = $this->getTodayCheckIn($riderId);
 
             if (!$checkIn) {
                 throw new \Exception('No active check-in found');
@@ -241,6 +244,8 @@ class RiderTrackingService
 
             DB::commit();
 
+            $this->clearRiderCache($riderId);
+
             return [
                 'check_in' => $checkIn->fresh(),
                 'pause_event' => $pauseEvent->fresh(),
@@ -258,7 +263,10 @@ class RiderTrackingService
 
     public function getTrackingStatus(int $riderId): array
     {
-        $checkIn = $this->getActiveCheckIn($riderId);
+        // getTodayCheckIn() (not getActiveCheckIn()) — must include a
+        // paused check-in so a paused rider is correctly reported as
+        // "tracking paused" rather than "no active check-in found".
+        $checkIn = $this->getTodayCheckIn($riderId);
 
         if (!$checkIn) {
             return [
@@ -269,27 +277,21 @@ class RiderTrackingService
         }
 
         $route = $this->getTodayRoute($riderId);
+        $latestPause = RiderPauseEvent::where('check_in_id', $checkIn->id)
+            ->latest('paused_at')
+            ->first();
 
-        if (!$route) {
-            return [
-                'is_active'       => true,
-                'tracking_status' => 'active',
-                'check_in_time'   => $checkIn->check_in_time?->toIso8601String(),
-                'message'         => 'Checked in, tracking active',
-            ];
-        }
+        $trackingStatus = $checkIn->isPaused() ? 'paused' : 'active';
 
         return [
             'is_active'            => true,
-            'tracking_status'      => $route->tracking_status ?? 'active',
+            'tracking_status'      => $trackingStatus,
             'check_in_time'        => $checkIn->check_in_time?->toIso8601String(),
-            'last_paused_at'       => $route->last_paused_at?->toIso8601String(),
-            'last_resumed_at'      => $route->last_resumed_at?->toIso8601String(),
+            'last_paused_at'       => $latestPause?->paused_at?->toIso8601String(),
+            'last_resumed_at'      => $latestPause?->resumed_at?->toIso8601String(),
             'total_pause_duration' => $route->total_pause_duration ?? 0,
             'locations_recorded'   => $route->location_points_count ?? 0,
-            'message'              => $route->tracking_status === 'paused'
-                ? 'Tracking paused'
-                : 'Tracking active',
+            'message'              => $trackingStatus === 'paused' ? 'Tracking paused' : 'Tracking active',
         ];
     }
 
@@ -304,8 +306,12 @@ class RiderTrackingService
             default => today(),
         };
 
+        // rider_check_ins.status is an enum of started/paused/resumed/ended
+        // — there is no 'active' value, so this previously matched zero rows
+        // no matter what. "Actively tracking" means started or resumed
+        // (matches RiderCheckIn::scopeTracking()).
         $activeRiders = DB::table('rider_check_ins')
-            ->where('status', 'active')
+            ->whereIn('status', [RiderCheckIn::STATUS_STARTED, RiderCheckIn::STATUS_RESUMED])
             ->whereDate('check_in_date', today())
             ->count();
 
@@ -319,7 +325,7 @@ class RiderTrackingService
             ->join('campaign_assignments', 'campaigns.id', '=', 'campaign_assignments.campaign_id')
             ->join('rider_check_ins', 'campaign_assignments.id', '=', 'rider_check_ins.campaign_assignment_id')
             ->where('campaigns.status', 'active')
-            ->where('rider_check_ins.status', 'active')
+            ->whereIn('rider_check_ins.status', [RiderCheckIn::STATUS_STARTED, RiderCheckIn::STATUS_RESUMED])
             ->whereDate('rider_check_ins.check_in_date', today())
             ->distinct('campaigns.id')
             ->count('campaigns.id');
@@ -328,20 +334,18 @@ class RiderTrackingService
             ->whereNotNull('avg_speed')
             ->avg('avg_speed');
 
-        $coverageAreas = RiderRoute::where('route_date', '>=', $dateFilter)
-            ->whereNotNull('coverage_areas')
-            ->pluck('coverage_areas')
-            ->flatten()
-            ->unique()
-            ->count();
-
         return [
             'active_riders'    => $activeRiders ?? 0,
             'total_distance'   => round((float) ($totalDistance ?? 0), 2),
             'total_locations'  => $totalLocations ?? 0,
             'active_campaigns' => $activeCampaigns ?? 0,
             'avg_speed'        => $avgSpeed ? round((float) $avgSpeed, 2) : 0.0,
-            'coverage_areas'   => $coverageAreas ?? 0,
+            // rider_routes.coverage_areas was dropped by
+            // 2026_02_26_143937_drop_rider_routes_columns.php with no
+            // replacement data source. Kept as a static 0 (not removed)
+            // because the frontend stat tile (TrackingStats.tsx) still
+            // renders this key unconditionally.
+            'coverage_areas'   => 0,
         ];
     }
 
@@ -371,10 +375,10 @@ class RiderTrackingService
             'checked_in'               => (bool) $checkIn,
             'check_in_time'            => $checkIn?->check_in_time?->format('H:i:s'),
             'check_out_time'           => $checkIn?->check_out_time?->format('H:i:s'),
-            'tracking_status'          => $route?->tracking_status ?? 'stopped',
+            'tracking_status'          => $checkIn?->isPaused() ? 'paused' : ($checkIn ? 'active' : 'stopped'),
             'total_locations_recorded' => $gpsPoints->count(),
             'total_pause_duration'     => $route?->total_pause_duration ?? 0,
-            'pause_count'              => count($route?->pause_history ?? []),
+            'pause_count'              => $route?->pause_count ?? 0,
             'first_location_time'      => $gpsPoints->first()?->recorded_at?->format('H:i:s'),
             'last_location_time'       => $gpsPoints->last()?->recorded_at?->format('H:i:s'),
             'average_speed'            => $avgSpeed ? round((float) $avgSpeed, 2) : null,
@@ -576,8 +580,6 @@ class RiderTrackingService
             [
                 'campaign_assignment_id' => $checkIn->campaign_assignment_id ?? null,
                 'started_at'             => $checkIn->check_in_time,
-                'status'                 => 'active',
-                'tracking_status'        => 'active',
             ]
         );
 
@@ -585,17 +587,53 @@ class RiderTrackingService
         $route->touch();
     }
 
+    /**
+     * Throws a precise error for why there's no active (tracking) check-in:
+     * distinguishes "you haven't checked in" from "you're paused" so the
+     * mobile app can show the rider something actionable.
+     *
+     * @throws \Exception
+     */
+    private function throwNoActiveCheckInError(int $riderId): never
+    {
+        $todayCheckIn = $this->getTodayCheckIn($riderId);
+
+        if ($todayCheckIn && $todayCheckIn->isPaused()) {
+            throw new \Exception('Location tracking is currently paused. Please resume to continue recording.');
+        }
+
+        throw new \Exception('No active check-in found for this rider');
+    }
+
+    /**
+     * The rider's check-in for today that is actively tracking (started or
+     * resumed) — excludes paused/ended. Used to gate GPS point recording.
+     */
     private function getActiveCheckIn(int $riderId): ?RiderCheckIn
     {
         return Cache::remember(
             "rider.{$riderId}.active_checkin",
             now()->addMinutes(5),
             fn() => RiderCheckIn::where('rider_id', $riderId)
-                ->where('status', 'started')
+                ->tracking() // status in [started, resumed] — excludes paused/ended
                 ->whereDate('check_in_date', today())
                 ->latest()
                 ->first()
         );
+    }
+
+    /**
+     * The rider's check-in for today regardless of started/paused/resumed
+     * (only excludes ended). Used by pause/resume, which must be able to
+     * find a check-in that is currently paused.
+     */
+    private function getTodayCheckIn(int $riderId): ?RiderCheckIn
+    {
+        return RiderCheckIn::where('rider_id', $riderId)
+            ->where('status', '!=', RiderCheckIn::STATUS_ENDED)
+            ->whereDate('check_in_date', today())
+            ->latest()
+            ->first();
     }
 
     private function getTodayRoute(int $riderId): ?RiderRoute

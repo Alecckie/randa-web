@@ -100,13 +100,13 @@ class AdvertiserDashboardController extends Controller
 
             $dashboardData['stats'] = [
                 ['name' => 'Active Campaigns',  'value' => (string) $activeCampaignIds->count(),
-                 'change' => '', 'trend' => 'neutral', 'icon' => '🎯'],
+                 'change' => '', 'trend' => 'neutral', 'icon' => 'target'],
                 ['name' => 'Total Impressions', 'value' => $totalImpressions >= 1000 ? round($totalImpressions / 1000, 1) . 'K' : (string) $totalImpressions,
-                 'change' => 'est. 500/km', 'trend' => 'up', 'icon' => '👁️'],
+                 'change' => 'est. 500/km', 'trend' => 'up', 'icon' => 'eye'],
                 ['name' => 'QR Code Scans',     'value' => number_format($totalQrScans),
-                 'change' => 'check-in + out', 'trend' => 'up', 'icon' => '📱'],
+                 'change' => 'check-in + out', 'trend' => 'up', 'icon' => 'smartphone'],
                 ['name' => 'Campaign Budget',   'value' => 'KSh ' . number_format((float) $totalBudget),
-                 'change' => 'total paid', 'trend' => 'neutral', 'icon' => '💳'],
+                 'change' => 'total paid', 'trend' => 'neutral', 'icon' => 'credit-card'],
             ];
 
             $dashboardData['campaigns']    = $recentCampaigns;

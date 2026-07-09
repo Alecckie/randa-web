@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\LocationService;
+use App\Services\NotificationService;
 use App\Services\RiderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,8 @@ class RiderProfileController extends BaseApiController
 {
     public function __construct(
         private RiderService $riderService,
-        private LocationService $locationService
+        private LocationService $locationService,
+        private NotificationService $notificationService
     ) {}
 
     /**
@@ -266,19 +268,25 @@ class RiderProfileController extends BaseApiController
                 'signed_agreement' => 'required|string|min:10',
             ]);
 
+            $previousStatus = $rider->status;
             $this->riderService->updateRiderAgreement($rider, $validated);
             $rider->refresh();
 
-            $message = $rider->isProfileComplete() 
+            $isComplete = $rider->isProfileComplete();
+
+            // Only notify admins on the transition to pending, not on every re-save
+            if ($isComplete && $rider->status === 'pending' && $previousStatus !== 'pending') {
+                $this->notificationService->notifyRiderApplicationReceived($rider);
+            }
+
+            $message = $isComplete
                 ? 'Agreement signed successfully! Your profile is now complete and under review.'
                 : 'Agreement signed successfully!';
 
             return $this->sendResponse([
                 'rider' => $this->riderService->formatBasicRiderData($rider),
                 'step_completed' => 'agreement',
-                // 'next_step' => $rider->getNextIncompleteStep(),
-                // 'profile_completion' => $rider->getProfileCompletionPercentage(),
-                'is_complete' => $rider->isProfileComplete(),
+                'is_complete' => $isComplete,
             ], $message);
 
         } catch (ValidationException $e) {

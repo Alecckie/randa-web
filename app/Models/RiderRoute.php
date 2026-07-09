@@ -46,7 +46,12 @@ class RiderRoute extends Model
     {
         return $this->belongsTo(RiderCheckIn::class, 'check_in_id');
     }
-    
+
+    public function campaignAssignment()
+    {
+        return $this->belongsTo(CampaignAssignment::class);
+    }
+
     public function pauseEvents()
     {
         return $this->hasMany(RiderPauseEvent::class, 'route_id')

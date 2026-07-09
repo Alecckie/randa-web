@@ -17,11 +17,20 @@ export interface AuthProps {
     user: User;
 }
 
+export interface FlashProps {
+    success?: string | null;
+    error?: string | null;
+    warning?: string | null;
+    message?: string | null;
+    reference?: string | null;
+}
+
 export type PageProps<
     T extends Record<string, unknown> = Record<string, unknown>,
 > = T & {
     auth: AuthProps;
     ziggy: Config & { location: string };
+    flash?: FlashProps;
 };
 
 export interface NavigationItem {

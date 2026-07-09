@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import React from 'react';
+import { formatDateShort } from '@/utils/formatting';
+import { getCampaignStatusColor, getCampaignStatusLabel, getAssignmentStatusColor, getAssignmentStatusLabel, getHelmetStatusColor, getHelmetStatusLabel } from '@/utils/status';
 import { Link, router } from '@inertiajs/react';
 import {
     Badge,
@@ -117,71 +120,29 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
     const [localFilters, setLocalFilters] = useState(filters);
 
     const getCampaignStatusBadge = (status: string) => {
-        const statusConfig = {
-            draft: { color: 'gray', label: 'Draft', icon: Clock },
-            pending_payment: { color: 'yellow', label: 'Pending Payment', icon: Clock },
-            paid: { color: 'blue', label: 'Paid', icon: CheckCircle },
-            active: { color: 'green', label: 'Active', icon: Play },
-            paused: { color: 'orange', label: 'Paused', icon: Pause },
-            completed: { color: 'teal', label: 'Completed', icon: CheckCircle },
-            cancelled: { color: 'red', label: 'Cancelled', icon: XCircle },
+        const iconMap: Record<string, React.ElementType> = {
+            draft: Clock, submitted: Clock,
+            active: Play, paused: Pause, completed: CheckCircle, cancelled: XCircle,
         };
-
-        const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft;
-        const Icon = config.icon;
-
+        const Icon = iconMap[status] ?? Clock;
         return (
-            <Badge
-                color={config.color}
-                variant="light"
-                size="sm"
-                leftSection={<Icon size={12} />}
-            >
-                {config.label}
+            <Badge color={getCampaignStatusColor(status)} variant="light" size="sm" leftSection={<Icon size={12} />}>
+                {getCampaignStatusLabel(status)}
             </Badge>
         );
     };
 
-    const getAssignmentStatusBadge = (status: string) => {
-        const statusConfig = {
-            active: { color: 'green', label: 'Active' },
-            completed: { color: 'teal', label: 'Completed' },
-            cancelled: { color: 'red', label: 'Cancelled' },
-        };
+    const getAssignmentStatusBadge = (status: string) => (
+        <Badge color={getAssignmentStatusColor(status)} variant="light" size="xs">
+            {getAssignmentStatusLabel(status)}
+        </Badge>
+    );
 
-        const config = statusConfig[status as keyof typeof statusConfig];
-        
-        return config ? (
-            <Badge color={config.color} variant="light" size="xs">
-                {config.label}
-            </Badge>
-        ) : null;
-    };
-
-    const getHelmetStatusBadge = (status: string) => {
-        const statusConfig = {
-            available: { color: 'green', label: 'Available' },
-            assigned: { color: 'blue', label: 'Assigned' },
-            maintenance: { color: 'orange', label: 'Maintenance' },
-            retired: { color: 'gray', label: 'Retired' },
-        };
-
-        const config = statusConfig[status as keyof typeof statusConfig];
-        
-        return config ? (
-            <Badge color={config.color} variant="dot" size="xs">
-                {config.label}
-            </Badge>
-        ) : null;
-    };
-
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
-    };
+    const getHelmetStatusBadge = (status: string) => (
+        <Badge color={getHelmetStatusColor(status)} variant="dot" size="xs">
+            {getHelmetStatusLabel(status)}
+        </Badge>
+    );
 
     const handleFilterChange = (key: string, value: any) => {
         setLocalFilters(prev => ({ ...prev, [key]: value }));
@@ -217,15 +178,15 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
         });
     };
 
-    const StatCard = ({ icon: Icon, label, value, color }: any) => (
-        <Paper p="md" withBorder className="h-full">
+    const StatCard = ({ icon: Icon, label, value }: any) => (
+        <Paper p="md" withBorder className="h-full bg-white">
             <Group gap="sm">
-                <div className={`p-2 rounded-lg bg-${color}-50 dark:bg-${color}-900/20`}>
-                    <Icon size={24} className={`text-${color}-600`} />
+                <div className="p-2 rounded-lg bg-gray-100">
+                    <Icon size={24} className="text-gray-500" />
                 </div>
                 <div className="flex-1">
                     <Text size="xs" c="dimmed">{label}</Text>
-                    <Text size="xl" fw={700} className="text-gray-900 dark:text-white">
+                    <Text size="xl" fw={700} className="text-gray-900">
                         {value}
                     </Text>
                 </div>
@@ -253,15 +214,13 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                     icon={Package}
                                     label="Total Campaigns"
                                     value={stats.total_campaigns}
-                                    color="blue"
-                                />
+                                    />
                             </Grid.Col>
                             <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
                                 <StatCard
                                     icon={Play}
                                     label="Active Campaigns"
                                     value={stats.active_campaigns}
-                                    color="green"
                                 />
                             </Grid.Col>
                             <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
@@ -269,7 +228,6 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                     icon={Trophy}
                                     label="Completed"
                                     value={stats.completed_campaigns}
-                                    color="teal"
                                 />
                             </Grid.Col>
                             <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
@@ -277,7 +235,6 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                     icon={TrendingUp}
                                     label="Total Days Worked"
                                     value={stats.total_days_worked}
-                                    color="purple"
                                 />
                             </Grid.Col>
                         </Grid>
@@ -383,7 +340,7 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                             {campaigns.data.length > 0 ? (
                                 <>
                                     <div className="overflow-x-auto">
-                                        <Table highlightOnHover>
+                                        <Table>
                                             <Table.Thead>
                                                 <Table.Tr>
                                                     <Table.Th>Campaign Name</Table.Th>
@@ -412,13 +369,13 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                                 <Group gap={4}>
                                                                     <Calendar size={12} className="text-gray-500" />
                                                                     <Text size="xs">
-                                                                        {formatDate(campaign.start_date)}
+                                                                        {formatDateShort(campaign.start_date)}
                                                                     </Text>
                                                                 </Group>
                                                                 <Group gap={4}>
                                                                     <Calendar size={12} className="text-gray-500" />
                                                                     <Text size="xs">
-                                                                        {formatDate(campaign.end_date)}
+                                                                        {formatDateShort(campaign.end_date)}
                                                                     </Text>
                                                                 </Group>
                                                                 <Text size="xs" c="dimmed" mt={2}>
@@ -434,11 +391,11 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                                 <div>
                                                                     {getAssignmentStatusBadge(campaign.assignment.status)}
                                                                     <Text size="xs" c="dimmed" mt={4}>
-                                                                        Assigned: {formatDate(campaign.assignment.assigned_at)}
+                                                                        Assigned: {formatDateShort(campaign.assignment.assigned_at)}
                                                                     </Text>
                                                                     {campaign.assignment.completed_at && (
                                                                         <Text size="xs" c="dimmed">
-                                                                            Completed: {formatDate(campaign.assignment.completed_at)}
+                                                                            Completed: {formatDateShort(campaign.assignment.completed_at)}
                                                                         </Text>
                                                                     )}
                                                                 </div>

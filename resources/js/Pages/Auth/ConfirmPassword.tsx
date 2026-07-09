@@ -16,47 +16,34 @@ export default function ConfirmPassword() {
         <GuestLayout>
             <Head title="Confirm Password" />
 
-            <div className="min-h-screen bg-[#111114] flex items-center justify-center px-4 py-12 relative overflow-hidden">
-                <div className="absolute inset-0 opacity-[0.045]">
-                    <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse">
-                                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1" />
-                            </pattern>
-                        </defs>
-                        <rect width="100%" height="100%" fill="url(#g)" />
-                    </svg>
-                </div>
-                <div className="absolute top-0 right-0 w-96 h-96 bg-[#f79122] opacity-[0.06] rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#f79122] opacity-[0.04] rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
-
-                <div className="relative z-10 w-full max-w-md">
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+                <div className="w-full max-w-md">
                     <div className="flex items-center justify-center mb-8">
-                        <img src="/assets/randa_white_logo_landscape-01-01-01-01.png" alt="RANDA" className="h-10 w-auto" />
+                        <img src="/assets/logo.png" alt="RANDA" className="h-10 w-auto" />
                     </div>
 
-                    <div className="bg-[#1a1a1f] border border-white/8 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
-                        <div className="h-0.5 bg-gradient-to-r from-[#f79122] to-[#e07a1a]" />
+                    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="h-1 bg-[#f79122]" />
 
                         <div className="px-8 py-8">
                             <div className="flex items-center justify-center mb-6">
-                                <div className="w-16 h-16 rounded-2xl bg-[#f79122]/10 border border-[#f79122]/20 flex items-center justify-center">
+                                <div className="w-16 h-16 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center">
                                     <ShieldAlert size={28} className="text-[#f79122]" />
                                 </div>
                             </div>
 
-                            <h1 className="text-2xl font-bold text-white text-center mb-2">Confirm your password</h1>
-                            <p className="text-sm text-gray-400 text-center mb-8 leading-relaxed">
+                            <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">Confirm your password</h1>
+                            <p className="text-sm text-gray-500 text-center mb-8 leading-relaxed">
                                 This is a secure area. Please re-enter your password to continue.
                             </p>
 
                             <form onSubmit={submit} className="space-y-5">
                                 <div>
-                                    <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1.5">
+                                    <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
                                         Password
                                     </label>
                                     <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                                             <Lock size={16} />
                                         </div>
                                         <input
@@ -67,18 +54,18 @@ export default function ConfirmPassword() {
                                             value={data.password}
                                             onChange={(e) => setData('password', e.target.value)}
                                             placeholder="••••••••"
-                                            className="block w-full pl-10 pr-11 py-3 text-sm border border-white/8 rounded-xl bg-white/5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition"
+                                            className="block w-full pl-10 pr-11 py-3 text-sm border border-gray-200 rounded-xl bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f79122] focus:border-transparent transition"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword((v) => !v)}
-                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
+                                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                                         >
                                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
                                     {errors.password && (
-                                        <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
+                                        <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
                                             <AlertCircle size={12} /> {errors.password}
                                         </p>
                                     )}
@@ -87,7 +74,7 @@ export default function ConfirmPassword() {
                                 <button
                                     type="submit"
                                     disabled={processing}
-                                    className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-[#f79122] hover:bg-[#e07a1a] disabled:opacity-60 text-white text-sm font-semibold shadow-lg shadow-[#f79122]/20 transition-all duration-200 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-[#f79122] hover:bg-[#e07a1a] disabled:opacity-60 text-white text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed"
                                 >
                                     {processing ? (
                                         <>
@@ -103,7 +90,7 @@ export default function ConfirmPassword() {
                         </div>
                     </div>
 
-                    <p className="mt-8 text-center text-xs text-gray-600">
+                    <p className="mt-8 text-center text-xs text-gray-400">
                         © {new Date().getFullYear()} RANDA Media. All rights reserved.
                     </p>
                 </div>

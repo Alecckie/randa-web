@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { formatCurrency, formatDateShort } from '@/utils/formatting';
+import { getPersonStatusColor } from '@/utils/status';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, TextInput, Select, Badge, Card, Group, Text, Stack, ActionIcon, Menu, Modal, Textarea, CheckIcon, ActionIconGroup } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import type { RidersIndexProps, Rider } from '@/types/rider';
-import { AccessibilityIcon, BellIcon, CheckCircleIcon, Clock1Icon, DotSquareIcon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react';
+import { Users, Banknote, AccessibilityIcon, BellIcon, CheckCircleIcon, Clock1Icon, DotSquareIcon, EyeIcon, FilterIcon, MoreVerticalIcon, PencilIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react';
 
 export default function Index({ riders, stats, filters, users }: RidersIndexProps) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
@@ -32,15 +34,7 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
         router.get(route('riders.index'));
     };
 
-    const getStatusColor = (status: Rider['status'] | 'incomplete' | null) => {
-        const colors = {
-            pending: 'yellow',
-            approved: 'green',
-            rejected: 'red',
-            incomplete: 'gray',
-        };
-        return colors[status as keyof typeof colors] || 'gray';
-    };
+    const getStatusColor = (status: Rider['status'] | 'incomplete' | null) => getPersonStatusColor(status ?? 'incomplete');
 
     const getStatusIcon = (status: Rider['status'] | 'incomplete' | null) => {
         const icons = {
@@ -101,49 +95,57 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
             <div className="space-y-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-white dark:bg-gray-800">
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Total Riders</Text>
                                 <Text size="xl" fw={700}>{stats.total_riders}</Text>
                             </div>
-                            <div className="text-3xl">👥</div>
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Users size={20} className="text-gray-500" />
+                            </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Pending Applications</Text>
-                                <Text size="xl" fw={700} c="yellow">{stats.pending_applications}</Text>
+                                <Text size="xl" fw={700}>{stats.pending_applications}</Text>
                             </div>
-                            <div className="text-3xl">⏳</div>
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Clock1Icon size={20} className="text-gray-500" />
+                            </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Approved Riders</Text>
-                                <Text size="xl" fw={700} c="green">{stats.approved_riders}</Text>
+                                <Text size="xl" fw={700}>{stats.approved_riders}</Text>
                             </div>
-                            <div className="text-3xl">✅</div>
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <CheckCircleIcon size={20} className="text-gray-500" />
+                            </div>
                         </Group>
                     </Card>
-                    
-                    <Card className="bg-white dark:bg-gray-800">
+
+                    <Card className="bg-white">
                         <Group>
                             <div className="flex-1">
                                 <Text size="sm" c="dimmed">Average Daily Rate</Text>
-                                <Text size="xl" fw={700}>KSh {parseFloat(stats.average_daily_rate).toFixed(0)}</Text>
+                                <Text size="xl" fw={700}>{formatCurrency(parseFloat(stats.average_daily_rate))}</Text>
                             </div>
-                            <div className="text-3xl">💰</div>
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Banknote size={20} className="text-gray-500" />
+                            </div>
                         </Group>
                     </Card>
                 </div>
 
                 {/* Filters */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <form onSubmit={handleSearch}>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                             <TextInput
@@ -189,55 +191,33 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
                 </Card>
 
                 {/* Riders Table */}
-                <Card className="bg-white dark:bg-gray-800">
+                <Card className="bg-white">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Rider Details
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Contact Info
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Daily Rate
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Wallet Balance
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Applied Date
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rider Details</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Info</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Daily Rate</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet Balance</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campaign</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody className="bg-white divide-y divide-gray-100">
                                 {riders.data.map((rider) => (
-                                    <tr key={rider.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <tr key={rider.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {rider.user?.name}
-                                                </div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    ID: {rider.national_id}
-                                                </div>
+                                                <div className="text-sm font-medium text-gray-900">{rider.user?.name}</div>
+                                                <div className="text-sm text-gray-500">ID: {rider.national_id}</div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div>
-                                                <div className="text-sm text-gray-900 dark:text-white">
-                                                    {rider.user?.email}
-                                                </div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                                    M-Pesa: {rider.mpesa_number}
-                                                </div>
+                                                <div className="text-sm text-gray-900">{rider.user?.email}</div>
+                                                <div className="text-sm text-gray-500">M-Pesa: {rider.mpesa_number}</div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -249,14 +229,14 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
                                                 {rider.status ? (rider.status.charAt(0).toUpperCase() + rider.status.slice(1)) : 'Incomplete Profile'}
                                             </Badge>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                            {rider.daily_rate ? `KSh ${parseFloat(rider.daily_rate).toFixed(2)}` : 'Not set'}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                            {rider.daily_rate ? formatCurrency(parseFloat(rider.daily_rate)) : 'Not set'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                            {rider.wallet_balance ? `KSh ${parseFloat(rider.wallet_balance).toFixed(2)}` : 'KSh 0.00'}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                            {formatCurrency(parseFloat(rider.wallet_balance ?? '0'))}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {new Date(rider.created_at).toLocaleDateString()}
+                                        <td className="px-6 py-4 max-w-[180px] truncate text-sm text-gray-500" title={rider.current_campaign_name ?? undefined}>
+                                            {rider.current_campaign_name ?? ''}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Menu shadow="md" width={200}>
@@ -314,7 +294,7 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
 
                     {riders.data.length === 0 && (
                         <div className="text-center py-12">
-                            <div className="text-gray-400 text-6xl mb-4">👥</div>
+                            <div className="flex justify-center mb-4"><Users size={48} className="text-gray-300" /></div>
                             <Text size="lg" c="dimmed">No riders found</Text>
                             <Text size="sm" c="dimmed">
                                 {Object.keys(filters).some(key => filters[key as keyof typeof filters]) 
@@ -326,8 +306,8 @@ export default function Index({ riders, stats, filters, users }: RidersIndexProp
 
                     {/* Pagination */}
                     {riders.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                            <div className="text-sm text-gray-500">
                                 Showing {riders.from} to {riders.to} of {riders.total} riders
                             </div>
                             <div className="flex space-x-1">

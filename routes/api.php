@@ -38,6 +38,13 @@ Route::prefix('v1')->group(function () {
         Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::put('/profile/password', [AuthController::class, 'updatePassword']);
 
+        // In-app notifications (available to all authenticated roles)
+        Route::prefix('notifications')->name('api.notifications.')->group(function () {
+            Route::get('/',              [\App\Http\Controllers\NotificationsController::class, 'index'])->name('index');
+            Route::post('/read-all',     [\App\Http\Controllers\NotificationsController::class, 'markAllRead'])->name('read-all');
+            Route::post('/{id}/read',    [\App\Http\Controllers\NotificationsController::class, 'markRead'])->name('read');
+        });
+
 
         // Rider routes - only accessible by riders
         Route::prefix('rider')->middleware(['auth:sanctum', 'role:rider'])->group(function () {
@@ -104,8 +111,8 @@ Route::prefix('v1')->group(function () {
                 Route::post('/checkout', [RiderCheckInController::class, 'checkOut'])
                     ->name('checkout');
 
-                Route::post('/force-checkout', [RiderCheckInController::class, 'forceCheckOut'])
-                    ->name('force-checkout');
+                Route::post('/leave-shift', [RiderCheckInController::class, 'leaveShift'])
+                    ->name('leave-shift');
 
                 Route::get('/assignment/current', [RiderCheckInController::class, 'currentAssignment'])
                     ->name('assignment.current');
@@ -151,7 +158,8 @@ Route::prefix('v1')->group(function () {
             Route::prefix('qr-prompt')->group(function () {
                 Route::post('/',                 [SelfieController::class, 'storePrompt'])->name('rider.qr-prompt.store');
                 Route::get('/active',            [SelfieController::class, 'activePrompt'])->name('rider.qr-prompt.active');
-                Route::patch('/{prompt}/reject', [SelfieController::class, 'rejectPrompt'])->name('rider.qr-prompt.accept');
+                Route::patch('/{prompt}/accept', [SelfieController::class, 'acceptPrompt'])->name('rider.qr-prompt.accept');
+                Route::patch('/{prompt}/reject', [SelfieController::class, 'rejectPrompt'])->name('rider.qr-prompt.reject');
                 Route::post('/{prompt}/submit',  [SelfieController::class, 'submitQr'])->name('rider.qr-prompt.submit');
             });
 

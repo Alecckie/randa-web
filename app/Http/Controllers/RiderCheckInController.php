@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\CheckInService;
+use App\Services\Shift\RiderPayoutService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,8 +16,10 @@ class RiderCheckInController extends Controller
 {
     protected $checkInService;
 
-    public function __construct(CheckInService $checkInService)
-    {
+    public function __construct(
+        CheckInService $checkInService,
+        private RiderPayoutService $payoutService,
+    ) {
         $this->checkInService = $checkInService;
     }
 
@@ -201,6 +205,45 @@ class RiderCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $status
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * The rider's own detailed earnings breakdown — date, hours worked,
+     * amount awarded, with running totals — for the "Earnings" table on
+     * the dashboard. Self-service equivalent of the admin
+     * RiderController::payoutAudit(), always scoped to the authenticated
+     * rider (never accepts a rider ID from the client).
+     */
+    public function earningsSummary(Request $request): JsonResponse
+    {
+        try {
+            $rider = Auth::user()->rider;
+
+            if (!$rider) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rider profile not found.'
+                ], 404);
+            }
+
+            $from = $request->filled('from')
+                ? Carbon::parse($request->query('from'))->startOfDay()
+                : Carbon::parse('2020-01-01');
+
+            $to = $request->filled('to')
+                ? Carbon::parse($request->query('to'))->endOfDay()
+                : Carbon::now()->endOfDay();
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->payoutService->periodSummary($rider->id, $from, $to),
             ]);
         } catch (\Exception $e) {
             return response()->json([

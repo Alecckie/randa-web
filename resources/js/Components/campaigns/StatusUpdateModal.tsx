@@ -12,23 +12,21 @@ interface StatusUpdateModalProps {
     campaign: Campaign | null;
 }
 
-// Define allowed status transitions
+// Define allowed status transitions. Campaign status is independent of
+// payment status — the one place they intersect is 'submitted' -> 'active',
+// which the backend rejects unless payment_status is 'paid'.
 const STATUS_TRANSITIONS: Record<CampaignStatus, { value: CampaignStatus; label: string; description?: string }[]> = {
     draft: [
-        { value: 'pending_payment', label: 'Pending Payment', description: 'Move to payment pending' },
+        { value: 'submitted', label: 'Submit', description: 'Move to submitted, ready for payment' },
         { value: 'cancelled', label: 'Cancel', description: 'Cancel this campaign' },
     ],
-    pending_payment: [
-        { value: 'paid', label: 'Mark as Paid', description: 'Payment received' },
-        { value: 'cancelled', label: 'Cancel', description: 'Cancel this campaign' },
-    ],
-    paid: [
-        { value: 'active', label: 'Activate', description: 'Start the campaign' },
+    submitted: [
+        { value: 'active', label: 'Activate', description: 'Start the campaign (requires payment to be paid)' },
         { value: 'cancelled', label: 'Cancel', description: 'Cancel this campaign' },
     ],
     active: [
         { value: 'paused', label: 'Pause', description: 'Temporarily pause campaign' },
-        { value: 'completed', label: 'Complete', description: 'Mark as completed' },
+        { value: 'completed', label: 'Complete', description: 'Mark as completed — automatically returns all assigned helmets to the available pool and notifies riders' },
     ],
     paused: [
         { value: 'active', label: 'Resume', description: 'Resume the campaign' },
@@ -82,6 +80,7 @@ export default function StatusUpdateModal({ opened, onClose, campaign }: StatusU
         .split('_')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
+    const blockedByPayment = selectedStatus === 'active' && campaign.payment_status !== 'paid';
 
     return (
         <Modal
@@ -124,7 +123,7 @@ export default function StatusUpdateModal({ opened, onClose, campaign }: StatusU
                         />
 
                         {/* Show description for selected status */}
-                        {selectedStatus && (
+                        {selectedStatus && !blockedByPayment && (
                             <Alert
                                 icon={<CheckCircle size={16} />}
                                 color="blue"
@@ -133,6 +132,20 @@ export default function StatusUpdateModal({ opened, onClose, campaign }: StatusU
                             >
                                 <Text size="sm">
                                     {availableStatuses.find(s => s.value === selectedStatus)?.description}
+                                </Text>
+                            </Alert>
+                        )}
+
+                        {blockedByPayment && (
+                            <Alert
+                                icon={<AlertCircle size={16} />}
+                                color="red"
+                                variant="light"
+                                radius="md"
+                            >
+                                <Text size="sm">
+                                    This campaign's payment status is <strong>{campaign.payment_status ?? 'unpaid'}</strong>, not paid.
+                                    Approve or record the payment first — a campaign can't go active until it's paid.
                                 </Text>
                             </Alert>
                         )}
@@ -160,7 +173,7 @@ export default function StatusUpdateModal({ opened, onClose, campaign }: StatusU
                             <Button
                                 onClick={handleSubmit}
                                 loading={isSubmitting}
-                                disabled={!selectedStatus}
+                                disabled={!selectedStatus || blockedByPayment}
                                 radius="md"
                             >
                                 Update Status

@@ -23,7 +23,7 @@ interface Props {
 function statusColor(s: string) {
     const map: Record<string, string> = {
         active: 'green', paused: 'yellow', completed: 'gray',
-        draft: 'blue', pending_payment: 'orange', paid: 'teal',
+        draft: 'blue', submitted: 'orange',
     };
     return map[s] ?? 'gray';
 }
