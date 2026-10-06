@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
 
 class Campaign extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'advertiser_id',
@@ -38,6 +39,7 @@ class Campaign extends Model
         'need_design' => 'boolean',
         'require_vat_receipt' => 'boolean',
         'agree_to_terms' => 'boolean',
+        'archived_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -222,6 +224,27 @@ class Campaign extends Model
     public function canBeCancelled(): bool
     {
         return in_array($this->status, ['draft', 'submitted', 'paused']);
+    }
+
+    /**
+     * Only a campaign that never started may be permanently deleted — once
+     * submitted it may carry a payment, and once active/completed it carries
+     * rider history that must be preserved for audit.
+     */
+    public function canBeDeleted(): bool
+    {
+        return $this->status === 'draft';
+    }
+
+    /**
+     * Archiving just hides a finished campaign from the advertiser's active
+     * list; it never deletes data, so it's only offered once the campaign
+     * reached a genuine, successful end — rider check-ins, payouts, and
+     * assignment history stay intact and queryable for audit either way.
+     */
+    public function canBeArchived(): bool
+    {
+        return $this->status === 'completed' && !$this->archived_at;
     }
 
     /**

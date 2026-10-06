@@ -26,8 +26,9 @@ class CheckInService
     public function checkIn(string $qrCode, int $riderId, ?float $latitude = null, ?float $longitude = null): array
     {
         return DB::transaction(function () use ($qrCode, $riderId, $latitude, $longitude) {
-            // Find helmet by QR code
-            $helmet = Helmet::where('qr_code', $qrCode)->first();
+            // Find helmet by scanned QR code, or by the typed helmet_code
+            // when the rider can't scan (see Helmet::findByScanOrCode).
+            $helmet = Helmet::findByScanOrCode($qrCode);
 
             if (!$helmet) {
                 throw new Exception('Invalid QR code. Helmet not found.');
@@ -55,6 +56,13 @@ class CheckInService
                 throw new Exception('The campaign associated with this helmet is not active or paid.');
             }
 
+            // campaign.status only flips to 'completed' via the daily
+            // campaigns:complete-expired cron — up to ~24h after end_date
+            // actually passes, a scan would otherwise still succeed.
+            if ($assignment->campaign->end_date && Carbon::now()->gt(Carbon::parse($assignment->campaign->end_date)->endOfDay())) {
+                throw new Exception('This campaign has ended. Check-in is no longer available.');
+            }
+
             if (Carbon::now()->hour < RiderCheckIn::earliestCheckInHour()) {
                 $earliest = Carbon::today()->setHour(RiderCheckIn::earliestCheckInHour())->format('h:i A');
                 throw new Exception("Check-in is not allowed before {$earliest}.");
@@ -64,6 +72,16 @@ class CheckInService
                 $latest = Carbon::today()->setHour(RiderCheckIn::latestCheckInHour())->format('h:i A');
                 throw new Exception("Check-in is not allowed after {$latest}.");
             }
+
+            // Shared hosting means we can't fully rely on the daily
+            // rider-shifts:auto-close cron actually firing (see
+            // autoCloseAbandonedShifts() docblock) — so also close out any
+            // of this rider's own still-open shifts from a previous day
+            // right here, before they're allowed to start a new one. Each
+            // gets finalized and paid as of its own day's 6 PM cutoff, same
+            // as the cron would do, not left stuck on the placeholder
+            // daily_earning forever.
+            $this->autoCloseAbandonedShifts($riderId);
 
             // Check if rider already has a shift record today, in any state.
             // A rider gets exactly one rider_check_ins row per day (enforced
@@ -243,15 +261,22 @@ class CheckInService
      * whose own closure time has already passed, so it also sweeps up any
      * pre-existing backlog of abandoned shifts the first time it runs.
      *
+     * Pass $riderId to scope this to one rider — used as a fallback in
+     * checkIn() so a rider's own stale shifts get closed and paid out the
+     * moment they try to start a new one, without depending on the daily
+     * cron actually having run (shared hosting doesn't always give us a
+     * reliable crontab).
+     *
      * @return array{closed_count: int, total_paid: float}
      */
-    public function autoCloseAbandonedShifts(): array
+    public function autoCloseAbandonedShifts(?int $riderId = null): array
     {
         $latestHour = RiderCheckIn::latestCheckInHour();
         $closedCount = 0;
         $totalPaid = 0.0;
 
         RiderCheckIn::where('status', '!=', RiderCheckIn::STATUS_ENDED)
+            ->when($riderId, fn ($query) => $query->where('rider_id', $riderId))
             ->get()
             ->each(function (RiderCheckIn $checkIn) use ($latestHour, &$closedCount, &$totalPaid) {
                 $closureTime = $checkIn->check_in_date->copy()->setHour($latestHour)->startOfHour();
@@ -319,6 +344,13 @@ class CheckInService
      */
     public function getTodayCheckInStatus(int $riderId): ?array
     {
+        // Same shared-hosting fallback as checkIn() — GET /rider/status is
+        // polled on every app launch/resume (see HomeController on the
+        // mobile side), so it's a far more reliable trigger than waiting for
+        // this rider's next check-in, which may never come if they've
+        // stopped using the app after an abandoned shift.
+        $this->autoCloseAbandonedShifts($riderId);
+
         $checkIn = RiderCheckIn::where('rider_id', $riderId)
             ->whereDate('check_in_date', Carbon::today())
             ->with(['campaignAssignment.campaign', 'campaignAssignment.helmet'])
@@ -560,7 +592,7 @@ class CheckInService
      */
     public function validateQrCode(string $qrCode, int $riderId): array
     {
-        $helmet = Helmet::where('qr_code', $qrCode)->first();
+        $helmet = Helmet::findByScanOrCode($qrCode);
 
         if (!$helmet) {
             throw new Exception('Invalid QR code.');

@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class RiderRoute extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'rider_id',
         'check_in_id',

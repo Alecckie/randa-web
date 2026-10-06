@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import axios from 'axios';
 import { formatCurrency, formatDate } from '@/utils/formatting';
 import { getCampaignStatusColor, getPaymentStatusColor } from '@/utils/status';
 import { calculateProgress, calculateBalance } from '@/utils/calculations';
@@ -55,11 +56,15 @@ import {
     Banknote,
     RefreshCwIcon,
     Map as MapIcon,
+    LocateFixed as LocateFixedIcon,
     ActivityIcon,
+    BarChart3,
 } from 'lucide-react';
 import type { Campaign } from '@/types/campaign';
 import StatusUpdateModal from '@/Components/campaigns/StatusUpdateModal';
 import type { HeatmapPeriod } from '@/Components/tracking/LiveHeatmap';
+import HeatmapPeriodSelect from '@/Components/tracking/HeatmapPeriodSelect';
+import CampaignAnalyticsPanel, { type CampaignAnalyticsData } from '@/Components/analytics/CampaignAnalyticsPanel';
 
 const LiveHeatmap = lazy(() => import('@/Components/tracking/LiveHeatmap'));
 
@@ -134,7 +139,8 @@ interface CampaignShowProps {
                 user: {
                     id: number;
                     name: string;
-                    email: string;
+                    // Omitted for advertisers — they see initials only (see RiderPrivacyMasker).
+                    email?: string;
                 };
             };
             helmet: {
@@ -193,8 +199,17 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
     const pendingPayments = campaign.payments?.filter(p => p.status === 'pending_verification') ?? [];
     const [heatmapVisited, setHeatmapVisited] = useState(false);
     const [heatmapPeriod, setHeatmapPeriod] = useState<HeatmapPeriod>('7days');
+    const [heatmapCustomDate, setHeatmapCustomDate] = useState<string | null>(null);
+    const [mapsVisited, setMapsVisited] = useState(false);
+    const [mapsPeriod, setMapsPeriod] = useState<HeatmapPeriod>('today');
+    const [mapsCustomDate, setMapsCustomDate] = useState<string | null>(null);
+    const [analyticsVisited, setAnalyticsVisited] = useState(false);
+    const [analyticsData, setAnalyticsData] = useState<CampaignAnalyticsData | null>(null);
+    const [analyticsLoading, setAnalyticsLoading] = useState(false);
+    const [analyticsError, setAnalyticsError] = useState<string | null>(null);
     const activeAssignments = campaign.assignments?.filter(a => a.status === 'active') ?? [];
-    const historyAssignments = campaign.assignments?.filter(a => a.status !== 'active') ?? [];
+    const pendingAssignments = campaign.assignments?.filter(a => a.status === 'pending') ?? [];
+    const historyAssignments = campaign.assignments?.filter(a => a.status !== 'active' && a.status !== 'pending') ?? [];
     const activeAssignmentCount = activeAssignments.length;
     const hasAssignedRiders = activeAssignmentCount > 0;
 
@@ -289,6 +304,19 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
             },
             onFinish: () => setAutoAssigning(false),
         });
+    };
+
+    const fetchAnalytics = async () => {
+        setAnalyticsLoading(true);
+        setAnalyticsError(null);
+        try {
+            const { data } = await axios.get(route('admin.campaigns.analytics.campaign', campaign.id));
+            setAnalyticsData(data.data);
+        } catch {
+            setAnalyticsError('Failed to load analytics. Please try again.');
+        } finally {
+            setAnalyticsLoading(false);
+        }
     };
 
     const handleManualPayment = () => {
@@ -597,16 +625,22 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                 <Tabs
                     defaultValue="details"
                     className="bg-white dark:bg-gray-800 rounded-lg"
+                    orientation="horizontal"
                     onChange={(value) => {
                         if (value === 'heatmap') setHeatmapVisited(true);
+                        if (value === 'maps') setMapsVisited(true);
+                        if (value === 'analytics' && !analyticsVisited) {
+                            setAnalyticsVisited(true);
+                            fetchAnalytics();
+                        }
                     }}
                 >
-                    <Tabs.List>
+                    <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
                         <Tabs.Tab value="details" leftSection={<FileTextIcon size={16} />}>
                             Campaign Details
                         </Tabs.Tab>
                         <Tabs.Tab value="assignments" leftSection={<UsersIcon size={16} />}>
-                            Rider Assignments ({campaign.assignments?.length || 0})
+                            Rider Assignments ({campaign.assignments?.filter(a => a.status === 'active').length || 0})
                         </Tabs.Tab>
                         <Tabs.Tab value="financials" leftSection={<BanknoteIcon size={16} />}>
                             Financials
@@ -615,6 +649,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                             Timeline
                         </Tabs.Tab>
                         {isAdmin && (
+                            <Tabs.Tab value="analytics" leftSection={<BarChart3 size={16} />}>
+                                Analytics
+                            </Tabs.Tab>
+                        )}
+                        {isAdmin && (
                             <Tabs.Tab value="payment-analysis" leftSection={<BarChart2Icon size={16} />}>
                                 Payment Analysis
                             </Tabs.Tab>
@@ -622,6 +661,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                         {isAdmin && (
                             <Tabs.Tab value="heatmap" leftSection={<MapIcon size={16} />}>
                                 Heatmap
+                            </Tabs.Tab>
+                        )}
+                        {isAdmin && (
+                            <Tabs.Tab value="maps" leftSection={<LocateFixedIcon size={16} />}>
+                                Maps
                             </Tabs.Tab>
                         )}
                     </Tabs.List>
@@ -714,11 +758,15 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         <Paper p="md" withBorder>
                                             <Text size="sm" c="dimmed" mb="xs">Age Groups</Text>
                                             <div className="flex flex-wrap gap-1">
-                                                {[...new Set(campaign.rider_demographics?.map(d => d.age_group))].map((age, idx) => (
-                                                    <Badge key={idx} variant="light" color="blue">
-                                                        {age}
-                                                    </Badge>
-                                                ))}
+                                                {campaign.rider_demographics?.length ? (
+                                                    [...new Set(campaign.rider_demographics.map(d => d.age_group))].map((age, idx) => (
+                                                        <Badge key={idx} variant="light" color="blue">
+                                                            {age}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <Text size="sm" c="dimmed">Not specified</Text>
+                                                )}
                                             </div>
                                         </Paper>
                                     </Grid.Col>
@@ -726,11 +774,15 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         <Paper p="md" withBorder>
                                             <Text size="sm" c="dimmed" mb="xs">Gender</Text>
                                             <div className="flex flex-wrap gap-1">
-                                                {[...new Set(campaign.rider_demographics?.map(d => d.gender))].map((gender, idx) => (
-                                                    <Badge key={idx} variant="light" color="pink">
-                                                        {gender}
-                                                    </Badge>
-                                                ))}
+                                                {campaign.rider_demographics?.length ? (
+                                                    [...new Set(campaign.rider_demographics.map(d => d.gender))].map((gender, idx) => (
+                                                        <Badge key={idx} variant="light" color="pink">
+                                                            {gender}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <Text size="sm" c="dimmed">Not specified</Text>
+                                                )}
                                             </div>
                                         </Paper>
                                     </Grid.Col>
@@ -738,41 +790,84 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         <Paper p="md" withBorder>
                                             <Text size="sm" c="dimmed" mb="xs">Rider Types</Text>
                                             <div className="flex flex-wrap gap-1">
-                                                {[...new Set(campaign.rider_demographics?.map(d => d.rider_type))].map((type, idx) => (
-                                                    <Badge key={idx} variant="light" color="green">
-                                                        {type}
-                                                    </Badge>
-                                                ))}
+                                                {campaign.rider_demographics?.length ? (
+                                                    [...new Set(campaign.rider_demographics.map(d => d.rider_type))].map((type, idx) => (
+                                                        <Badge key={idx} variant="light" color="green">
+                                                            {type}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <Text size="sm" c="dimmed">Not specified</Text>
+                                                )}
                                             </div>
                                         </Paper>
                                     </Grid.Col>
                                 </Grid>
                             </div>
 
-                            {/* Design Requirements */}
-                            {campaign.need_design && (
+                            {/* Business Details */}
+                            {(campaign.business_type || campaign.special_instructions) && (
                                 <>
                                     <Divider />
                                     <div>
-                                        <Text size="lg" fw={700} mb="md">Design Requirements</Text>
-                                        <Paper p="md" withBorder>
-                                            <Stack gap="sm">
-                                                <Group>
-                                                    <Badge color="purple">Design Required</Badge>
-                                                </Group>
-                                                {campaign.design_requirements && (
-                                                    <Text>{campaign.design_requirements}</Text>
-                                                )}
-                                                {campaign.design_file && (
-                                                    <Button variant="light" size="sm" leftSection={<DownloadIcon size={14} />}>
-                                                        Download Design File
-                                                    </Button>
-                                                )}
-                                            </Stack>
-                                        </Paper>
+                                        <Text size="lg" fw={700} mb="md">Business Details</Text>
+                                        <Grid gutter="md">
+                                            {campaign.business_type && (
+                                                <Grid.Col span={{ base: 12, md: 6 }}>
+                                                    <Stack gap="xs">
+                                                        <Text size="sm" c="dimmed">Business Type</Text>
+                                                        <Text fw={500}>{campaign.business_type}</Text>
+                                                    </Stack>
+                                                </Grid.Col>
+                                            )}
+                                            {campaign.special_instructions && (
+                                                <Grid.Col span={12}>
+                                                    <Stack gap="xs">
+                                                        <Text size="sm" c="dimmed">Special Instructions</Text>
+                                                        <Text>{campaign.special_instructions}</Text>
+                                                    </Stack>
+                                                </Grid.Col>
+                                            )}
+                                        </Grid>
                                     </div>
                                 </>
                             )}
+
+                            {/* Design Requirements / Attachment — design_file is uploaded
+                                precisely when need_design is false (advertiser supplies
+                                their own creative); design_requirements when it's true
+                                (Randa designs it). Always shown so admins can confirm
+                                whether an attachment was actually provided. */}
+                            <Divider />
+                            <div>
+                                <Text size="lg" fw={700} mb="md">Design Requirements & Attachment</Text>
+                                <Paper p="md" withBorder>
+                                    <Stack gap="sm">
+                                        <Group>
+                                            <Badge color="purple">
+                                                {campaign.need_design ? 'Design Required' : 'Advertiser-Supplied Design'}
+                                            </Badge>
+                                        </Group>
+                                        {campaign.design_requirements && (
+                                            <Text>{campaign.design_requirements}</Text>
+                                        )}
+                                        {campaign.design_file ? (
+                                            <Button
+                                                variant="light"
+                                                size="sm"
+                                                leftSection={<DownloadIcon size={14} />}
+                                                component="a"
+                                                href={`/storage/${campaign.design_file}`}
+                                                target="_blank"
+                                            >
+                                                Download Attachment
+                                            </Button>
+                                        ) : (
+                                            <Text size="sm" c="dimmed">No attachments</Text>
+                                        )}
+                                    </Stack>
+                                </Paper>
+                            </div>
                         </Stack>
                     </Tabs.Panel>
 
@@ -820,9 +915,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                         <Text size="sm" fw={500}>
                                                             {assignment.rider?.user?.name}
                                                         </Text>
-                                                        <Text size="xs" c="dimmed">
-                                                            {assignment.rider?.user?.email}
-                                                        </Text>
+                                                        {assignment.rider?.user?.email && (
+                                                            <Text size="xs" c="dimmed">
+                                                                {assignment.rider.user.email}
+                                                            </Text>
+                                                        )}
                                                     </div>
                                                 </Table.Td>
                                                 <Table.Td>
@@ -893,6 +990,67 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                 </Paper>
                             )}
 
+                            {pendingAssignments.length > 0 && (
+                                <>
+                                    <Text size="sm" fw={600} c="dimmed" tt="uppercase" mt="md">
+                                        Awaiting Rider Response
+                                    </Text>
+                                    <div className="overflow-x-auto">
+                                    <Table>
+                                        <Table.Thead>
+                                            <Table.Tr>
+                                                <Table.Th>Rider</Table.Th>
+                                                <Table.Th>Helmet Number</Table.Th>
+                                                <Table.Th>Offered Date</Table.Th>
+                                                <Table.Th>Actions</Table.Th>
+                                            </Table.Tr>
+                                        </Table.Thead>
+                                        <Table.Tbody>
+                                            {pendingAssignments.map((assignment) => (
+                                                <Table.Tr key={assignment.id}>
+                                                    <Table.Td>
+                                                        <div>
+                                                            <Text size="sm" fw={500}>
+                                                                {assignment.rider?.user?.name}
+                                                            </Text>
+                                                            {assignment.rider?.user?.email && (
+                                                                <Text size="xs" c="dimmed">
+                                                                    {assignment.rider.user.email}
+                                                                </Text>
+                                                            )}
+                                                        </div>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Badge variant="outline">
+                                                            {assignment.helmet?.helmet_code ?? '—'}
+                                                        </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Text size="sm">
+                                                            {formatDate(assignment.assigned_at)}
+                                                        </Text>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Group gap="xs">
+                                                            <Badge color="yellow" variant="light">Awaiting Response</Badge>
+                                                            <ActionIcon
+                                                                variant="subtle"
+                                                                color="red"
+                                                                onClick={() => handleRemoveAssignment(assignment.id)}
+                                                                title="Cancel Request"
+                                                            >
+                                                                <XCircleIcon size={16} />
+                                                            </ActionIcon>
+                                                        </Group>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                    </div>
+                                </>
+                            )}
+
                             {historyAssignments.length > 0 && (
                                 <>
                                     <Text size="sm" fw={600} c="dimmed" tt="uppercase" mt="md">
@@ -906,6 +1064,7 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                 <Table.Th>Helmet Number</Table.Th>
                                                 <Table.Th>Assigned Date</Table.Th>
                                                 <Table.Th>Status</Table.Th>
+                                                <Table.Th>Actions</Table.Th>
                                             </Table.Tr>
                                         </Table.Thead>
                                         <Table.Tbody>
@@ -916,9 +1075,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                             <Text size="sm" fw={500}>
                                                                 {assignment.rider?.user?.name}
                                                             </Text>
-                                                            <Text size="xs" c="dimmed">
-                                                                {assignment.rider?.user?.email}
-                                                            </Text>
+                                                            {assignment.rider?.user?.email && (
+                                                                <Text size="xs" c="dimmed">
+                                                                    {assignment.rider.user.email}
+                                                                </Text>
+                                                            )}
                                                         </div>
                                                     </Table.Td>
                                                     <Table.Td>
@@ -935,6 +1096,16 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                                         <Badge color={assignment.status === 'completed' ? 'blue' : 'red'}>
                                                             {assignment.status}
                                                         </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <ActionIcon
+                                                            variant="subtle"
+                                                            component={Link}
+                                                            href={route('campaigns.assignment-activity', [campaign.id, assignment.id])}
+                                                            title="View Activity for This Campaign"
+                                                        >
+                                                            <ActivityIcon size={16} />
+                                                        </ActionIcon>
                                                     </Table.Td>
                                                 </Table.Tr>
                                             ))}
@@ -1090,6 +1261,35 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                             )}
                         </Stack>
                     </Tabs.Panel>
+
+                    {isAdmin && (
+                        <Tabs.Panel value="analytics" p="md">
+                            <Stack gap="md">
+                                {analyticsLoading && (
+                                    <div className="flex items-center justify-center py-20">
+                                        <div className="animate-spin w-8 h-8 border-4 border-[#f79122] border-t-transparent rounded-full" />
+                                    </div>
+                                )}
+
+                                {analyticsError && (
+                                    <Alert icon={<AlertCircleIcon size={16} />} color="red" variant="light">
+                                        {analyticsError}
+                                    </Alert>
+                                )}
+
+                                {analyticsData && !analyticsLoading && (
+                                    <CampaignAnalyticsPanel data={analyticsData} />
+                                )}
+
+                                {!analyticsLoading && !analyticsError && !analyticsData && (
+                                    <Paper p="xl" className="text-center" withBorder>
+                                        <BarChart3 size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                                        <Text c="dimmed">No analytics data available.</Text>
+                                    </Paper>
+                                )}
+                            </Stack>
+                        </Tabs.Panel>
+                    )}
 
                     {isAdmin && paymentAnalysis && (
                         <Tabs.Panel value="payment-analysis" p="md">
@@ -1318,18 +1518,11 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                         <Tabs.Panel value="heatmap" p="md">
                             <Stack gap="md">
                                 <Group justify="flex-end">
-                                    <Select
-                                        label="Period"
-                                        value={heatmapPeriod}
-                                        onChange={(value) => setHeatmapPeriod((value as HeatmapPeriod) ?? '7days')}
-                                        data={[
-                                            { value: 'today', label: 'Today' },
-                                            { value: '7days', label: 'Last 7 days' },
-                                            { value: '30days', label: 'Last 30 days' },
-                                        ]}
-                                        w={180}
-                                        allowDeselect={false}
-                                        comboboxProps={{ zIndex: 2000 }}
+                                    <HeatmapPeriodSelect
+                                        period={heatmapPeriod}
+                                        customDate={heatmapCustomDate}
+                                        onPeriodChange={setHeatmapPeriod}
+                                        onCustomDateChange={setHeatmapCustomDate}
                                     />
                                 </Group>
 
@@ -1342,11 +1535,51 @@ export default function Show({ campaign, availableRiders = [], availableHelmets 
                                         }
                                     >
                                         <LiveHeatmap
-                                            key={heatmapPeriod}
+                                            key={`${heatmapPeriod}-${heatmapCustomDate}`}
                                             campaignId={campaign.id}
                                             period={heatmapPeriod}
+                                            customDate={heatmapCustomDate}
                                             height={500}
                                             apiEndpoint="/admin/tracking/heatmap"
+                                        />
+                                    </Suspense>
+                                ) : (
+                                    <div className="h-[500px] flex items-center justify-center bg-gray-50 dark:bg-gray-700 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                                        <span className="text-gray-400">Loading map…</span>
+                                    </div>
+                                )}
+                            </Stack>
+                        </Tabs.Panel>
+                    )}
+
+                    {isAdmin && (
+                        <Tabs.Panel value="maps" p="md">
+                            <Stack gap="md">
+                                <Group justify="flex-end">
+                                    <HeatmapPeriodSelect
+                                        period={mapsPeriod}
+                                        customDate={mapsCustomDate}
+                                        onPeriodChange={setMapsPeriod}
+                                        onCustomDateChange={setMapsCustomDate}
+                                    />
+                                </Group>
+
+                                {mapsVisited ? (
+                                    <Suspense
+                                        fallback={
+                                            <div className="h-[500px] flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg">
+                                                <span className="text-gray-500 dark:text-gray-400">Loading map…</span>
+                                            </div>
+                                        }
+                                    >
+                                        <LiveHeatmap
+                                            key={`${mapsPeriod}-${mapsCustomDate}`}
+                                            campaignId={campaign.id}
+                                            period={mapsPeriod}
+                                            customDate={mapsCustomDate}
+                                            height={500}
+                                            apiEndpoint="/admin/tracking/heatmap"
+                                            mode="markers"
                                         />
                                     </Suspense>
                                 ) : (

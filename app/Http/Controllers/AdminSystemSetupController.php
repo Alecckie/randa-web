@@ -103,7 +103,18 @@ class AdminSystemSetupController extends Controller
                     'purpose' => 'Marks active campaigns whose end date has passed as completed.',
                 ],
             ],
-            'cronEntry' => '* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1',
+            'webCron' => [
+                'active' => (bool) config('scheduling.web_cron_enabled'),
+                'intervalSeconds' => (int) config('scheduling.web_cron_interval_seconds'),
+                'note' => 'This server has no crontab, so App\\Http\\Middleware\\TriggerScheduledTasks runs `schedule:run` after each web/API response instead (throttled by a cache lock — see config/scheduling.php). Nothing to configure here; it\'s already running the two scheduled jobs below.',
+                'cronEntry' => '* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1',
+                'switchSteps' => [
+                    'On the VPS, add the crontab entry above as the app\'s deploy user (crontab -e).',
+                    'Set SCHEDULER_WEB_CRON_ENABLED=false in .env so the web-triggered fallback stops calling schedule:run on every request.',
+                    'Run php artisan config:cache if this server caches config, so the .env change takes effect.',
+                    'Confirm with php artisan schedule:list, then check logs after a minute or two that jobs are firing from the real cron.',
+                ],
+            ],
             'commandsReference' => [
                 [
                     'command' => 'rider-shifts:auto-close',

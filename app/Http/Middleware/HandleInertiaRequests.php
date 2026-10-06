@@ -3,8 +3,11 @@
 namespace App\Http\Middleware;
 
 use App\Models\Advertiser;
+use App\Models\CampaignAssignment;
+use App\Models\HelmetReport;
 use App\Models\Payment;
 use App\Models\Rider;
+use App\Models\RiderWithdrawalRequest;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Tighten\Ziggy\Ziggy;
@@ -68,6 +71,8 @@ class HandleInertiaRequests extends Middleware
                         'pending_riders'       => Rider::where('status', 'pending')->count(),
                         'pending_advertisers'  => Advertiser::where('status', 'pending')->count(),
                         'pending_payments'     => Payment::where('status', 'pending_verification')->count(),
+                        'pending_withdrawals'  => RiderWithdrawalRequest::pending()->count(),
+                        'unresolved_helmet_reports' => HelmetReport::unresolved()->count(),
                         'unread_notifications' => $unreadNotifications,
                     ];
                 }
@@ -77,6 +82,16 @@ class HandleInertiaRequests extends Middleware
                     return [
                         'pending_payments' => $advertiserId
                             ? Payment::where('advertiser_id', $advertiserId)->where('status', 'pending_verification')->count()
+                            : 0,
+                        'unread_notifications' => $unreadNotifications,
+                    ];
+                }
+
+                if ($user->role === 'rider') {
+                    $riderId = $user->rider?->id;
+                    return [
+                        'pending_assignments' => $riderId
+                            ? CampaignAssignment::where('rider_id', $riderId)->where('status', 'pending')->count()
                             : 0,
                         'unread_notifications' => $unreadNotifications,
                     ];

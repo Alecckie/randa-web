@@ -28,10 +28,12 @@ export interface CampaignAnalyticsData {
         utilization_rate: number;
         total_active_hours: number;
         total_distance_km: number;
+        avg_distance_km_per_rider_day: number;
         estimated_impressions: number;
         impressions_per_km: number;
         total_qr_scans: number;
-        total_earnings_paid: number;
+        // null for advertiser requests — see RiderPrivacyMasker.
+        total_earnings_paid: number | null;
     };
     today: {
         riders_checked_in: number;
@@ -43,6 +45,7 @@ export interface CampaignAnalyticsData {
         riders_checked_in: number;
         riders_completed: number;
         distance_km: number;
+        avg_distance_km_per_rider: number;
         active_hours: number;
         impressions: number;
     }[];
@@ -52,7 +55,9 @@ export interface CampaignAnalyticsData {
         qualified_days: number;
         total_active_hours: number;
         total_distance_km: number;
-        total_earnings: number;
+        avg_distance_km_per_day: number;
+        // absent for advertiser requests — see RiderPrivacyMasker.
+        total_earnings?: number;
     }[];
 }
 
@@ -102,6 +107,7 @@ function SectionHeader({ title }: { title: string }) {
 
 export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyticsData }) {
     const { campaign, summary, today, daily_breakdown, rider_performance } = data;
+    const showEarnings = summary.total_earnings_paid !== null;
 
     const progressPct = campaign.total_days > 0
         ? Math.round((campaign.current_day / campaign.total_days) * 100)
@@ -164,7 +170,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
             {/* ── Key Metrics ── */}
             <div>
                 <SectionHeader title="Campaign Overview" />
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <MetricCard
                         icon={<Users size={16} />}
                         label="Riders"
@@ -191,6 +197,13 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                         label="Distance"
                         value={`${summary.total_distance_km.toLocaleString()} km`}
                         sub={`${summary.total_active_hours.toLocaleString()} hrs active`}
+                        color="purple"
+                    />
+                    <MetricCard
+                        icon={<TrendingUp size={16} />}
+                        label="Avg Km / Rider-Day"
+                        value={`${summary.avg_distance_km_per_rider_day.toLocaleString()} km`}
+                        sub="per rider on a day they worked"
                         color="purple"
                     />
                     <MetricCard
@@ -265,13 +278,15 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
                         {summary.qualified_days} of {summary.possible_rider_days} rider-days completed
                     </p>
-                    <div className="mt-3 w-full pt-3 border-t border-gray-100 dark:border-gray-800 grid grid-cols-2 gap-2 text-center">
-                        <div>
-                            <p className="text-lg font-bold text-gray-900 dark:text-white">
-                                KSh {summary.total_earnings_paid.toLocaleString()}
-                            </p>
-                            <p className="text-xs text-gray-400">Total rider earnings</p>
-                        </div>
+                    <div className={`mt-3 w-full pt-3 border-t border-gray-100 dark:border-gray-800 grid gap-2 text-center ${showEarnings ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        {showEarnings && (
+                            <div>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                    KSh {summary.total_earnings_paid!.toLocaleString()}
+                                </p>
+                                <p className="text-xs text-gray-400">Total rider earnings</p>
+                            </div>
+                        )}
                         <div>
                             <p className="text-lg font-bold text-gray-900 dark:text-white">
                                 {summary.total_active_hours.toLocaleString()}h
@@ -315,7 +330,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                                    {['Date', 'In', 'Done', 'Distance', 'Hours', 'Est. Impressions'].map((h) => (
+                                    {['Date', 'In', 'Done', 'Distance', 'Avg Km/Rider', 'Hours', 'Est. Impressions'].map((h) => (
                                         <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                                             {h}
                                         </th>
@@ -335,6 +350,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                                             </span>
                                         </td>
                                         <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{day.distance_km} km</td>
+                                        <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{day.avg_distance_km_per_rider} km</td>
                                         <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{day.active_hours} h</td>
                                         <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{fmtNumber(day.impressions)}</td>
                                     </tr>
@@ -357,7 +373,7 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                    {['Rider', 'Qualified Days', 'Active Hours', 'Distance', 'Earnings'].map((h) => (
+                                    {['Rider', 'Qualified Days', 'Active Hours', 'Distance', ...(showEarnings ? ['Earnings'] : [])].map((h) => (
                                         <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                                             {h}
                                         </th>
@@ -393,9 +409,11 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                                             </td>
                                             <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{rider.total_active_hours} h</td>
                                             <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{rider.total_distance_km} km</td>
-                                            <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-200">
-                                                KSh {rider.total_earnings.toLocaleString()}
-                                            </td>
+                                            {showEarnings && (
+                                                <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-200">
+                                                    KSh {(rider.total_earnings ?? 0).toLocaleString()}
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                             </tbody>
@@ -411,9 +429,11 @@ export default function CampaignAnalyticsPanel({ data }: { data: CampaignAnalyti
                                     <td className="px-4 py-2.5 font-semibold text-gray-800 dark:text-gray-200">
                                         {rider_performance.reduce((s, r) => s + r.total_distance_km, 0).toFixed(2)} km
                                     </td>
-                                    <td className="px-4 py-2.5 font-semibold text-gray-800 dark:text-gray-200">
-                                        KSh {rider_performance.reduce((s, r) => s + r.total_earnings, 0).toLocaleString()}
-                                    </td>
+                                    {showEarnings && (
+                                        <td className="px-4 py-2.5 font-semibold text-gray-800 dark:text-gray-200">
+                                            KSh {rider_performance.reduce((s, r) => s + (r.total_earnings ?? 0), 0).toLocaleString()}
+                                        </td>
+                                    )}
                                 </tr>
                             </tfoot>
                         </table>

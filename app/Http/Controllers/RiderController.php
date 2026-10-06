@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreRiderRequest;
+use App\Http\Requests\UpdateRiderRequest;
 use App\Models\CampaignAssignment;
 use App\Models\Rider;
 use App\Models\RiderCheckIn;
@@ -12,9 +13,11 @@ use App\Services\LocationService;
 use App\Services\NotificationService;
 use App\Services\RiderService;
 use App\Services\Shift\RiderPayoutService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class RiderController extends Controller
@@ -149,15 +152,73 @@ class RiderController extends Controller
      */
     public function edit(Rider $rider)
     {
-        //
+        $rider->load('user');
+
+        return Inertia::render('Riders/Edit', [
+            'rider' => [
+                'id' => $rider->id,
+                'rider_number' => $rider->rider_number,
+                'national_id' => $rider->national_id,
+                'mpesa_number' => $rider->mpesa_number,
+                'next_of_kin_name' => $rider->next_of_kin_name,
+                'next_of_kin_phone' => $rider->next_of_kin_phone,
+                'daily_rate' => $rider->daily_rate,
+                'user' => [
+                    'first_name' => $rider->user->first_name,
+                    'last_name' => $rider->user->last_name,
+                    'email' => $rider->user->email,
+                    'phone' => $rider->user->phone,
+                ],
+                'documents' => [
+                    'national_id_front_photo' => $rider->national_id_front_photo ? Storage::url($rider->national_id_front_photo) : null,
+                    'national_id_back_photo' => $rider->national_id_back_photo ? Storage::url($rider->national_id_back_photo) : null,
+                    'passport_photo' => $rider->passport_photo ? Storage::url($rider->passport_photo) : null,
+                    'good_conduct_certificate' => $rider->good_conduct_certificate ? Storage::url($rider->good_conduct_certificate) : null,
+                    'motorbike_license' => $rider->motorbike_license ? Storage::url($rider->motorbike_license) : null,
+                    'motorbike_registration' => $rider->motorbike_registration ? Storage::url($rider->motorbike_registration) : null,
+                ],
+            ],
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Rider $rider)
+    public function update(UpdateRiderRequest $request, Rider $rider)
     {
-        //
+        try {
+            $this->riderService->updateRiderProfile($rider, $request->validated());
+
+            return redirect()
+                ->route('riders.show', $rider->id)
+                ->with('success', 'Rider details updated successfully.');
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to update rider: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Approve or reject a pending rider application from the Riders list
+     * page. Delegates to the same single-action controllers used on the
+     * Riders/Show page so approval/rejection logic only lives in one place.
+     */
+    public function updateStatus(Request $request, Rider $rider, ApproveRiderController $approveRider, RejectRiderController $rejectRider)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:approved,rejected',
+            'rejection_reason' => 'required_if:status,rejected|nullable|string|min:10|max:1000',
+        ]);
+
+        if ($validated['status'] === 'approved') {
+            return $approveRider($rider, $this->riderService, $this->notificationService);
+        }
+
+        $request->merge(['reason' => $validated['rejection_reason']]);
+
+        return $rejectRider($request, $rider, $this->riderService, $this->notificationService);
     }
 
     /**
@@ -176,6 +237,22 @@ class RiderController extends Controller
                 ->back()
                 ->with('error', $e->getMessage());
         }
+    }
+
+    /**
+     * Download rider details as PDF.
+     */
+    public function downloadPdf(Rider $rider)
+    {
+        $riderDetails = $this->riderService->loadRiderDetailsForShow($rider);
+        $tripStats = $this->checkInService->getCheckInStats($rider->id);
+
+        $pdf = Pdf::loadView('pdf.rider', [
+            'rider' => $riderDetails,
+            'tripStats' => $tripStats,
+        ]);
+
+        return $pdf->download('rider-' . ($riderDetails->rider_number ?? $riderDetails->id) . '-' . now()->format('Y-m-d') . '.pdf');
     }
 
     /**

@@ -22,7 +22,7 @@ import {
     ActionIcon,
     Menu,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
     ArrowLeft,
     Calendar,
@@ -48,6 +48,8 @@ import {
     BarChart2,
     Bike,
     Zap,
+    Trash2,
+    Archive,
 } from 'lucide-react';
 import { Advertiser } from '@/types/advertiser';
 import MpesaPaymentModal from '@/Components/payments/MpesaPaymentModal';
@@ -107,6 +109,7 @@ interface Campaign {
     status: string;
     payment_status: string;
     total_paid_amount: number;
+    archived_at: string | null;
     created_at: string;
     updated_at: string;
     advertiser: {
@@ -135,6 +138,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
 
     // Payment modal state
     const [paymentModalOpened, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
+    const isMobile = useMediaQuery('(max-width: 768px)');
 
     // Listen for payment updates via Echo
     useEffect(() => {
@@ -269,6 +273,11 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                 <Badge size="lg" color={getStatusColorPayment(campaign.payment_status)}>
                                     {campaign.payment_status?.replace('_', ' ').toUpperCase() || 'UNPAID'}
                                 </Badge>
+                                {campaign.archived_at && (
+                                    <Badge size="lg" color="gray" variant="light" leftSection={<Archive size={12} />}>
+                                        ARCHIVED
+                                    </Badge>
+                                )}
                             </Group>
                             <p className="text-sm text-gray-500 mt-1">
                                 <Text component="span" fw={600} className="text-gray-700 dark:text-gray-300">{campaign.campaign_number}</Text>
@@ -287,7 +296,7 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                     Pay Now — {formatCurrency(campaignBalance())}
                                 </Button>
                             )}
-                            {campaign.status === 'draft' && (
+                            {(campaign.status === 'draft' || campaign.status === 'submitted') && (
                                 <Button
                                     component={Link}
                                     href={route('my-campaigns.edit', campaign.id)}
@@ -306,6 +315,34 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                                     variant="filled"
                                 >
                                     View Analytics
+                                </Button>
+                            )}
+                            {campaign.status === 'draft' && (
+                                <Button
+                                    leftSection={<Trash2 size={16} />}
+                                    color="red"
+                                    variant="light"
+                                    onClick={() => {
+                                        if (confirm('Delete this draft campaign? This cannot be undone.')) {
+                                            router.delete(route('my-campaigns.destroy', campaign.id));
+                                        }
+                                    }}
+                                >
+                                    Delete
+                                </Button>
+                            )}
+                            {campaign.status === 'completed' && !campaign.archived_at && (
+                                <Button
+                                    leftSection={<Archive size={16} />}
+                                    color="gray"
+                                    variant="light"
+                                    onClick={() => {
+                                        if (confirm('Archive this campaign? It will be hidden from your campaign list, but its rider activity stays on record for audit.')) {
+                                            router.patch(route('my-campaigns.archive', campaign.id));
+                                        }
+                                    }}
+                                >
+                                    Archive
                                 </Button>
                             )}
                         </Group>
@@ -559,8 +596,12 @@ export default function Show({ campaign, advertiser }: CampaignShowProps) {
                     )}
 
                     {/* Tabs for detailed information */}
-                    <Tabs defaultValue="details" className="bg-white dark:bg-gray-800 rounded-lg">
-                        <Tabs.List>
+                    <Tabs
+                        defaultValue="details"
+                        className="bg-white dark:bg-gray-800 rounded-lg"
+                        orientation={isMobile ? 'horizontal' : 'vertical'}
+                    >
+                        <Tabs.List style={isMobile ? { flexWrap: 'nowrap', overflowX: 'auto' } : undefined}>
                             <Tabs.Tab value="details" leftSection={<FileText size={16} />}>
                                 Campaign Details
                             </Tabs.Tab>

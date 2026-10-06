@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\PhoneNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -321,29 +322,11 @@ class StoreRiderRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         // Format phone numbers to include country code if not present
-        if ($this->phone && !str_starts_with($this->phone, '254')) {
-            if (str_starts_with($this->phone, '0')) {
-                $this->merge([
-                    'phone' => '254' . substr($this->phone, 1)
-                ]);
-            }
-        }
-
-        if ($this->mpesa_number && !str_starts_with($this->mpesa_number, '254')) {
-            if (str_starts_with($this->mpesa_number, '0')) {
-                $this->merge([
-                    'mpesa_number' => '254' . substr($this->mpesa_number, 1)
-                ]);
-            }
-        }
-
-        if ($this->next_of_kin_phone && !str_starts_with($this->next_of_kin_phone, '254')) {
-            if (str_starts_with($this->next_of_kin_phone, '0')) {
-                $this->merge([
-                    'next_of_kin_phone' => '254' . substr($this->next_of_kin_phone, 1)
-                ]);
-            }
-        }
+        $this->merge([
+            'phone' => PhoneNumber::normalizeKenyan($this->phone),
+            'mpesa_number' => PhoneNumber::normalizeKenyan($this->mpesa_number),
+            'next_of_kin_phone' => PhoneNumber::normalizeKenyan($this->next_of_kin_phone),
+        ]);
 
         // Handle nested location data formatting
         if ($this->has('location') && is_array($this->location)) {

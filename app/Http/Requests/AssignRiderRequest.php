@@ -47,11 +47,11 @@ class AssignRiderRequest extends FormRequest
 
                     $existingAssignment = CampaignAssignment::where('campaign_id', $this->route('campaign')->id)
                         ->where('rider_id', $value)
-                        ->where('status', 'active')
+                        ->whereIn('status', ['active', 'pending'])
                         ->exists();
 
                     if ($existingAssignment) {
-                        $fail('This rider is already assigned to the campaign.');
+                        $fail('This rider is already assigned to, or has a pending assignment for, the campaign.');
                     }
                 },
             ],
@@ -61,11 +61,11 @@ class AssignRiderRequest extends FormRequest
                 'exists:helmets,id',
                 function ($attribute, $value, $fail) {
                     $existingAssignment = CampaignAssignment::where('helmet_id', $value)
-                        ->where('status', 'active')
+                        ->whereIn('status', ['active', 'pending'])
                         ->exists();
 
                     if ($existingAssignment) {
-                        $fail('This helmet is already assigned to another campaign.');
+                        $fail('This helmet is already assigned to another campaign, or awaiting a rider response.');
                     }
                 },
             ],

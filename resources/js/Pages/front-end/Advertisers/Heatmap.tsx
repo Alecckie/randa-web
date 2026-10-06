@@ -15,11 +15,21 @@ interface Props {
 export default function AdvertiserHeatmap({ campaigns }: Props) {
     const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
     const [period, setPeriod] = useState<HeatmapPeriod>('today');
+    const [customDate, setCustomDate] = useState<string>('');
 
     const allCampaignIds = campaigns.map((c) => Number(c.value));
     const liveIds = selectedCampaignId ? [selectedCampaignId] : allCampaignIds;
 
-    const periodLabel = period === 'today' ? 'Today' : period === '7days' ? 'Last 7 days' : 'Last 30 days';
+    const todayStr = new Date().toISOString().split('T')[0];
+    const periodLabel =
+        period === 'today'
+            ? 'Today'
+            : period === '7days'
+            ? 'Last 7 days'
+            : period === '30days'
+            ? 'Last 30 days'
+            : customDate || 'Pick a date';
+    const isLiveView = period === 'today' || (period === 'custom' && customDate === todayStr);
 
     return (
         <AdvertiserLayout title="Heatmap" activeNav="heatmap">
@@ -62,8 +72,23 @@ export default function AdvertiserHeatmap({ campaigns }: Props) {
                                 <option value="today">Today</option>
                                 <option value="7days">Last 7 days</option>
                                 <option value="30days">Last 30 days</option>
+                                <option value="custom">Pick a date</option>
                             </select>
                         </div>
+                        {period === 'custom' && (
+                            <div className="sm:w-44">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                                    Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={customDate}
+                                    max={todayStr}
+                                    onChange={(e) => setCustomDate(e.target.value)}
+                                    className="w-full text-sm border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#f79122] focus:border-transparent outline-none"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -78,10 +103,12 @@ export default function AdvertiserHeatmap({ campaigns }: Props) {
                             </h3>
                             <p className="text-xs text-gray-500 mt-0.5">{periodLabel}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-xs text-gray-500">Live</span>
-                        </div>
+                        {isLiveView && (
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                <span className="text-xs text-gray-500">Live</span>
+                            </div>
+                        )}
                     </div>
                     <div className="p-4">
                         <Suspense fallback={
@@ -90,12 +117,14 @@ export default function AdvertiserHeatmap({ campaigns }: Props) {
                             </div>
                         }>
                             <LiveHeatmap
-                                key={`${selectedCampaignId ?? 'all'}-${period}`}
+                                key={`${selectedCampaignId ?? 'all'}-${period}-${customDate}`}
                                 campaignId={selectedCampaignId}
                                 campaignIds={liveIds}
                                 period={period}
+                                customDate={customDate || null}
                                 height={520}
                                 apiEndpoint="/advertiser/tracking/heatmap"
+                                showRoster={false}
                             />
                         </Suspense>
                     </div>

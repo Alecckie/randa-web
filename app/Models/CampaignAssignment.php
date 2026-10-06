@@ -4,22 +4,26 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CampaignAssignment extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'campaign_id',
         'rider_id',
         'helmet_id',
         'assigned_at',
+        'responded_at',
         'completed_at',
-        'status'
+        'status',
+        'rejection_reason',
     ];
 
     protected $casts = [
         'assigned_at' => 'datetime',
+        'responded_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
 
@@ -76,5 +80,10 @@ class CampaignAssignment extends Model
     public function scopeActive($query)
     {
         return $query->where('status', 'active');
+    }
+
+    public function scopePending($query)
+    {
+        return $query->where('status', 'pending');
     }
 }

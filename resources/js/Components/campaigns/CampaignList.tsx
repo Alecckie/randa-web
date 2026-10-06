@@ -30,7 +30,9 @@ import {
     EyeIcon,
     PencilIcon,
     PlusIcon,
-    RefreshCw
+    RefreshCw,
+    Trash2Icon,
+    ArchiveIcon
 } from 'lucide-react';
 import type { Advertiser } from '@/types/advertiser';
 import type { CampaignStatus } from '@/types/campaign';
@@ -164,6 +166,23 @@ export default function CampaignList({
     const canUpdateStatus = (campaign: Campaign): boolean => {
         // Only admins or campaigns not in completed/cancelled state can update status
         return userRole === 'admin' && !['completed', 'cancelled'].includes(campaign.status);
+    };
+
+    // Delete/archive are advertiser self-service actions on their own campaigns, not admin actions.
+    const canDelete = (campaign: Campaign): boolean => userRole !== 'admin' && campaign.status === 'draft';
+    const canArchive = (campaign: Campaign): boolean =>
+        userRole !== 'admin' && campaign.status === 'completed' && !campaign.archived_at;
+
+    const handleDelete = (campaign: Campaign) => {
+        if (confirm('Delete this draft campaign? This cannot be undone.')) {
+            router.delete(route('my-campaigns.destroy', campaign.id));
+        }
+    };
+
+    const handleArchive = (campaign: Campaign) => {
+        if (confirm('Archive this campaign? It will be hidden from your campaign list, but its rider activity stays on record for audit.')) {
+            router.patch(route('my-campaigns.archive', campaign.id));
+        }
     };
 
     return (
@@ -326,15 +345,37 @@ export default function CampaignList({
                                                     Update Status
                                                 </Menu.Item>
                                             )}
-                                            {(campaign.status === 'draft' || campaign.status === 'submitted') && (
-                                                <Menu.Item leftSection={<PencilIcon size={14} />} component={Link}>
+                                            {userRole !== 'admin' && (campaign.status === 'draft' || campaign.status === 'submitted') && (
+                                                <Menu.Item
+                                                    leftSection={<PencilIcon size={14} />}
+                                                    component={Link}
+                                                    href={route('my-campaigns.edit', campaign.id)}
+                                                >
                                                     Edit
+                                                </Menu.Item>
+                                            )}
+                                            {(canDelete(campaign) || canArchive(campaign)) && <Menu.Divider />}
+                                            {canDelete(campaign) && (
+                                                <Menu.Item
+                                                    leftSection={<Trash2Icon size={14} />}
+                                                    color="red"
+                                                    onClick={() => handleDelete(campaign)}
+                                                >
+                                                    Delete
+                                                </Menu.Item>
+                                            )}
+                                            {canArchive(campaign) && (
+                                                <Menu.Item
+                                                    leftSection={<ArchiveIcon size={14} />}
+                                                    onClick={() => handleArchive(campaign)}
+                                                >
+                                                    Archive
                                                 </Menu.Item>
                                             )}
                                         </Menu.Dropdown>
                                     </Menu>
                                 </div>
-                                
+
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between">
                                         <Text size="xs" c="dimmed">Status:</Text>
@@ -451,11 +492,38 @@ export default function CampaignList({
                                                         View Details
                                                     </Menu.Item>
                                                     {canUpdateStatus(campaign) && (
-                                                        <Menu.Item 
+                                                        <Menu.Item
                                                             leftSection={<RefreshCw size={14} />}
                                                             onClick={() => handleStatusUpdate(campaign)}
                                                         >
                                                             Update Status
+                                                        </Menu.Item>
+                                                    )}
+                                                    {userRole !== 'admin' && (campaign.status === 'draft' || campaign.status === 'submitted') && (
+                                                        <Menu.Item
+                                                            leftSection={<PencilIcon size={14} />}
+                                                            component={Link}
+                                                            href={route('my-campaigns.edit', campaign.id)}
+                                                        >
+                                                            Edit
+                                                        </Menu.Item>
+                                                    )}
+                                                    {(canDelete(campaign) || canArchive(campaign)) && <Menu.Divider />}
+                                                    {canDelete(campaign) && (
+                                                        <Menu.Item
+                                                            leftSection={<Trash2Icon size={14} />}
+                                                            color="red"
+                                                            onClick={() => handleDelete(campaign)}
+                                                        >
+                                                            Delete
+                                                        </Menu.Item>
+                                                    )}
+                                                    {canArchive(campaign) && (
+                                                        <Menu.Item
+                                                            leftSection={<ArchiveIcon size={14} />}
+                                                            onClick={() => handleArchive(campaign)}
+                                                        >
+                                                            Archive
                                                         </Menu.Item>
                                                     )}
                                                 </Menu.Dropdown>

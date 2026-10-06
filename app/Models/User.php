@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens, SoftDeletes;
 
     protected $fillable = [
         'first_name',
@@ -50,6 +51,11 @@ class User extends Authenticatable
     public function rejections()
     {
         return $this->morphMany(RejectionReason::class, 'rejectable');
+    }
+
+    public function fcmTokens()
+    {
+        return $this->hasMany(FcmToken::class);
     }
 
     // Scopes

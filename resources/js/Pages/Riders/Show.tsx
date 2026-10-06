@@ -27,7 +27,7 @@ import {
     Loader,
     rem
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import {
     ArrowLeft,
@@ -53,7 +53,8 @@ import {
     Navigation,
     Home,
     Building2,
-    Globe
+    Globe,
+    Trash2
 } from 'lucide-react';
 
 // Props interface
@@ -155,11 +156,14 @@ const ACTIVITY_ICONS: Record<string, { icon: typeof User; color: string }> = {
 
 export default function RiderShow({ rider, tripStats, activityTimeline }: RiderShowProps) {
     const [activeTab, setActiveTab] = useState('overview');
+    const isMobile = useMediaQuery('(max-width: 768px)');
     const [imageModalOpened, { open: openImageModal, close: closeImageModal }] = useDisclosure(false);
     const [rejectModalOpened, { open: openRejectModal, close: closeRejectModal }] = useDisclosure(false);
+    const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
     const [selectedImage, setSelectedImage] = useState<{ src: string; title: string } | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
     const [loading, setLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [payoutSummary, setPayoutSummary] = useState<{
         total_hours_worked: number;
         total_earning: number;
@@ -175,12 +179,24 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
         }>;
     } | null>(null);
     const [payoutLoading, setPayoutLoading] = useState(true);
+    const [payoutError, setPayoutError] = useState<string | null>(null);
 
     useEffect(() => {
         axios
             .get(`/riders/${rider.id}/payout-audit`, { params: { from: '2020-01-01', to: new Date().toISOString().slice(0, 10) } })
             .then((res) => { if (res.data.success) setPayoutSummary(res.data.data); })
-            .catch(() => { /* table just stays empty */ })
+            .catch((err) => {
+                // Surface the real failure — this used to fail silently and
+                // render identically to "no earnings yet," which is exactly
+                // why a broken environment (stale schema, auth/session issue,
+                // etc.) can look like missing data instead of a bug.
+                const status = err?.response?.status;
+                const serverMessage = err?.response?.data?.message;
+                setPayoutError(
+                    serverMessage ??
+                    (status ? `Failed to load earnings (HTTP ${status}).` : 'Failed to load earnings — check your connection and try again.')
+                );
+            })
             .finally(() => setPayoutLoading(false));
     }, [rider.id]);
 
@@ -205,7 +221,7 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
     };
 
     const handleDownloadPDF = () => {
-        console.log('Download PDF functionality to be implemented');
+        window.open(route('riders.download-pdf', rider.id), '_blank');
     };
 
     const handleApprove = () => {
@@ -234,6 +250,17 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
             },
             onError: () => showErrorToast('Failed to reject rider'),
             onFinish: () => setLoading(false),
+        });
+    };
+
+    const handleDelete = () => {
+        // Success redirects to riders.index (component unmounts); failure
+        // (e.g. an active-assignment guard) redirects back to this same page
+        // with a flash error — the global flash-toast bridge in app.tsx
+        // surfaces either message, so this just tracks the loading state.
+        setDeleting(true);
+        router.delete(route('riders.destroy', rider.id), {
+            onFinish: () => setDeleting(false),
         });
     };
 
@@ -319,6 +346,14 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
                                 >
                                     Edit Rider
                                 </Menu.Item>
+                                <Menu.Divider />
+                                <Menu.Item
+                                    color="red"
+                                    leftSection={<Trash2 size={14} />}
+                                    onClick={openDeleteModal}
+                                >
+                                    Delete Rider
+                                </Menu.Item>
                             </Menu.Dropdown>
                         </Menu>
                     </Group>
@@ -393,6 +428,11 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
 
                     {payoutLoading ? (
                         <Group justify="center" py="xl"><Loader size="sm" /></Group>
+                    ) : payoutError ? (
+                        <Alert color="red" variant="light" icon={<AlertTriangle size={16} />}>
+                            <Text fw={500}>Couldn't load earnings</Text>
+                            <Text size="sm" c="dimmed">{payoutError}</Text>
+                        </Alert>
                     ) : payoutSummary && payoutSummary.days.length > 0 ? (
                         <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                         <Table.ScrollContainer minWidth={500}>
@@ -509,8 +549,12 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
                 )}
 
                 {/* Tabs Content */}
-                <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'overview')}>
-                    <Tabs.List>
+                <Tabs
+                    value={activeTab}
+                    onChange={(value) => setActiveTab(value || 'overview')}
+                    orientation={isMobile ? 'horizontal' : 'vertical'}
+                >
+                    <Tabs.List style={isMobile ? { flexWrap: 'nowrap', overflowX: 'auto' } : undefined}>
                         <Tabs.Tab value="overview">Overview</Tabs.Tab>
                         <Tabs.Tab value="location">Location</Tabs.Tab>
                         <Tabs.Tab value="documents">Documents</Tabs.Tab>
@@ -823,6 +867,40 @@ export default function RiderShow({ rider, tripStats, activityTimeline }: RiderS
                             disabled={!rejectionReason.trim()}
                         >
                             Reject Application
+                        </Button>
+                    </Group>
+                </div>
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                opened={deleteModalOpened}
+                onClose={closeDeleteModal}
+                title="Delete Rider"
+                size="md"
+                centered
+            >
+                <div className="space-y-4">
+                    <Alert color="red" icon={<AlertTriangle size={16} />}>
+                        This removes {rider.user.name} from active rider listings. Their check-in,
+                        earnings, and GPS history are kept for audit purposes, and this can be
+                        reversed if needed.
+                    </Alert>
+
+                    <Group justify="flex-end" mt="md">
+                        <Button
+                            variant="light"
+                            onClick={closeDeleteModal}
+                            disabled={deleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            color="red"
+                            onClick={handleDelete}
+                            loading={deleting}
+                        >
+                            Delete Rider
                         </Button>
                     </Group>
                 </div>

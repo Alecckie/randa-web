@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import type { HeatmapPeriod } from '@/Components/tracking/LiveHeatmap';
+import type { HeatmapMode, HeatmapPeriod } from '@/Components/tracking/LiveHeatmap';
 
 const LiveHeatmap = lazy(() => import('@/Components/tracking/LiveHeatmap'));
 
@@ -16,7 +16,12 @@ interface Props {
 
 export default function AdminHeatmap({ campaigns }: Props) {
     const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
-    const [period, setPeriod] = useState<HeatmapPeriod>('7days');
+    // Defaults to 'today' so the map is live (auto-refreshing) the moment a
+    // campaign is picked, rather than requiring the admin to switch the
+    // period manually — LiveHeatmap only polls/streams for 'today'.
+    const [period, setPeriod] = useState<HeatmapPeriod>('today');
+    const [customDate, setCustomDate] = useState<string>('');
+    const [mode, setMode] = useState<HeatmapMode>('heat');
 
     return (
         <AuthenticatedLayout header="Rider Heatmap">
@@ -64,8 +69,25 @@ export default function AdminHeatmap({ campaigns }: Props) {
                                 <option value="today">Today</option>
                                 <option value="7days">Last 7 days</option>
                                 <option value="30days">Last 30 days</option>
+                                <option value="custom">Pick a date</option>
                             </select>
                         </div>
+
+                        {/* Custom date picker — only for a single-day view */}
+                        {period === 'custom' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={customDate}
+                                    max={new Date().toISOString().split('T')[0]}
+                                    onChange={(e) => setCustomDate(e.target.value)}
+                                    className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#f79122] focus:border-transparent"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {!selectedCampaignId && (
@@ -83,11 +105,49 @@ export default function AdminHeatmap({ campaigns }: Props) {
                                 ? campaigns.find((c) => c.value === String(selectedCampaignId))?.label
                                 : 'No campaign selected'}
                         </h3>
-                        {selectedCampaignId && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                                {period === 'today' ? 'Today' : period === '7days' ? 'Last 7 days' : 'Last 30 days'}
-                            </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                            <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('heat')}
+                                    className={`px-3 py-1.5 text-xs font-medium ${
+                                        mode === 'heat'
+                                            ? 'bg-[#f79122] text-white'
+                                            : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                    }`}
+                                >
+                                    Heatmap
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('markers')}
+                                    className={`px-3 py-1.5 text-xs font-medium ${
+                                        mode === 'markers'
+                                            ? 'bg-[#f79122] text-white'
+                                            : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                    }`}
+                                >
+                                    Maps
+                                </button>
+                            </div>
+                            {selectedCampaignId && (
+                                <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 capitalize">
+                                    {period === 'today' && (
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                                        </span>
+                                    )}
+                                    {period === 'today'
+                                        ? 'Live — Today'
+                                        : period === '7days'
+                                        ? 'Last 7 days'
+                                        : period === '30days'
+                                        ? 'Last 30 days'
+                                        : customDate || 'Pick a date'}
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="p-4 sm:p-6">
@@ -100,11 +160,13 @@ export default function AdminHeatmap({ campaigns }: Props) {
                                 }
                             >
                                 <LiveHeatmap
-                                    key={`${selectedCampaignId}-${period}`}
+                                    key={`${selectedCampaignId}-${period}-${customDate}-${mode}`}
                                     campaignId={selectedCampaignId}
                                     period={period}
+                                    customDate={customDate || null}
                                     height={500}
                                     apiEndpoint="/admin/tracking/heatmap"
+                                    mode={mode}
                                 />
                             </Suspense>
                         ) : (

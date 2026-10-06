@@ -8,4 +8,6 @@ use Illuminate\Support\Facades\Route;
     ->parameters(['my-campaigns' => 'campaign']);
   Route::put('/my-campaigns/{campaign}/update-status', [CampaignController::class, 'updateStatus'])
     ->name('my-campaigns.update-status');
+  Route::patch('/my-campaigns/{campaign}/archive', [CampaignController::class, 'archive'])
+    ->name('my-campaigns.archive');
  });

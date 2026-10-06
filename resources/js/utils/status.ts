@@ -95,15 +95,19 @@ export function getHelmetStatusLabel(status: string): string {
 // ── Assignment ────────────────────────────────────────────────────────────────
 
 const ASSIGNMENT_COLORS: Record<string, string> = {
+    pending:   'yellow',
     active:    'green',
     completed: 'teal',
     cancelled: 'red',
+    rejected:  'red',
 };
 
 const ASSIGNMENT_LABELS: Record<string, string> = {
+    pending:   'Awaiting Response',
     active:    'Active',
     completed: 'Completed',
     cancelled: 'Cancelled',
+    rejected:  'Rejected',
 };
 
 export function getAssignmentStatusColor(status: string): string {
@@ -138,4 +142,26 @@ export function getPaymentStatusColor(status: string): string {
 
 export function getPaymentStatusLabel(status: string): string {
     return PAYMENT_LABELS[status] ?? status;
+}
+
+// ── Withdrawal ────────────────────────────────────────────────────────────────
+
+const WITHDRAWAL_COLORS: Record<string, string> = {
+    pending:  'yellow',
+    settled:  'green',
+    rejected: 'red',
+};
+
+const WITHDRAWAL_LABELS: Record<string, string> = {
+    pending:  'Pending',
+    settled:  'Settled',
+    rejected: 'Rejected',
+};
+
+export function getWithdrawalStatusColor(status: string): string {
+    return WITHDRAWAL_COLORS[status] ?? 'gray';
+}
+
+export function getWithdrawalStatusLabel(status: string): string {
+    return WITHDRAWAL_LABELS[status] ?? status;
 }

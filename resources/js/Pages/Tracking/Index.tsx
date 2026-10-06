@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import { Drawer, Button, Modal, Text, Group, Alert } from '@mantine/core';
@@ -108,6 +108,15 @@ export default function Index({
             console.error('Failed to fetch rider data:', error);
         }
     };
+
+    // Draws the selected rider's travelled path on the map — the rider
+    // details modal only fetches this data, it never rendered it.
+    const routes = useMemo(() => {
+        if (selectedRiderId == null || !selectedRiderData?.locations?.length) {
+            return undefined;
+        }
+        return new Map([[selectedRiderId, selectedRiderData.locations]]);
+    }, [selectedRiderId, selectedRiderData]);
 
     const handleMarkerClick = (location: EnrichedLocation) => {
         if (location?.rider_id != null) {
@@ -222,6 +231,7 @@ export default function Index({
                         <div style={{ height: '700px' }}>
                             <TrackingMap
                                 locations={locations}
+                                routes={routes}
                                 onMarkerClick={handleMarkerClick}
                                 loading={loading}
                             />

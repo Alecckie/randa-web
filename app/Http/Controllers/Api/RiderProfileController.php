@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Services\LocationService;
 use App\Services\NotificationService;
 use App\Services\RiderService;
+use App\Support\PhoneNumber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class RiderProfileController extends BaseApiController
@@ -224,8 +226,16 @@ class RiderProfileController extends BaseApiController
                 );
             }
 
+            $request->merge([
+                'mpesa_number' => PhoneNumber::normalizeKenyan($request->input('mpesa_number')),
+                'next_of_kin_phone' => PhoneNumber::normalizeKenyan($request->input('next_of_kin_phone')),
+            ]);
+
             $validated = $request->validate([
-                'mpesa_number' => 'required|string|regex:/^254[0-9]{9}$/',
+                'mpesa_number' => [
+                    'required', 'string', 'regex:/^254[0-9]{9}$/',
+                    Rule::unique('riders', 'mpesa_number')->ignore($rider->id),
+                ],
                 'next_of_kin_name' => 'required|string|max:255',
                 'next_of_kin_phone' => 'required|string|regex:/^254[0-9]{9}$/',
             ]);

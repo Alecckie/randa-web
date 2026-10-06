@@ -40,10 +40,18 @@ interface CommandReference {
     flags: string[];
 }
 
+interface WebCron {
+    active: boolean;
+    intervalSeconds: number;
+    note: string;
+    cronEntry: string;
+    switchSteps: string[];
+}
+
 interface PageProps {
     runbookSections: RunbookSection[];
     scheduledCommands: ScheduledCommand[];
-    cronEntry: string;
+    webCron: WebCron;
     commandsReference: CommandReference[];
 }
 
@@ -84,7 +92,7 @@ function CopyableCommand({ command }: { command: string }) {
     );
 }
 
-export default function SystemSetup({ runbookSections, scheduledCommands, cronEntry, commandsReference }: PageProps) {
+export default function SystemSetup({ runbookSections, scheduledCommands, webCron, commandsReference }: PageProps) {
     return (
         <AuthenticatedLayout
             header={
@@ -151,13 +159,41 @@ export default function SystemSetup({ runbookSections, scheduledCommands, cronEn
                         </Table>
                     </Table.ScrollContainer>
 
-                    <Alert color="orange" variant="light" mt="md" icon={<AlertTriangle size={16} />}>
-                        <Text size="sm" fw={600} mb={4}>Requires a server-level cron entry — this app cannot configure it for you.</Text>
-                        <CopyableCommand command={cronEntry} />
-                        <Text size="xs" c="dimmed" mt={6}>
-                            Without this, none of the scheduled jobs above run automatically — they only execute when triggered manually.
-                        </Text>
+                    <Alert color={webCron.active ? 'green' : 'orange'} variant="light" mt="md" icon={<AlertTriangle size={16} />}>
+                        <Group gap="xs" mb={4}>
+                            <Text size="sm" fw={600}>
+                                {webCron.active
+                                    ? `Web-triggered scheduler active (shared hosting, no crontab needed)`
+                                    : `Web-triggered scheduler disabled — a server crontab is required`}
+                            </Text>
+                            <Badge size="sm" color={webCron.active ? 'green' : 'gray'} variant="light">
+                                {webCron.active ? 'Active' : 'Disabled'}
+                            </Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed" mb="sm">{webCron.note}</Text>
                     </Alert>
+                </Card>
+
+                {/* Switching to a real VPS crontab */}
+                <Card withBorder radius="md" p="lg">
+                    <Group gap="xs" mb="md">
+                        <Clock size={18} className="text-gray-500" />
+                        <Text fw={700} size="lg">Switching to a VPS Crontab</Text>
+                    </Group>
+                    <Text size="sm" c="dimmed" mb="md">
+                        Once this app moves off shared hosting to a VPS with real cron access, switch from the web-triggered
+                        fallback above to a standard Laravel crontab entry.
+                    </Text>
+
+                    <Text size="sm" fw={600} mb={6}>1. Add this crontab entry</Text>
+                    <CopyableCommand command={webCron.cronEntry} />
+
+                    <Text size="sm" fw={600} mt="md" mb={6}>2. Then do the following</Text>
+                    <Stack gap={6}>
+                        {webCron.switchSteps.slice(1).map((step, index) => (
+                            <Text key={step} size="sm" c="dimmed">{index + 2}. {step}</Text>
+                        ))}
+                    </Stack>
                 </Card>
 
                 {/* Command reference */}

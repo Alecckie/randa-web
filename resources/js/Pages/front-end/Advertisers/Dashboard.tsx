@@ -356,7 +356,7 @@ export default function AdvertiserDashboard({ user, advertiser, stats, campaigns
                                         <span className="text-sm text-gray-400">Loading map…</span>
                                     </div>
                                 }>
-                                    <LiveHeatmap campaignIds={campaignIds} period={heatmapPeriod} height={288} />
+                                    <LiveHeatmap campaignIds={campaignIds} period={heatmapPeriod} height={288} showRoster={false} />
                                 </Suspense>
                             </div>
                         </div>

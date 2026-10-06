@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class RiderGpsPoint extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'rider_gps_points';
 
     protected $fillable = [

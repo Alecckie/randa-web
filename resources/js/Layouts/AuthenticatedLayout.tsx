@@ -17,6 +17,9 @@ interface NavCounts {
     pending_riders?: number;
     pending_advertisers?: number;
     pending_payments?: number;
+    pending_assignments?: number;
+    pending_withdrawals?: number;
+    unresolved_helmet_reports?: number;
 }
 
 function SvgIcon({ d, size = 18 }: { d: string; size?: number }) {
@@ -34,21 +37,27 @@ function adminNav(counts: NavCounts): NavItem[] {
         { label: 'Riders',         href: '/riders',                      icon: <SvgIcon d="M12 4a4 4 0 110 8 4 4 0 010-8zM6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2" />, badge: counts.pending_riders },
         { label: 'Advertisers',    href: '/advertisers',                 icon: <SvgIcon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />, badge: counts.pending_advertisers },
         { label: 'Campaigns',      href: '/campaigns',                   icon: <SvgIcon d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />, badge: counts.pending_payments },
+        { label: 'Withdrawals',    href: '/admin/withdrawals',           icon: <SvgIcon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2 M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />, badge: counts.pending_withdrawals },
         { label: 'Helmets',        href: '/helmets',                     icon: <SvgIcon d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z M12 6v6l4 2" /> },
+        { label: 'Helmet Reports', href: '/admin/helmet-reports',        icon: <SvgIcon d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />, badge: counts.unresolved_helmet_reports },
         { label: 'Coverage Areas', href: '/coverage-areas',              icon: <SvgIcon d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /> },
-        { label: 'Heatmap',        href: '/admin/tracking/heatmap-view', icon: <SvgIcon d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /> },
-        { label: 'Analytics',      href: '/admin/campaigns/analytics',   icon: <SvgIcon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /> },
+        // Heatmap and Analytics are now accessed via tabs inside each campaign's
+        // own page (Campaigns/Show.tsx) instead of a standalone menu item.
+        // { label: 'Heatmap',        href: '/admin/tracking/heatmap-view', icon: <SvgIcon d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /> },
+        // { label: 'Analytics',      href: '/admin/campaigns/analytics',   icon: <SvgIcon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /> },
         { label: 'Settings',       href: '/admin/settings',              icon: <SvgIcon d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" /> },
         { label: 'System Setup',   href: '/admin/system-setup',          icon: <SvgIcon d="M5 12a7 7 0 1114 0 7 7 0 01-14 0z M12 9v3l2 2 M4 4l2 2m12-2l-2 2" /> },
     ];
 }
 
-const riderNav: NavItem[] = [
-    { label: 'Dashboard',   href: '/rider/rider-dash',  icon: <SvgIcon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />, exact: true },
-    { label: 'My Campaign', href: '/rider/campaigns',   icon: <SvgIcon d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" /> },
-    { label: 'Check In',    href: '/rider/checkin',     icon: <SvgIcon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /> },
-    { label: 'Profile',     href: '/rider/show-profile',icon: <SvgIcon d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
-];
+function riderNav(counts: NavCounts): NavItem[] {
+    return [
+        { label: 'Dashboard',   href: '/rider/rider-dash',  icon: <SvgIcon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />, exact: true },
+        { label: 'My Campaign', href: '/rider/campaigns',   icon: <SvgIcon d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />, badge: counts.pending_assignments },
+        { label: 'Check In',    href: '/rider/checkin',     icon: <SvgIcon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /> },
+        { label: 'Profile',     href: '/rider/show-profile',icon: <SvgIcon d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /> },
+    ];
+}
 
 const advertiserNav: NavItem[] = [
     { label: 'Dashboard',       href: '/advert-dash',                icon: <SvgIcon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />, exact: true },
@@ -58,7 +67,7 @@ const advertiserNav: NavItem[] = [
 ];
 
 function navForRole(role?: string, counts: NavCounts = {}): NavItem[] {
-    if (role === 'rider')      return riderNav;
+    if (role === 'rider')      return riderNav(counts);
     if (role === 'advertiser') return advertiserNav;
     return adminNav(counts);
 }

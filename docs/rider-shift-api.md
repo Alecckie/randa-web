@@ -1,6 +1,6 @@
 # Rider Shift & Location API
 
-> Updated: 2026-07-08
+> Updated: 2026-07-24
 > Backend: Laravel + Sanctum (`randa-web`)
 > For use by: Mobile app team
 > Verified: end-to-end against a live copy of production data, 2026-07-08 (see Verified Test Runs below)
@@ -15,6 +15,8 @@ Authorization: Bearer <token>
 Base URL: `/api/v1`
 
 > 403 with a `debug` block in the response body means the token is valid but the role/active check failed — read `debug.your_role` / `debug.required_roles` rather than guessing.
+
+For assignment accept/reject, see [rider-assignment-api.md](rider-assignment-api.md). For campaign history, helmet reports, and withdrawals, see [rider-account-api.md](rider-account-api.md).
 
 ---
 
@@ -58,7 +60,7 @@ POST /rider/check_in
 
 | Field | Required | Rules |
 |-------|----------|-------|
-| `qr_code` | Yes | string, 3–255 chars (scanned from the helmet) |
+| `qr_code` | Yes | string, 3–255 chars — either the scanned QR value **or** the helmet's human-readable `helmet_code` (e.g. `HMT-ABC123`) typed in as a fallback when the rider can't scan. Same field name, both accepted — see [Manual Code Entry Fallback](#manual-code-entry-fallback). |
 | `latitude` | Yes | number, -90..90 |
 | `longitude` | Yes | number, -180..180 |
 
@@ -78,6 +80,20 @@ POST /rider/check_in
 > **Don't display `daily_earning` from this response.** It's a placeholder written at check-in time (the rider's flat `daily_rate`), not a real figure — actual pay is unknown until the shift ends. Use [Shift & Earnings Summary](#shift--earnings-summary) for a live, honest running estimate instead.
 
 Blocked before `RIDER_EARLIEST_CHECK_IN_HOUR`, at/after `RIDER_LATEST_CHECK_IN_HOUR`, if already checked in today (in **any** state — started/paused/resumed/ended, not just started), if the rider isn't `approved`, or if the assigned campaign isn't active/paid — see [Error Strings](#error-strings) for exact messages.
+
+---
+
+## Manual Code Entry Fallback
+
+Added 2026-07-24. If a rider can't scan the QR code (camera failure, worn/damaged sticker, low light), let them type in the helmet's printed `helmet_code` instead — it's stamped on the helmet itself, human-readable, and resolves to the exact same helmet as the QR sticker. Send it through the **same `qr_code` field** on every endpoint below; the server accepts either value transparently, so no separate field or endpoint is needed client-side.
+
+This applies everywhere a helmet code is verified, not just Start Shift:
+
+- **Start Shift** (`POST /rider/check_in`, above) — `qr_code` field.
+- **Validate QR code** (pre-check-in lookup) — same field, same fallback.
+- **Mid-shift selfie/QR re-verification** (`POST /api/rider/selfie-prompts/{prompt}/submit`) — same `qr_code` field accepts the typed helmet_code too.
+
+Reference implementation: the web dashboard's "Enter Manually" button next to "Scan QR Code" (`resources/js/Pages/front-end/Riders/Dashboard.tsx`) — show an equivalent manual-entry affordance next to the camera scanner in the native app rather than leaving scan failure as a dead end.
 
 ---
 
@@ -344,6 +360,8 @@ The rider-facing "how am I doing" screen: current campaign, progress through it,
 }
 ```
 
+> **Only `active` assignments appear here or anywhere in this doc.** As of 2026-07-21, admin-assigned campaigns start as `pending` and don't onboard the rider (no check-in, no summary, no `assignment.current`) until the rider explicitly accepts — see [rider-assignment-api.md](rider-assignment-api.md) for the accept/reject endpoints. If a rider reports "I was assigned but nothing shows up," check whether they still have a pending assignment awaiting their response before assuming a bug.
+
 > **`earnings.today` is live and honest.** While the shift is in progress it's computed with the exact same pause/stationary-deduction and minimum-hours rules used at checkout — so it won't show a rising number that then drops unexpectedly. Once the shift ends, it becomes the final `daily_earning`.
 
 Lighter alternative: `GET /rider/status` returns just `{ status, check_in_time, worked_hours, paused_hours, daily_earning }` for today — cheaper to poll if you don't need the campaign/progress fields.
@@ -459,7 +477,7 @@ Domain errors return `{ "success": false, "message": "..." }` with HTTP 400/422 
 |----------|---------|
 | check_in | `Invalid QR code. Helmet not found.` |
 | check_in | `Your rider account is not approved yet.` |
-| check_in | `No active campaign assignment found for this helmet and rider.` |
+| check_in | `No active campaign assignment found for this helmet and rider.` — as of 2026-07-21 this also fires if the assignment is still `pending` (not yet accepted), not just when no assignment exists at all; see [rider-assignment-api.md](rider-assignment-api.md) |
 | check_in | `The campaign associated with this helmet is not active or paid.` |
 | check_in | `Check-in is not allowed before 06:00 AM.` |
 | check_in | `Check-in is not allowed after 06:00 PM.` |
@@ -473,6 +491,10 @@ Domain errors return `{ "success": false, "message": "..." }` with HTTP 400/422 
 | checkout / leave-shift | `No active check-in found for today.` |
 
 ---
+
+## What Changed (2026-07-24)
+
+- **Manual code entry fallback.** When a rider can't scan (camera failure, damaged sticker), `qr_code` on Start Shift, QR validation, and the selfie/QR re-verification endpoint now also accepts the helmet's printed `helmet_code` — same field, no client changes needed beyond adding a manual-entry UI path. See [Manual Code Entry Fallback](#manual-code-entry-fallback).
 
 ## What Changed (2026-07-08)
 

@@ -14,14 +14,7 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import 'leaflet/dist/leaflet.css';
-import { configureEcho } from '@laravel/echo-react';
 import './utils/echo';
-
-
-
-configureEcho({
-    broadcaster: 'reverb',
-});
 
 // Global flash-message -> toast bridge. Backend controllers flash
 // 'success' / 'error' / 'warning' onto the session; every Inertia visit

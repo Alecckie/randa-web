@@ -8,7 +8,7 @@ interface ManualQrInputProps {
     title?: string;
 }
 
-export default function ManualQrInput({ opened, onClose, onSubmit, title = 'Enter QR Code' }: ManualQrInputProps) {
+export default function ManualQrInput({ opened, onClose, onSubmit, title = 'Enter Helmet Code' }: ManualQrInputProps) {
     const [qrCode, setQrCode] = useState('');
 
     const handleSubmit = () => {
@@ -34,12 +34,12 @@ export default function ManualQrInput({ opened, onClose, onSubmit, title = 'Ente
         >
             <div className="space-y-4">
                 <Text size="sm" c="dimmed">
-                    Enter the QR code manually if you're unable to scan it.
+                    Can't scan? Type in the helmet code printed on the helmet instead.
                 </Text>
 
                 <TextInput
-                    label="QR Code"
-                    placeholder="Enter QR code from helmet"
+                    label="Helmet Code"
+                    placeholder="e.g. HMT-ABC123"
                     value={qrCode}
                     onChange={(e) => setQrCode(e.target.value)}
                     onKeyPress={(e) => {

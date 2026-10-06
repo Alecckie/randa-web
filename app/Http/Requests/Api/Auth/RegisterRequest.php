@@ -3,6 +3,7 @@ namespace App\Http\Requests\Api\Auth;
 
 use App\Http\Requests\Api\BaseApiRequest;
 use App\Models\User;
+use App\Support\PhoneNumber;
 use Illuminate\Validation\Rules;
 
 class RegisterRequest extends BaseApiRequest
@@ -43,6 +44,7 @@ class RegisterRequest extends BaseApiRequest
                 'nullable',
                 'string',
                 'regex:/^254[0-9]{9}$/',
+                'unique:users,phone',
             ],
         ];
     }
@@ -55,6 +57,7 @@ class RegisterRequest extends BaseApiRequest
             'email.required' => 'Email address is required.',
             'email.email' => 'Please provide a valid email address.',
             'email.unique' => 'This email address is already registered.',
+            'phone.unique' => 'This phone number is already registered.',
             'password.required' => 'Password is required.',
             'role.required' => 'User role is required.',
             'role.in' => 'Invalid user role. Must be admin, rider, or advertiser.',
@@ -86,7 +89,7 @@ class RegisterRequest extends BaseApiRequest
             // 'name' => trim($this->name ?? ''),
             'first_name' => trim($this->first_name ?? ''),
             'last_name' => trim($this->last_name ?? ''),
-            'phone' => $this->phone ? trim($this->phone) : null,
+            'phone' => PhoneNumber::normalizeKenyan($this->phone),
         ]);
     }
 }

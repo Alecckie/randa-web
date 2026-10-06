@@ -14,7 +14,9 @@ const STATIONARY_DISTANCE_METERS = 15;
 // look identical to a dead app) and gives the backend's movement analyzer
 // a data point to confirm the stationary period is still ongoing rather
 // than inferring it from a large gap.
-const HEARTBEAT_INTERVAL_MS = 120_000; // 2 minutes
+const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds — was 2 minutes; that long a gap let real
+// movement (traffic weaving, stop-go, turns) with small net displacement go completely
+// unrecorded, understating total distance travelled once summed as straight-line chords.
 
 class LocationTrackingService {
   private intervalId: number | null = null;

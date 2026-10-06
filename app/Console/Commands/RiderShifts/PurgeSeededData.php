@@ -102,15 +102,18 @@ class PurgeSeededData extends Command
                 Rider::whereKey($riderId)->lockForUpdate()->first()?->decrement('wallet_balance', $amount);
             }
 
-            RiderPauseEvent::whereIn('check_in_id', $checkInIds)->delete();
-            RiderCheckIn::whereIn('id', $checkInIds)->delete();
+            // forceDelete — these models now soft-delete by default, but this
+            // command's whole purpose is permanently purging seed/test data,
+            // not hiding it behind deleted_at.
+            RiderPauseEvent::whereIn('check_in_id', $checkInIds)->forceDelete();
+            RiderCheckIn::whereIn('id', $checkInIds)->forceDelete();
         });
 
         // Potentially large tables — delete by date directly rather than
         // loading into PHP, outside the main transaction to avoid a long-held
         // lock on a bulk operation that doesn't need atomicity with the above.
-        RiderRoute::where('route_date', '<', $cutoff)->delete();
-        RiderGpsPoint::where('recorded_at', '<', $cutoff)->delete();
+        RiderRoute::where('route_date', '<', $cutoff)->forceDelete();
+        RiderGpsPoint::where('recorded_at', '<', $cutoff)->forceDelete();
 
         $this->info('Purge complete.');
 

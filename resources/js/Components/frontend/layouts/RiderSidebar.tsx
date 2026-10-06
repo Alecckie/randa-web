@@ -16,6 +16,7 @@ interface RiderSidebarProps {
 
 interface NavCounts {
     unread_notifications?: number;
+    pending_assignments?: number;
 }
 
 function navigationSections(counts: NavCounts) {
@@ -24,7 +25,7 @@ function navigationSections(counts: NavCounts) {
             group: 'Main',
             items: [
                 { icon: <Package size={18} />, label: 'Dashboard',   key: 'dashboard', href: '/rider/rider-dash', exact: true, badge: counts.unread_notifications },
-                { icon: <Bike size={18} />,    label: 'My Campaigns', key: 'campaigns', href: '/rider/campaigns' },
+                { icon: <Bike size={18} />,    label: 'My Campaigns', key: 'campaigns', href: '/rider/campaigns', badge: counts.pending_assignments },
             ] as NavItem[],
         },
         {

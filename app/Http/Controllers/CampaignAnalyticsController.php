@@ -8,6 +8,7 @@ use App\Models\CampaignAssignment;
 use App\Models\RiderCheckIn;
 use App\Models\RiderRoute;
 use App\Models\SelfiePrompt;
+use App\Services\RiderPrivacyMasker;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -61,7 +62,7 @@ class CampaignAnalyticsController extends Controller
             return response()->json(['message' => 'Campaign not found'], 404);
         }
 
-        return response()->json(['success' => true, 'data' => $this->buildAnalytics($campaign)]);
+        return response()->json(['success' => true, 'data' => $this->buildAnalytics($campaign, maskRiderIdentity: true)]);
     }
 
     /** Admin: analytics index page with campaign selector */
@@ -99,8 +100,13 @@ class CampaignAnalyticsController extends Controller
         return response()->json(['success' => true, 'data' => $this->buildAnalytics($campaign)]);
     }
 
-    /** Core analytics computation */
-    private function buildAnalytics(Campaign $campaign): array
+    /**
+     * Core analytics computation. When $maskRiderIdentity is true (advertiser
+     * requests), individual rider names and earnings are stripped — advertisers
+     * see initials, days worked, hours, and distance, but never who a rider is
+     * or what they were individually paid.
+     */
+    private function buildAnalytics(Campaign $campaign, bool $maskRiderIdentity = false): array
     {
         $today      = Carbon::today();
         $startDate  = $campaign->start_date;
@@ -120,9 +126,15 @@ class CampaignAnalyticsController extends Controller
 
         $daysRemaining = $endDate ? max(0, (int) $today->diffInDays($endDate, false)) : 0;
 
-        // Active assignment IDs
+        // Assignments that actually participated in this campaign — 'active'
+        // (still running) or 'completed' (campaign/assignment finished).
+        // Excludes 'pending'/'cancelled'/'rejected', which never had check-ins.
+        // Filtering to just 'active' would zero out analytics for every
+        // completed campaign, since campaign completion bulk-transitions all
+        // its assignments to 'completed' (see Campaigns/Show.tsx's
+        // "Campaign Ended — Helmets Still Assigned" flow).
         $assignmentIds = CampaignAssignment::where('campaign_id', $campaign->id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'completed'])
             ->pluck('id');
 
         $assignedRiders = $assignmentIds->count();
@@ -131,12 +143,8 @@ class CampaignAnalyticsController extends Controller
         $checkInStats = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)
             ->selectRaw("
                 COUNT(*) as total_checkins,
-                SUM(CASE WHEN status = 'ended' THEN 1 ELSE 0 END) as qualified_days,
-                SUM(
-                    CASE WHEN status = 'ended' AND check_in_time IS NOT NULL AND check_out_time IS NOT NULL
-                    THEN TIMESTAMPDIFF(MINUTE, check_in_time, check_out_time) / 60.0
-                    ELSE 0 END
-                ) as total_active_hours,
+                SUM(CASE WHEN status = 'ended' AND daily_earning > 0 THEN 1 ELSE 0 END) as qualified_days,
+                SUM(CASE WHEN status = 'ended' THEN COALESCE(worked_hours, 0) ELSE 0 END) as total_active_hours,
                 SUM(COALESCE(daily_earning, 0)) as total_earnings
             ")
             ->first();
@@ -165,13 +173,7 @@ class CampaignAnalyticsController extends Controller
                 COUNT(*) as riders_checked_in,
                 SUM(CASE WHEN rider_check_ins.status = 'ended' THEN 1 ELSE 0 END) as riders_completed,
                 COALESCE(SUM(rider_routes.total_distance), 0) as distance_km,
-                SUM(
-                    CASE WHEN rider_check_ins.status = 'ended'
-                         AND rider_check_ins.check_in_time IS NOT NULL
-                         AND rider_check_ins.check_out_time IS NOT NULL
-                    THEN TIMESTAMPDIFF(MINUTE, rider_check_ins.check_in_time, rider_check_ins.check_out_time) / 60.0
-                    ELSE 0 END
-                ) as active_hours
+                SUM(CASE WHEN rider_check_ins.status = 'ended' THEN COALESCE(rider_check_ins.worked_hours, 0) ELSE 0 END) as active_hours
             ")
             ->groupByRaw("DATE(rider_check_ins.check_in_date)")
             ->orderByRaw("DATE(rider_check_ins.check_in_date) ASC")
@@ -181,50 +183,59 @@ class CampaignAnalyticsController extends Controller
                 'riders_checked_in'=> (int) $row->riders_checked_in,
                 'riders_completed' => (int) $row->riders_completed,
                 'distance_km'      => round((float) $row->distance_km, 2),
+                'avg_distance_km_per_rider' => (int) $row->riders_checked_in > 0
+                    ? round((float) $row->distance_km / (int) $row->riders_checked_in, 2)
+                    : 0.0,
                 'active_hours'     => round((float) $row->active_hours, 1),
                 'impressions'      => (int) ((float) $row->distance_km * $impressionsPerKm),
             ]);
 
         // Per-rider performance
         $riderPerformance = CampaignAssignment::where('campaign_id', $campaign->id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'completed'])
             ->with('rider.user:id,name')
             ->get()
-            ->map(function ($assignment) {
+            ->map(function ($assignment) use ($maskRiderIdentity) {
                 $riderCheckInIds = RiderCheckIn::where('campaign_assignment_id', $assignment->id)->pluck('id');
 
                 $stats = RiderCheckIn::where('campaign_assignment_id', $assignment->id)
                     ->selectRaw("
-                        SUM(CASE WHEN status = 'ended' THEN 1 ELSE 0 END) as qualified_days,
-                        SUM(
-                            CASE WHEN status = 'ended' AND check_in_time IS NOT NULL AND check_out_time IS NOT NULL
-                            THEN TIMESTAMPDIFF(MINUTE, check_in_time, check_out_time) / 60.0
-                            ELSE 0 END
-                        ) as total_hours,
+                        SUM(CASE WHEN status = 'ended' AND daily_earning > 0 THEN 1 ELSE 0 END) as qualified_days,
+                        SUM(CASE WHEN status = 'ended' THEN COALESCE(worked_hours, 0) ELSE 0 END) as total_hours,
                         SUM(COALESCE(daily_earning, 0)) as total_earnings
                     ")
                     ->first();
 
                 $distance = (float) RiderRoute::whereIn('check_in_id', $riderCheckInIds)->sum('total_distance');
+                $qualifiedDays = (int) ($stats->qualified_days ?? 0);
 
-                return [
+                $row = [
                     'rider_id'           => $assignment->rider_id,
                     'name'               => $assignment->rider?->user?->name ?? 'Unknown',
-                    'qualified_days'     => (int) ($stats->qualified_days ?? 0),
+                    'qualified_days'     => $qualifiedDays,
                     'total_active_hours' => round((float) ($stats->total_hours ?? 0), 1),
                     'total_distance_km'  => round($distance, 2),
+                    'avg_distance_km_per_day' => $qualifiedDays > 0 ? round($distance / $qualifiedDays, 2) : 0.0,
                     'total_earnings'     => round((float) ($stats->total_earnings ?? 0), 2),
                 ];
+
+                if ($maskRiderIdentity) {
+                    $row['name'] = RiderPrivacyMasker::initials($row['name']);
+                    unset($row['total_earnings']);
+                }
+
+                return $row;
             });
 
         $totalActiveHours     = (float) ($checkInStats->total_active_hours ?? 0);
         $estimatedImpressions = (int) ($totalDistance * $impressionsPerKm);
         $qualifiedDays        = (int) ($checkInStats->qualified_days ?? 0);
         $possibleRiderDays    = $assignedRiders * $totalDays;
+        $avgDistancePerRiderDay = $qualifiedDays > 0 ? round($totalDistance / $qualifiedDays, 2) : 0.0;
 
         // Count real QR prompt submissions for riders in this campaign
         $riderIds    = CampaignAssignment::where('campaign_id', $campaign->id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'completed'])
             ->pluck('rider_id');
 
         $totalQrScans = SelfiePrompt::whereIn('rider_id', $riderIds)
@@ -255,10 +266,11 @@ class CampaignAnalyticsController extends Controller
                     : 0.0,
                 'total_active_hours'   => round($totalActiveHours, 1),
                 'total_distance_km'    => round($totalDistance, 2),
+                'avg_distance_km_per_rider_day' => $avgDistancePerRiderDay,
                 'estimated_impressions'=> $estimatedImpressions,
                 'impressions_per_km'   => $impressionsPerKm,
                 'total_qr_scans'       => $totalQrScans,
-                'total_earnings_paid'  => round((float) ($checkInStats->total_earnings ?? 0), 2),
+                'total_earnings_paid'  => $maskRiderIdentity ? null : round((float) ($checkInStats->total_earnings ?? 0), 2),
             ],
             'today' => [
                 'riders_checked_in' => (int) ($todayStats->today_checkins ?? 0),

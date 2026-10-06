@@ -5,17 +5,26 @@ namespace App\Services;
 use App\Models\Advertiser;
 use App\Models\Campaign;
 use App\Models\CampaignAssignment;
+use App\Models\FcmToken;
 use App\Models\Payment;
 use App\Models\Rider;
+use App\Models\RiderWithdrawalRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Kreait\Firebase\Contract\Messaging;
+use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\Notification as FcmNotification;
 
 class NotificationService
 {
+    public function __construct(private readonly Messaging $messaging) {}
+
     /**
-     * Create an in-app database notification for a single user.
+     * Create an in-app database notification for a single user, then push it
+     * to their registered devices. Push failures are logged and swallowed —
+     * they must never undo the in-app notification that already succeeded.
      */
     public function notify(
         User $user,
@@ -35,10 +44,40 @@ class NotificationService
                     'link'  => $link,
                 ],
             ]);
-            return true;
         } catch (\Exception $e) {
             Log::error('App notification failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
             return false;
+        }
+
+        $this->sendPush($user, $title, $body, $type, $link);
+
+        return true;
+    }
+
+    /**
+     * Sent synchronously (not queued) — shared hosting can't guarantee a
+     * queue worker or cron is running, so a push failure here must never
+     * block the caller; it's logged and skipped instead.
+     */
+    private function sendPush(User $user, string $title, string $body, string $type, ?string $link): void
+    {
+        $tokens = $user->fcmTokens()->pluck('token')->all();
+        if (empty($tokens)) {
+            return;
+        }
+
+        try {
+            $message = CloudMessage::new()
+                ->withNotification(FcmNotification::create($title, $body))
+                ->withData(['type' => $type, 'link' => $link ?? '']);
+
+            $report = $this->messaging->sendMulticast($message, $tokens);
+
+            foreach ($report->invalidTokens() as $invalidToken) {
+                FcmToken::where('token', $invalidToken)->delete();
+            }
+        } catch (\Throwable $e) {
+            Log::error('FCM push failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
         }
     }
 
@@ -196,10 +235,37 @@ class NotificationService
 
         $this->notify(
             $assignment->rider->user,
-            'New Campaign Assignment',
-            "You've been assigned to \"{$campaignName}\" with helmet {$helmetCode}. Check in when you're ready to start.",
-            'success',
+            'New Campaign Assignment — Action Required',
+            "You've been offered \"{$campaignName}\" with helmet {$helmetCode}. Please accept or reject this assignment.",
+            'info',
             '/rider/campaigns'
+        );
+    }
+
+    public function notifyAdminAssignmentAccepted(CampaignAssignment $assignment): void
+    {
+        $riderName = $assignment->rider->user->full_name ?? $assignment->rider->user->name ?? 'A rider';
+        $campaignName = $assignment->campaign->name ?? 'a campaign';
+
+        $this->notifyAdmins(
+            'Assignment Accepted',
+            "{$riderName} accepted their assignment to \"{$campaignName}\" and is now onboarded.",
+            'success',
+            "/campaigns/{$assignment->campaign_id}"
+        );
+    }
+
+    public function notifyAdminAssignmentRejected(CampaignAssignment $assignment): void
+    {
+        $riderName = $assignment->rider->user->full_name ?? $assignment->rider->user->name ?? 'A rider';
+        $campaignName = $assignment->campaign->name ?? 'a campaign';
+        $reason = $assignment->rejection_reason ? " Reason: {$assignment->rejection_reason}." : '';
+
+        $this->notifyAdmins(
+            'Assignment Rejected',
+            "{$riderName} rejected their assignment to \"{$campaignName}\".{$reason} The helmet has been returned to the available pool.",
+            'warning',
+            "/campaigns/{$assignment->campaign_id}"
         );
     }
 
@@ -271,6 +337,53 @@ class NotificationService
             'Shift Automatically Closed',
             $body,
             $qualifies ? 'info' : 'warning',
+            '/rider/rider-dash'
+        );
+    }
+
+    // ── Withdrawal events ────────────────────────────────────────────────────────
+
+    public function notifyAdminsWithdrawalRequested(RiderWithdrawalRequest $withdrawal): void
+    {
+        $rider = $withdrawal->rider;
+        $name = $rider?->user?->full_name ?? $rider?->user?->name ?? 'A rider';
+
+        $this->notifyAdmins(
+            'Withdrawal Request',
+            "{$name} requested a withdrawal of KSh " . number_format((float) $withdrawal->amount_requested, 2) . '.',
+            'info',
+            '/admin/withdrawals'
+        );
+    }
+
+    public function notifyRiderWithdrawalSettled(RiderWithdrawalRequest $withdrawal): void
+    {
+        if (!$withdrawal->rider?->user) {
+            return;
+        }
+
+        $this->notify(
+            $withdrawal->rider->user,
+            'Withdrawal Paid',
+            'Your withdrawal of KSh ' . number_format((float) $withdrawal->amount_settled, 2) . ' has been paid out and marked settled.',
+            'success',
+            '/rider/rider-dash'
+        );
+    }
+
+    public function notifyRiderWithdrawalRejected(RiderWithdrawalRequest $withdrawal): void
+    {
+        if (!$withdrawal->rider?->user) {
+            return;
+        }
+
+        $reason = $withdrawal->rejection_reason ? " Reason: {$withdrawal->rejection_reason}." : '';
+
+        $this->notify(
+            $withdrawal->rider->user,
+            'Withdrawal Request Declined',
+            "Your withdrawal request was declined.{$reason}",
+            'error',
             '/rider/rider-dash'
         );
     }

@@ -29,9 +29,7 @@ class AdminTrackingController extends Controller
         private RiderTrackingService $trackingService,
         private RiderService $riderService,
         private CampaignService $campaignService
-    ) {
-        // $this->middleware(['auth:sanctum', 'role:admin']);
-    }
+    ) {}
 
     // ──────────────────────────────────────────────────────────────────────────
     // GET /api/admin/tracking/live
@@ -314,61 +312,31 @@ class AdminTrackingController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'No campaigns found.',
-                    'data'    => ['points' => [], 'total_points' => 0, 'max_intensity' => 0, 'live_riders' => [], 'live_riders_count' => 0],
+                    'data'    => ['points' => [], 'total_points' => 0, 'max_intensity' => 0, 'live_riders_count' => 0, 'campaign_ids' => []],
                 ]);
             }
 
-            $query = RiderGpsPoint::query()
-                ->whereHas('campaignAssignment', fn($q) =>
-                    $q->whereIn('campaign_id', $activeCampaignIds)
-                );
-
-            if ($request->date_from) {
-                $query->whereDate('recorded_at', '>=', $request->date_from);
-            }
-
-            $query->whereDate('recorded_at', '<=', $request->date_to ?? now()->toDateString());
-
-            if (!$request->date_from && !$request->date_to) {
-                $query->whereDate('recorded_at', '>=', now()->subDays(7));
-            }
-
-            $pointsQuery = clone $query;
-
-            $heatmapPoints = $pointsQuery
-                ->select(
-                    DB::raw('ROUND(latitude, 4) as lat'),
-                    DB::raw('ROUND(longitude, 4) as lng'),
-                    DB::raw('COUNT(*) as intensity')
-                )
-                ->groupBy('lat', 'lng')
-                ->orderByDesc('intensity')
-                ->limit(10000)
-                ->get();
-
-            $liveRiders = $this->liveRidersForCampaigns($activeCampaignIds);
-            $isHistorical = false;
-
-            if ($liveRiders->isEmpty()) {
-                $liveRiders = $this->participantsForQuery($query);
-                $isHistorical = $liveRiders->isNotEmpty();
-            }
+            // Advertisers never receive rider identity, position, or trail data —
+            // only the anonymized density blob and a live-rider count, as proof
+            // of movement. Riders aren't advertisers' employees; they don't know
+            // them and have no legitimate reason to see who or where they are.
+            $heatmap = $this->buildHeatmapData(
+                $activeCampaignIds,
+                $request->date_from,
+                $request->date_to,
+                riderIds: null,
+                includeRoutes: false
+            );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Heatmap data retrieved successfully.',
                 'data'    => [
-                    'points'                 => $heatmapPoints->map(fn($p) => [
-                        'lat'       => (float) $p->lat,
-                        'lng'       => (float) $p->lng,
-                        'intensity' => $p->intensity,
-                    ]),
-                    'total_points'           => $heatmapPoints->count(),
-                    'max_intensity'          => $heatmapPoints->max('intensity') ?? 0,
-                    'campaign_ids'           => $activeCampaignIds,
-                    'live_riders'            => $liveRiders,
-                    'live_riders_count'      => $liveRiders->count(),
-                    'live_riders_historical' => $isHistorical,
+                    'points'            => $heatmap['points'],
+                    'total_points'      => $heatmap['total_points'],
+                    'max_intensity'     => $heatmap['max_intensity'],
+                    'live_riders_count' => $heatmap['live_riders_count'],
+                    'campaign_ids'      => $activeCampaignIds,
                 ],
             ]);
 
@@ -390,73 +358,28 @@ class AdminTrackingController extends Controller
                 'date_to'             => 'nullable|date|after_or_equal:date_from',
                 'county_id'           => 'nullable|exists:counties,id',
                 'intensity_threshold' => 'nullable|integer|min:1',
+                'rider_ids'           => 'nullable|array',
+                'rider_ids.*'         => 'integer|exists:riders,id',
             ]);
 
             if ($validator->fails()) {
                 return $this->validationError($validator);
             }
 
-            $query = RiderGpsPoint::query();
+            $campaignIds = $request->campaign_id ? [(int) $request->campaign_id] : [];
 
-            if ($request->campaign_id) {
-                $query->whereHas('campaignAssignment', fn($q) =>
-                    $q->where('campaign_id', $request->campaign_id)
-                );
-            }
-
-            if ($request->date_from) {
-                $query->whereDate('recorded_at', '>=', $request->date_from);
-            }
-
-            $query->whereDate(
-                'recorded_at', '<=',
-                $request->date_to ?? now()->toDateString()
+            $data = $this->buildHeatmapData(
+                $campaignIds,
+                $request->date_from,
+                $request->date_to,
+                $request->rider_ids,
+                $request->intensity_threshold ?? 1
             );
-
-            if (!$request->date_from && !$request->date_to) {
-                $query->whereDate('recorded_at', '>=', now()->subDays(7));
-            }
-
-            // Clone before the aggregation below mutates $query into a
-            // grouped/selected builder — needed as a fallback if nobody is
-            // currently live for this selection (e.g. a historical period).
-            $pointsQuery = clone $query;
-
-            $heatmapPoints = $pointsQuery
-                ->select(
-                    DB::raw('ROUND(latitude, 4) as lat'),
-                    DB::raw('ROUND(longitude, 4) as lng'),
-                    DB::raw('COUNT(*) as intensity')
-                )
-                ->groupBy('lat', 'lng')
-                ->having('intensity', '>=', $request->intensity_threshold ?? 1)
-                ->orderByDesc('intensity')
-                ->limit(10000)
-                ->get();
-
-            $liveRiders = $this->liveRidersForCampaigns($request->campaign_id ? [(int) $request->campaign_id] : null);
-            $isHistorical = false;
-
-            if ($liveRiders->isEmpty()) {
-                $liveRiders = $this->participantsForQuery($query);
-                $isHistorical = $liveRiders->isNotEmpty();
-            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Heatmap data retrieved successfully.',
-                'data'    => [
-                    'points'                 => $heatmapPoints->map(fn($p) => [
-                        'lat'       => (float) $p->lat,
-                        'lng'       => (float) $p->lng,
-                        'intensity' => $p->intensity,
-                    ]),
-                    'total_points'           => $heatmapPoints->count(),
-                    'max_intensity'          => $heatmapPoints->max('intensity'),
-                    'live_riders'            => $liveRiders,
-                    'live_riders_count'      => $liveRiders->count(),
-                    'live_riders_historical' => $isHistorical,
-                ],
+                'data'    => $data,
             ]);
 
         } catch (Exception $e) {
@@ -465,63 +388,153 @@ class AdminTrackingController extends Controller
     }
 
     /**
-     * Riders whose most recent GPS point is within the last 10 minutes —
-     * same "live" threshold used elsewhere (see ridersList()) — optionally
-     * scoped to a set of campaign IDs. Used to show who's currently on the
-     * heatmap, not just the density blob.
+     * Shared heat-point + rider-roster builder for both the admin and
+     * advertiser heatmap endpoints — avoids duplicating the date-scoping,
+     * aggregation, and roster logic across the two controller actions.
      *
-     * @param  array<int>|null  $campaignIds  null = across all campaigns
+     * The roster (participants) is always computed from the unfiltered,
+     * campaign/date-scoped query so rider checkboxes never disappear when
+     * a filter is applied; only the heat points are scoped to $riderIds.
+     *
+     * @param  array<int>       $campaignIds  empty = no campaign restriction
+     * @param  array<int>|null  $riderIds     null/empty = all riders
      */
-    private function liveRidersForCampaigns(?array $campaignIds): \Illuminate\Support\Collection
-    {
-        $query = RiderGpsPoint::query()
-            ->where('recorded_at', '>=', now()->subMinutes(10));
+    private function buildHeatmapData(
+        array $campaignIds,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?array $riderIds,
+        int $intensityThreshold = 1,
+        bool $includeRoutes = true
+    ): array {
+        $query = RiderGpsPoint::query();
 
-        if ($campaignIds !== null) {
+        if (!empty($campaignIds)) {
             $query->whereHas('campaignAssignment', fn($q) => $q->whereIn('campaign_id', $campaignIds));
         }
 
-        return $this->ridersFromLatestPointQuery($query);
+        if ($dateFrom) {
+            $query->whereDate('recorded_at', '>=', $dateFrom);
+        }
+
+        $query->whereDate('recorded_at', '<=', $dateTo ?? now()->toDateString());
+
+        if (!$dateFrom && !$dateTo) {
+            $query->whereDate('recorded_at', '>=', now()->subDays(7));
+        }
+
+        // Full roster (with latest position) regardless of the rider filter,
+        // so the checkbox list always reflects everyone who has data here.
+        $participants = $this->ridersFromLatestPointQuery(clone $query);
+
+        $pointsQuery = clone $query;
+
+        if (!empty($riderIds)) {
+            $pointsQuery->whereIn('rider_id', $riderIds);
+        }
+
+        $heatmapPoints = $pointsQuery
+            ->select(
+                DB::raw('ROUND(latitude, 4) as lat'),
+                DB::raw('ROUND(longitude, 4) as lng'),
+                DB::raw('COUNT(*) as intensity')
+            )
+            ->groupBy('lat', 'lng')
+            ->having('intensity', '>=', $intensityThreshold)
+            ->orderByDesc('intensity')
+            ->limit(10000)
+            ->get();
+
+        // Route polylines only make sense for a single calendar day — across
+        // a multi-day range they'd zigzag between unrelated days. The caller
+        // signals "single day" by passing matching date_from/date_to. Callers
+        // that never expose rider identity (e.g. advertisers) skip this
+        // entirely via $includeRoutes.
+        $routes = ($includeRoutes && $dateFrom && $dateTo && $dateFrom === $dateTo)
+            ? $this->routesForQuery(clone $query)
+            : collect();
+
+        return [
+            'points' => $heatmapPoints->map(fn($p) => [
+                'lat'       => (float) $p->lat,
+                'lng'       => (float) $p->lng,
+                'intensity' => $p->intensity,
+            ]),
+            'total_points'      => $heatmapPoints->count(),
+            'max_intensity'     => $heatmapPoints->max('intensity') ?? 0,
+            'participants'      => $participants,
+            'live_riders_count' => $participants->where('is_live', true)->count(),
+            'routes'            => $routes,
+        ];
     }
 
     /**
-     * Riders who have any GPS point matching $query, regardless of
-     * recency — heatmap sidebar fallback for when nobody is currently
-     * "live" for the selection (e.g. a historical period), so the
-     * admin/advertiser still sees who actually generated this heatmap.
-     * $query must not already have select()/groupBy() applied; it's
-     * cloned so the caller's copy is unaffected.
+     * Every rider's GPS points for the (single-day) query, in chronological
+     * order — the raw trail the "Maps" tab draws as a colored polyline per
+     * rider. Always the full unfiltered roster, same as $participants, so
+     * a route never disappears when the rider checkbox filter changes.
      */
-    private function participantsForQuery($query): \Illuminate\Support\Collection
+    private function routesForQuery($query): \Illuminate\Support\Collection
     {
-        return $this->ridersFromLatestPointQuery(clone $query);
+        return $query
+            ->select('rider_id', 'latitude', 'longitude')
+            ->orderBy('recorded_at')
+            ->get()
+            ->groupBy('rider_id')
+            ->map(fn($points, $riderId) => [
+                'rider_id' => (int) $riderId,
+                'points'   => $points->map(fn($p) => [(float) $p->latitude, (float) $p->longitude])->values(),
+            ])
+            ->values();
     }
 
+    /**
+     * Every rider with a GPS point matching $query, at their latest known
+     * position — the single source for both the rider checkbox roster and
+     * the "Maps" tab markers. Ordered by recorded_at desc then deduped so
+     * the first row kept per rider is their most recent point.
+     */
     private function ridersFromLatestPointQuery($query): \Illuminate\Support\Collection
     {
         $latestByRider = $query
-            ->select('rider_id', DB::raw('MAX(recorded_at) as latest_time'))
-            ->groupBy('rider_id')
+            ->select('rider_id', 'latitude', 'longitude', 'recorded_at')
+            ->orderByDesc('recorded_at')
             ->get()
-            ->keyBy('rider_id');
+            ->unique('rider_id')
+            ->values();
 
         if ($latestByRider->isEmpty()) {
             return collect();
         }
 
-        return Rider::whereIn('id', $latestByRider->keys())
+        $riders = Rider::whereIn('id', $latestByRider->pluck('rider_id'))
             ->with('user')
             ->get()
-            ->map(function (Rider $rider) use ($latestByRider) {
-                $latestTime = Carbon::parse($latestByRider[$rider->id]->latest_time);
+            ->keyBy('id');
+
+        $liveThreshold = now()->subMinutes(10);
+
+        return $latestByRider
+            ->map(function ($point) use ($riders, $liveThreshold) {
+                $rider = $riders->get($point->rider_id);
+
+                if (!$rider) {
+                    return null;
+                }
+
+                $recordedAt = Carbon::parse($point->recorded_at);
 
                 return [
-                    'id' => $rider->id,
-                    'name' => $rider->user->name,
-                    'last_seen' => $latestTime->toIso8601String(),
-                    'last_seen_human' => $latestTime->diffForHumans(),
+                    'id'              => $rider->id,
+                    'name'            => $rider->user->name,
+                    'latitude'        => (float) $point->latitude,
+                    'longitude'       => (float) $point->longitude,
+                    'last_seen'       => $recordedAt->toIso8601String(),
+                    'last_seen_human' => $recordedAt->diffForHumans(),
+                    'is_live'         => $recordedAt->gte($liveThreshold),
                 ];
             })
+            ->filter()
             ->values();
     }
 

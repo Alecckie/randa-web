@@ -17,8 +17,11 @@ import {
     Pagination,
     Alert,
     Paper,
-    Tooltip
+    Tooltip,
+    Modal,
+    Textarea
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
     Search,
     Filter,
@@ -118,6 +121,35 @@ interface CampaignsProps {
 export default function Campaigns({ campaigns, stats, filters, rider }: CampaignsProps) {
     const [showFilters, setShowFilters] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
+    const [rejectModalOpened, { open: openRejectModal, close: closeRejectModal }] = useDisclosure(false);
+    const [rejectingAssignmentId, setRejectingAssignmentId] = useState<number | null>(null);
+    const [rejectReason, setRejectReason] = useState('');
+    const [responding, setResponding] = useState(false);
+
+    const handleAcceptAssignment = (assignmentId: number) => {
+        if (!confirm('Accept this campaign assignment? You will be onboarded and can start checking in.')) return;
+        setResponding(true);
+        router.patch(route('rider.assignments.accept', assignmentId), {}, {
+            preserveScroll: true,
+            onFinish: () => setResponding(false),
+        });
+    };
+
+    const openReject = (assignmentId: number) => {
+        setRejectingAssignmentId(assignmentId);
+        setRejectReason('');
+        openRejectModal();
+    };
+
+    const submitReject = () => {
+        if (!rejectingAssignmentId) return;
+        setResponding(true);
+        router.patch(route('rider.assignments.reject', rejectingAssignmentId), { reason: rejectReason }, {
+            preserveScroll: true,
+            onFinish: () => setResponding(false),
+            onSuccess: () => closeRejectModal(),
+        });
+    };
 
     const getCampaignStatusBadge = (status: string) => {
         const iconMap: Record<string, React.ElementType> = {
@@ -279,9 +311,11 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                 placeholder="Assignment Status"
                                                 data={[
                                                     { value: '', label: 'All Assignments' },
+                                                    { value: 'pending', label: 'Awaiting Response' },
                                                     { value: 'active', label: 'Active' },
                                                     { value: 'completed', label: 'Completed' },
                                                     { value: 'cancelled', label: 'Cancelled' },
+                                                    { value: 'rejected', label: 'Rejected' },
                                                 ]}
                                                 value={localFilters.status || ''}
                                                 onChange={(value) => handleFilterChange('status', value)}
@@ -398,6 +432,29 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                                                                             Completed: {formatDateShort(campaign.assignment.completed_at)}
                                                                         </Text>
                                                                     )}
+                                                                    {campaign.assignment.status === 'pending' && (
+                                                                        <Group gap={6} mt={8}>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                color="green"
+                                                                                disabled={responding}
+                                                                                leftSection={<CheckCircle size={14} />}
+                                                                                onClick={() => handleAcceptAssignment(campaign.assignment!.id)}
+                                                                            >
+                                                                                Accept
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="xs"
+                                                                                color="red"
+                                                                                variant="light"
+                                                                                disabled={responding}
+                                                                                leftSection={<XCircle size={14} />}
+                                                                                onClick={() => openReject(campaign.assignment!.id)}
+                                                                            >
+                                                                                Reject
+                                                                            </Button>
+                                                                        </Group>
+                                                                    )}
                                                                 </div>
                                                             ) : (
                                                                 <Text size="xs" c="dimmed">No assignment</Text>
@@ -487,6 +544,23 @@ export default function Campaigns({ campaigns, stats, filters, rider }: Campaign
                             )}
                         </Card>
             </Container>
+
+            <Modal opened={rejectModalOpened} onClose={closeRejectModal} title="Reject Assignment" centered>
+                <Text size="sm" c="dimmed" mb="sm">
+                    Let the admin know why you're rejecting this assignment (optional). The helmet will be returned to the available pool.
+                </Text>
+                <Textarea
+                    placeholder="Reason (optional)"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    minRows={3}
+                    mb="md"
+                />
+                <Group justify="flex-end">
+                    <Button variant="subtle" onClick={closeRejectModal}>Cancel</Button>
+                    <Button color="red" loading={responding} onClick={submitReject}>Reject Assignment</Button>
+                </Group>
+            </Modal>
         </RiderLayout>
     );
 }

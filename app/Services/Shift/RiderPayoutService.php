@@ -4,6 +4,7 @@ namespace App\Services\Shift;
 
 use App\Models\Rider;
 use App\Models\RiderCheckIn;
+use App\Models\RiderWithdrawalRequest;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -138,11 +139,16 @@ class RiderPayoutService
      * rider can't both read the same "unsettled" set and double-pay it —
      * meaningful now that these tables run on InnoDB instead of MyISAM.
      *
+     * @param float|null $expectedAmount When given, must match the computed
+     *        total exactly (2dp) or a RuntimeException is thrown instead of
+     *        settling — an admin-confirmed amount that no longer matches
+     *        actual owed dues (stale figure, typo, more shifts ended since)
+     *        must never be silently recorded.
      * @return array{settled_count: int, settled_total: float, remaining_wallet_balance: float}
      */
-    public function settle(Rider $rider, int $settledByUserId, ?Carbon $upTo = null): array
+    public function settle(Rider $rider, int $settledByUserId, ?Carbon $upTo = null, ?float $expectedAmount = null): array
     {
-        return DB::transaction(function () use ($rider, $settledByUserId, $upTo) {
+        return DB::transaction(function () use ($rider, $settledByUserId, $upTo, $expectedAmount) {
             $lockedRider = Rider::whereKey($rider->id)->lockForUpdate()->firstOrFail();
 
             $query = RiderCheckIn::where('rider_id', $lockedRider->id)
@@ -157,6 +163,13 @@ class RiderPayoutService
 
             $checkInIds = $query->pluck('daily_earning', 'id');
             $total = round((float) $checkInIds->sum(), 2);
+
+            if ($expectedAmount !== null && abs($expectedAmount - $total) > 0.01) {
+                throw new \RuntimeException(
+                    "Entered amount (KSh " . number_format($expectedAmount, 2) . ") doesn't match this rider's actual " .
+                    "outstanding balance (KSh " . number_format($total, 2) . "). Refresh and try again."
+                );
+            }
 
             if ($total > 0) {
                 RiderCheckIn::whereIn('id', $checkInIds->keys())->update([
@@ -175,11 +188,98 @@ class RiderPayoutService
         });
     }
 
+    /**
+     * Rider requests a cash-out of their current unsettled earnings. Blocks
+     * a second request while one is already pending, and blocks requesting
+     * with nothing owed. Locks the rider row so two concurrent requests
+     * can't both pass the "no pending request" check.
+     */
+    public function requestWithdrawal(Rider $rider): RiderWithdrawalRequest
+    {
+        return DB::transaction(function () use ($rider) {
+            $lockedRider = Rider::whereKey($rider->id)->lockForUpdate()->firstOrFail();
+
+            if (RiderWithdrawalRequest::where('rider_id', $lockedRider->id)->pending()->exists()) {
+                throw new \RuntimeException('You already have a withdrawal request pending review.');
+            }
+
+            $owed = $this->owedTotal($lockedRider->id);
+
+            if ($owed <= 0) {
+                throw new \RuntimeException('You have nothing available to withdraw.');
+            }
+
+            return RiderWithdrawalRequest::create([
+                'rider_id' => $lockedRider->id,
+                'amount_requested' => $owed,
+                'status' => RiderWithdrawalRequest::STATUS_PENDING,
+            ]);
+        });
+    }
+
+    /**
+     * Admin confirms they've paid the rider (externally, e.g. M-Pesa) and
+     * marks the request settled — settles the rider's full current
+     * unsettled balance (not capped to amount_requested), since that's
+     * what "I just paid them" means in practice. amount_settled records
+     * what actually moved, which can exceed amount_requested if more
+     * shifts ended while the request sat pending.
+     *
+     * $confirmedAmount is what the admin typed in as having actually been
+     * paid — settle() rejects the whole operation if it doesn't match the
+     * real computed balance, so a wrong/stale figure can never get written.
+     * $mpesaConfirmationCode is required proof of the real payment.
+     */
+    public function settleWithdrawal(
+        RiderWithdrawalRequest $withdrawal,
+        int $reviewedByUserId,
+        float $confirmedAmount,
+        string $mpesaConfirmationCode,
+    ): RiderWithdrawalRequest {
+        if ($withdrawal->status !== RiderWithdrawalRequest::STATUS_PENDING) {
+            throw new \RuntimeException('Only pending withdrawal requests can be settled.');
+        }
+
+        return DB::transaction(function () use ($withdrawal, $reviewedByUserId, $confirmedAmount, $mpesaConfirmationCode) {
+            $result = $this->settle($withdrawal->rider, $reviewedByUserId, expectedAmount: $confirmedAmount);
+
+            $withdrawal->update([
+                'status' => RiderWithdrawalRequest::STATUS_SETTLED,
+                'amount_settled' => $result['settled_total'],
+                'mpesa_confirmation_code' => $mpesaConfirmationCode,
+                'reviewed_by' => $reviewedByUserId,
+                'reviewed_at' => now(),
+            ]);
+
+            return $withdrawal->fresh(['rider.user', 'reviewedBy']);
+        });
+    }
+
+    /**
+     * Admin declines a withdrawal request (e.g. suspected fraud, rider no
+     * longer active) — no money moves.
+     */
+    public function rejectWithdrawal(RiderWithdrawalRequest $withdrawal, int $reviewedByUserId, ?string $reason = null): RiderWithdrawalRequest
+    {
+        if ($withdrawal->status !== RiderWithdrawalRequest::STATUS_PENDING) {
+            throw new \RuntimeException('Only pending withdrawal requests can be rejected.');
+        }
+
+        $withdrawal->update([
+            'status' => RiderWithdrawalRequest::STATUS_REJECTED,
+            'reviewed_by' => $reviewedByUserId,
+            'reviewed_at' => now(),
+            'rejection_reason' => $reason,
+        ]);
+
+        return $withdrawal->fresh(['rider.user', 'reviewedBy']);
+    }
+
     private function auditRow(RiderCheckIn $checkIn): array
     {
         return [
             'check_in_id' => $checkIn->id,
-            'date' => $checkIn->check_in_date->toDateString(),
+            'date' => $checkIn->check_in_date?->toDateString(),
             'check_in_time' => $checkIn->check_in_time?->format('h:i A'),
             'check_out_time' => $checkIn->check_out_time?->format('h:i A'),
             'worked_hours' => (float) $checkIn->worked_hours,
@@ -189,8 +289,11 @@ class RiderPayoutService
             'daily_earning' => (float) $checkIn->daily_earning,
             // The full daily rate this rider could have earned that day —
             // shown alongside daily_earning as "51.17 / 70.00" so a rider
-            // can see how close they got to a full day's pay.
-            'max_possible_earning' => (float) $checkIn->rider->daily_rate,
+            // can see how close they got to a full day's pay. Null-safe
+            // because the rider relation can be missing (soft-deleted rider,
+            // orphaned FK) even though the check-in row itself is intact —
+            // that used to throw and 500 the whole audit response.
+            'max_possible_earning' => (float) ($checkIn->rider?->daily_rate ?? 0),
             'qualified' => (float) $checkIn->daily_earning > 0,
             'settled' => ! is_null($checkIn->settled_at),
             'settled_at' => $checkIn->settled_at?->toDateTimeString(),

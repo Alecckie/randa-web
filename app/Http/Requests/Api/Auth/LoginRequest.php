@@ -20,7 +20,8 @@ class LoginRequest extends BaseApiRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email', 'max:255'],
+            'email' => ['required_without:phone', 'nullable', 'string', 'email', 'max:255'],
+            'phone' => ['required_without:email', 'nullable', 'string', 'max:20'],
             'password' => ['required', 'string'],
         ];
     }
@@ -31,9 +32,10 @@ class LoginRequest extends BaseApiRequest
     public function messages(): array
     {
         return [
-            'email.required' => 'Email address is required.',
+            'email.required_without' => 'Email or phone number is required.',
             'email.email' => 'Please provide a valid email address.',
             'email.max' => 'Email address is too long.',
+            'phone.required_without' => 'Email or phone number is required.',
             'password.required' => 'Password is required.',
         ];
     }
@@ -44,7 +46,8 @@ class LoginRequest extends BaseApiRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'email' => trim(strtolower($this->email ?? '')),
+            'email' => $this->email !== null ? trim(strtolower($this->email)) : null,
+            'phone' => $this->phone !== null ? trim($this->phone) : null,
             'password' => $this->password ?? '',
         ]);
     }
@@ -61,10 +64,14 @@ class LoginRequest extends BaseApiRequest
 
         // Use input() or validated() array, not validated('key')
         $email = $this->input('email');
+        $phone = $this->input('phone');
         $password = $this->input('password');
+        $field = $email ? 'email' : 'phone';
 
-        // Find user by email
-        $user = User::where('email', $email)->first();
+        // Find user by whichever identifier was sent
+        $user = $email
+            ? User::where('email', $email)->first()
+            : User::where('phone', $phone)->first();
         if (!$user) {
             RateLimiter::hit($this->throttleKey());
 
@@ -72,7 +79,7 @@ class LoginRequest extends BaseApiRequest
                 response()->json([
                     'success' => false,
                     'message' => 'Invalid credentials',
-                    'errors' => ['email' => ['The provided credentials are incorrect.']]
+                    'errors' => [$field => ['The provided credentials are incorrect.']]
                 ], 401)
             );
         }
@@ -98,7 +105,7 @@ class LoginRequest extends BaseApiRequest
                 response()->json([
                     'success' => false,
                     'message' => 'Invalid credentials',
-                    'errors' => ['email' => ['The provided credentials are incorrect.']]
+                    'errors' => [$field => ['The provided credentials are incorrect.']]
                 ], 401)
             );
         }
@@ -109,7 +116,7 @@ class LoginRequest extends BaseApiRequest
                 response()->json([
                     'success' => false,
                     'message' => 'Account deactivated',
-                    'errors' => ['email' => ['Your account has been deactivated.']]
+                    'errors' => [$field => ['Your account has been deactivated.']]
                 ], 403)
             );
         }
@@ -150,6 +157,7 @@ class LoginRequest extends BaseApiRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')) . '|' . $this->ip());
+        $identifier = $this->input('email') ?? $this->input('phone') ?? '';
+        return Str::transliterate(Str::lower($identifier) . '|' . $this->ip());
     }
 }

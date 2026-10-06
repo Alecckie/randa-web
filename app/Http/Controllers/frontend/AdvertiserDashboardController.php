@@ -9,7 +9,10 @@ use App\Models\CampaignAssignment;
 use App\Models\Payment;
 use App\Models\RiderCheckIn;
 use App\Models\RiderRoute;
+use App\Models\SelfiePrompt;
 use App\Services\AdvertiserService;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -59,26 +62,57 @@ class AdvertiserDashboardController extends Controller
             $allCampaignIds    = Campaign::where('advertiser_id', $advertiser->id)->pluck('id');
             $activeCampaignIds = Campaign::where('advertiser_id', $advertiser->id)->where('status', 'active')->pluck('id');
 
-            $assignmentIds = CampaignAssignment::whereIn('campaign_id', $allCampaignIds)->pluck('id');
+            // Only active/completed assignments — a cancelled/rejected/pending
+            // assignment never actually rode for this campaign and shouldn't
+            // count toward the advertiser-facing performance figures below.
+            $assignmentIds = CampaignAssignment::whereIn('campaign_id', $allCampaignIds)
+                ->whereIn('status', ['active', 'completed'])
+                ->pluck('id');
             $checkInIds    = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)->pluck('id');
+            $riderIds      = CampaignAssignment::whereIn('campaign_id', $allCampaignIds)
+                ->whereIn('status', ['active', 'completed'])
+                ->pluck('rider_id');
 
+            // Impressions are an estimate (distance covered × a configured rate,
+            // the same rate CampaignAnalyticsController uses) — QR scans are a
+            // real count of completed/accepted selfie-prompt verifications.
+            $impressionsPerKm = (int) config('campaign.impressions_per_km', 500);
             $totalDistance    = (float) RiderRoute::whereIn('check_in_id', $checkInIds)->sum('total_distance');
-            $totalImpressions = (int) ($totalDistance * 500);
-            $totalQrScans     = RiderCheckIn::whereIn('campaign_assignment_id', $assignmentIds)->count() * 2;
+            $totalImpressions = (int) ($totalDistance * $impressionsPerKm);
+            $totalQrScans     = SelfiePrompt::whereIn('rider_id', $riderIds)
+                ->whereIn('status', ['completed', 'accepted'])
+                ->count();
 
             $recentCampaigns = Campaign::where('advertiser_id', $advertiser->id)
                 ->whereIn('status', ['active', 'paused', 'completed'])
                 ->orderByDesc('start_date')
                 ->take(5)
                 ->get()
-                ->map(fn ($c) => [
-                    'id'          => $c->id,
-                    'name'        => $c->name,
-                    'status'      => ucfirst($c->status),
-                    'impressions' => '—',
-                    'scans'       => 0,
-                    'budget'      => '—',
-                ]);
+                ->map(function (Campaign $c) use ($impressionsPerKm) {
+                    $campaignAssignmentIds = CampaignAssignment::where('campaign_id', $c->id)
+                        ->whereIn('status', ['active', 'completed'])
+                        ->pluck('id');
+                    $campaignCheckInIds    = RiderCheckIn::whereIn('campaign_assignment_id', $campaignAssignmentIds)->pluck('id');
+                    $campaignDistance      = (float) RiderRoute::whereIn('check_in_id', $campaignCheckInIds)->sum('total_distance');
+                    $campaignRiderIds      = CampaignAssignment::where('campaign_id', $c->id)
+                        ->whereIn('status', ['active', 'completed'])
+                        ->pluck('rider_id');
+                    $campaignScans         = SelfiePrompt::whereIn('rider_id', $campaignRiderIds)
+                        ->whereIn('status', ['completed', 'accepted'])
+                        ->count();
+                    $campaignBudget        = Payment::where('campaign_id', $c->id)
+                        ->where('status', 'completed')
+                        ->sum('amount');
+
+                    return [
+                        'id'          => $c->id,
+                        'name'        => $c->name,
+                        'status'      => ucfirst($c->status),
+                        'impressions' => number_format((int) ($campaignDistance * $impressionsPerKm)),
+                        'scans'       => $campaignScans,
+                        'budget'      => 'KSh ' . number_format((float) $campaignBudget),
+                    ];
+                });
 
             $totalBudget = Payment::where('advertiser_id', $advertiser->id)
                 ->where('status', 'completed')
@@ -102,9 +136,9 @@ class AdvertiserDashboardController extends Controller
                 ['name' => 'Active Campaigns',  'value' => (string) $activeCampaignIds->count(),
                  'change' => '', 'trend' => 'neutral', 'icon' => 'target'],
                 ['name' => 'Total Impressions', 'value' => $totalImpressions >= 1000 ? round($totalImpressions / 1000, 1) . 'K' : (string) $totalImpressions,
-                 'change' => 'est. 500/km', 'trend' => 'up', 'icon' => 'eye'],
+                 'change' => "est. {$impressionsPerKm}/km", 'trend' => 'up', 'icon' => 'eye'],
                 ['name' => 'QR Code Scans',     'value' => number_format($totalQrScans),
-                 'change' => 'check-in + out', 'trend' => 'up', 'icon' => 'smartphone'],
+                 'change' => 'verified scans', 'trend' => 'up', 'icon' => 'smartphone'],
                 ['name' => 'Campaign Budget',   'value' => 'KSh ' . number_format((float) $totalBudget),
                  'change' => 'total paid', 'trend' => 'neutral', 'icon' => 'credit-card'],
             ];
@@ -145,12 +179,40 @@ class AdvertiserDashboardController extends Controller
     }
 
     /**
-     * Update an existing advertiser profile
+     * Display the authenticated advertiser's own profile — company details,
+     * basic account details, and password. There's exactly one profile per
+     * advertiser user, so this is never parameterized by ID.
      */
-    public function update(Request $request, string $id)
+    public function profile(): Response
     {
         $user = $this->getAuthenticatedUser();
-        $advertiser = $this->findUserAdvertiserProfile($user->id, $id);
+        $advertiser = $this->advertiserService->getAdvertiserByUserId($user->id);
+
+        if (!$advertiser) {
+            abort(404, 'Advertiser profile not found.');
+        }
+
+        return Inertia::render('front-end/Advertisers/Profile', [
+            'user'            => $this->formatUserData($user),
+            'advertiser'      => $this->formatAdvertiserData($advertiser),
+            'mustVerifyEmail' => $user instanceof MustVerifyEmail,
+        ]);
+    }
+
+    /**
+     * Update the authenticated advertiser's own company details (name,
+     * business registration, address). Basic account details (name, email,
+     * phone) and password go through the shared ProfileController /
+     * PasswordController instead — those aren't advertiser-specific.
+     */
+    public function updateProfile(Request $request): RedirectResponse
+    {
+        $user = $this->getAuthenticatedUser();
+        $advertiser = $this->advertiserService->getAdvertiserByUserId($user->id);
+
+        if (!$advertiser) {
+            abort(404, 'Advertiser profile not found.');
+        }
 
         // Only allow updates for rejected or pending profiles
         if ($advertiser->status === 'approved') {
@@ -160,51 +222,10 @@ class AdvertiserDashboardController extends Controller
         }
 
         $validated = $this->validateAdvertiserData($request);
-        // $validated['status'] = 'pending'; 
 
         $this->advertiserService->updateAdvertiserProfile($advertiser, $validated);
 
-        return redirect()->route('advert-dash.index')->with(
-            'success',
-            'Advertiser profile updated successfully. Your application is under review.'
-        );
-    }
-
-    /**
-     * Display the specified advertiser profile
-     */
-    public function show(string $id): Response
-    {
-        $user = $this->getAuthenticatedUser();
-        $advertiser = $this->findUserAdvertiserProfile($user->id, $id);
-
-        return Inertia::render('front-end/Advertisers/Profile', [
-            'user' => $this->formatUserData($user),
-            'advertiser' => $this->formatAdvertiserData($advertiser)
-        ]);
-    }
-
-    /**
-     * Remove the advertiser profile
-     */
-    public function destroy(string $id)
-    {
-        $user = $this->getAuthenticatedUser();
-        $advertiser = $this->findUserAdvertiserProfile($user->id, $id);
-
-        // Don't allow deletion of approved profiles with active campaigns
-        if ($advertiser->status === 'approved' && $advertiser->campaigns()->exists()) {
-            throw ValidationException::withMessages([
-                'profile' => 'Cannot delete profile with active campaigns. Please contact support.'
-            ]);
-        }
-
-        $advertiser->delete();
-
-        return redirect()->route('advert-dash.index')->with(
-            'success',
-            'Advertiser profile deleted successfully.'
-        );
+        return back()->with('success', 'Company profile updated successfully. Your application is under review.');
     }
 
     /**
@@ -219,22 +240,6 @@ class AdvertiserDashboardController extends Controller
         }
 
         return $user;
-    }
-
-    /**
-     * Find and authorize user's advertiser profile
-     */
-    private function findUserAdvertiserProfile(int $userId, string $advertiserId): Advertiser
-    {
-        $advertiser = Advertiser::where('id', $advertiserId)
-            ->where('user_id', $userId)
-            ->first();
-
-        if (!$advertiser) {
-            abort(404, 'Advertiser profile not found or access denied.');
-        }
-
-        return $advertiser;
     }
 
     /**

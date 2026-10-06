@@ -67,8 +67,13 @@ class SelfieService
     public function submitSelfie(SelfiePrompt $prompt, Rider $rider, array $data): SelfieSubmission
     {
         return DB::transaction(function () use ($prompt, $rider, $data) {
-            // Resolve the helmet from the scanned QR code
-            $helmet = Helmet::where('qr_code', $data['qr_code'])->firstOrFail();
+            // Resolve the helmet from the scanned QR code, or the typed
+            // helmet_code when the rider can't scan.
+            $helmet = Helmet::findByScanOrCode($data['qr_code']);
+
+            if (!$helmet) {
+                throw new \RuntimeException('The scanned QR code does not match any registered helmet.');
+            }
 
             // Verify the scanned helmet is the one assigned to this rider
             $isAssigned = $rider->currentAssignment()

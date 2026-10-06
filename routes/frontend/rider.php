@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\frontend\RiderAssignmentController;
 use App\Http\Controllers\frontend\RiderCampaignsController;
 use App\Http\Controllers\frontend\riders\RiderProfileController;
 use App\Http\Controllers\RiderCheckInController;
@@ -39,6 +40,15 @@ Route::middleware(['auth', 'role:rider'])
             // Campaigns
             Route::get('/campaigns', RiderCampaignsController::class)
                 ->name('campaigns');
+
+            // Assignment accept/reject
+            Route::controller(RiderAssignmentController::class)
+                ->prefix('assignments/{assignment}')
+                ->name('assignments.')
+                ->group(function () {
+                    Route::patch('/accept', 'accept')->name('accept');
+                    Route::patch('/reject', 'reject')->name('reject');
+                });
 
             // Check-in Management
             Route::controller(RiderCheckInController::class)

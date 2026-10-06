@@ -523,10 +523,13 @@ class RiderService
      */
     public function deleteRider(Rider $rider): bool
     {
-        if ($rider->assignments()->exists()) {
-            throw new Exception('Cannot delete a rider with campaign assignment history. Reassign their helmet to a different rider instead.');
+        if ($rider->assignments()->where('status', 'active')->exists()) {
+            throw new Exception('Cannot delete a rider with an active campaign assignment. Reassign their helmet to a different rider first.');
         }
 
+        // Soft delete only (Rider uses SoftDeletes) — check-in, GPS, and
+        // payment history stay intact for payout audit trails; the rider
+        // just drops out of default listings and can be restored later.
         return $rider->delete();
     }
 
@@ -693,6 +696,23 @@ class RiderService
 
             if (!empty($userData)) {
                 $rider->user()->update($userData);
+            }
+
+            // Re-uploaded documents replace the stored path; fields omitted
+            // from $data (no new file chosen) leave the existing file as-is.
+            $fileFields = [
+                'national_id_front_photo',
+                'national_id_back_photo',
+                'passport_photo',
+                'good_conduct_certificate',
+                'motorbike_license',
+                'motorbike_registration',
+            ];
+
+            foreach ($fileFields as $field) {
+                if (isset($data[$field]) && $data[$field] instanceof UploadedFile) {
+                    $data[$field] = $this->uploadFile($data[$field], "riders/{$field}");
+                }
             }
 
             // Update rider-specific information

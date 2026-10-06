@@ -43,6 +43,7 @@ export interface Campaign {
     agree_to_terms: boolean;
     status: CampaignStatus;
     special_instructions: string | null;
+    archived_at?: string | null;
     created_at: string;
     updated_at: string;
     current_cost?: CampaignCost | null;

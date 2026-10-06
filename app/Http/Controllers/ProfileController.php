@@ -37,7 +37,10 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
-        return Redirect::route('profile.edit');
+        // Redirect back to wherever the form was submitted from — this is
+        // shared by multiple profile pages (e.g. the advertiser's own
+        // profile), not just Profile/Edit.
+        return Redirect::back();
     }
 
     /**

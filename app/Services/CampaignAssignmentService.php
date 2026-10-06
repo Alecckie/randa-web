@@ -24,7 +24,7 @@ class CampaignAssignmentService
             ->where('status', 'approved')
             ->whereDoesntHave('assignments', function ($q) use ($campaign) {
                 $q->where('campaign_id', $campaign->id)
-                  ->where('status', 'active');
+                  ->whereIn('status', ['active', 'pending']);
             });
 
         if ($demographics->count() > 0) {
@@ -49,15 +49,17 @@ class CampaignAssignmentService
     public function getAvailableHelmets(): \Illuminate\Database\Eloquent\Collection
     {
         return Helmet::whereDoesntHave('assignments', function ($q) {
-            $q->where('status', 'active');
+            $q->whereIn('status', ['active', 'pending']);
         })
-        ->where('status', 'available') 
+        ->where('status', 'available')
         ->orderBy('helmet_code')
         ->get();
     }
 
     /**
-     * Assign a rider to a campaign
+     * Assign a rider to a campaign. The assignment starts as 'pending' —
+     * the rider must accept it (acceptAssignment()) before it becomes
+     * 'active' and they're onboarded onto the campaign.
      */
     public function assignRider(Campaign $campaign, int $riderId, int $helmetId): CampaignAssignment
     {
@@ -75,7 +77,7 @@ class CampaignAssignmentService
 
             $existingAssignment = CampaignAssignment::where('campaign_id', $campaign->id)
                 ->where('rider_id', $riderId)
-                ->where('status', 'active')
+                ->whereIn('status', ['active', 'pending'])
                 ->first();
 
             if ($existingAssignment) {
@@ -83,18 +85,18 @@ class CampaignAssignmentService
             }
 
             $helmetAssigned = CampaignAssignment::where('helmet_id', $helmetId)
-                ->where('status', 'active')
+                ->whereIn('status', ['active', 'pending'])
                 ->first();
 
             if ($helmetAssigned) {
                 throw new \Exception('Helmet is already assigned to another campaign.');
             }
 
-            $activeAssignments = $campaign->assignments()
-                ->where('status', 'active')
+            $occupiedAssignments = $campaign->assignments()
+                ->whereIn('status', ['active', 'pending'])
                 ->count();
 
-            if ($activeAssignments >= $campaign->helmet_count) {
+            if ($occupiedAssignments >= $campaign->helmet_count) {
                 throw new \Exception('Campaign has reached maximum helmet count.');
             }
 
@@ -104,14 +106,56 @@ class CampaignAssignmentService
                 'helmet_id' => $helmetId,
                 'advertiser_id' => $campaign->advertiser_id,
                 'assigned_at' => Carbon::now(),
-                'status' => 'active',
+                'status' => 'pending',
             ]);
 
-            // Update helmet status if you have a status column
+            // Reserve the helmet so it can't be offered to another rider
+            // while this assignment is awaiting the rider's response.
             $helmet = Helmet::find($helmetId);
             $helmet->update(['status' => 'assigned']);
 
             return $assignment->load(['rider.user', 'helmet']);
+        });
+    }
+
+    /**
+     * Rider accepts a pending assignment — onboards them onto the campaign.
+     */
+    public function acceptAssignment(CampaignAssignment $assignment): CampaignAssignment
+    {
+        if ($assignment->status !== 'pending') {
+            throw new \Exception('Only pending assignments can be accepted.');
+        }
+
+        return DB::transaction(function () use ($assignment) {
+            $assignment->update([
+                'status' => 'active',
+                'responded_at' => Carbon::now(),
+            ]);
+
+            return $assignment->fresh(['rider.user', 'helmet', 'campaign']);
+        });
+    }
+
+    /**
+     * Rider rejects a pending assignment — frees the helmet back up.
+     */
+    public function rejectAssignment(CampaignAssignment $assignment, ?string $reason = null): CampaignAssignment
+    {
+        if ($assignment->status !== 'pending') {
+            throw new \Exception('Only pending assignments can be rejected.');
+        }
+
+        return DB::transaction(function () use ($assignment, $reason) {
+            $assignment->update([
+                'status' => 'rejected',
+                'responded_at' => Carbon::now(),
+                'rejection_reason' => $reason,
+            ]);
+
+            $assignment->helmet->update(['status' => 'available']);
+
+            return $assignment->fresh(['rider.user', 'helmet', 'campaign']);
         });
     }
 
@@ -206,12 +250,16 @@ class CampaignAssignmentService
     {
         $assignments = $campaign->assignments;
 
+        $occupied = $assignments->whereIn('status', ['active', 'pending'])->count();
+
         return [
             'total_assigned' => $assignments->where('status', 'active')->count(),
+            'total_pending' => $assignments->where('status', 'pending')->count(),
             'total_completed' => $assignments->where('status', 'completed')->count(),
             'total_cancelled' => $assignments->where('status', 'cancelled')->count(),
-            'available_slots' => $campaign->helmet_count - $assignments->where('status', 'active')->count(),
-            'assignment_percentage' => ($assignments->where('status', 'active')->count() / $campaign->helmet_count) * 100,
+            'total_rejected' => $assignments->where('status', 'rejected')->count(),
+            'available_slots' => $campaign->helmet_count - $occupied,
+            'assignment_percentage' => ($occupied / $campaign->helmet_count) * 100,
         ];
     }
 
@@ -228,7 +276,7 @@ class CampaignAssignmentService
         // Check if rider is already assigned to this campaign
         $existingAssignment = CampaignAssignment::where('campaign_id', $campaign->id)
             ->where('rider_id', $rider->id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'pending'])
             ->exists();
 
         if ($existingAssignment) {

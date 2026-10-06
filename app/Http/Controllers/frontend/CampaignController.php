@@ -4,6 +4,7 @@ namespace App\Http\Controllers\frontend;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCampaignRequest;
+use App\Http\Requests\UpdateCampaignRequest;
 use App\Models\Advertiser;
 use App\Models\Campaign;
 use App\Models\CampaignStatusHistory;
@@ -33,10 +34,14 @@ class CampaignController extends Controller
             'date_range' => [
                 'start' => $request->input('start_date'),
                 'end' => $request->input('end_date'),
-            ]
+            ],
         ];
 
-        $campaigns = $this->campaignService->getCampaigns($filters);
+        // Archiving only declutters the advertiser's active list — the
+        // campaign is never deleted, so it stays fully visible to admins
+        // and in rider audit queries either way. Applied separately from
+        // $filters so the search form doesn't treat it as a user-set filter.
+        $campaigns = $this->campaignService->getCampaigns([...$filters, 'exclude_archived' => true]);
         $stats = $this->campaignService->getCampaignStats();
         $advertisers = $this->campaignService->getApprovedAdvertisers();
 
@@ -68,7 +73,10 @@ class CampaignController extends Controller
     public function store(StoreCampaignRequest $request)
     {
              try {
-            $campaign = $this->campaignService->createCampaign($request->validated());
+            $campaign = $this->campaignService->createCampaign(
+                $request->validated(),
+                $request->file('design_file')
+            );
 
             return redirect()
                 ->route('my-campaigns.show', $campaign)
@@ -81,10 +89,57 @@ class CampaignController extends Controller
         }
     }
 
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Campaign $campaign)
+    {
+        $user = $this->getAuthenticatedUser();
+
+        abort_unless($this->campaignService->canEditCampaign($campaign, $user), 403, 'This campaign can no longer be edited.');
+
+        $coverageAreas = $this->coverageAreasService->forSelect();
+        $campaign->load(['advertiser.user', 'coverageAreas', 'riderDemographics']);
+
+        return Inertia::render('front-end/Campaigns/Edit', [
+            'campaign' => $campaign,
+            'coverageareas' => $coverageAreas,
+        ]);
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(UpdateCampaignRequest $request, Campaign $campaign)
+    {
+        $user = $this->getAuthenticatedUser();
+
+        abort_unless($this->campaignService->canEditCampaign($campaign, $user), 403, 'This campaign can no longer be edited.');
+
+        try {
+            $this->campaignService->updateCampaign(
+                $campaign,
+                $request->validated(),
+                $request->file('design_file')
+            );
+
+            return redirect()
+                ->route('my-campaigns.show', $campaign->id)
+                ->with('success', 'Campaign updated successfully.');
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to update campaign: ' . $e->getMessage());
+        }
+    }
+
     public function show(Campaign $campaign)
     {
         $user = $this->getAuthenticatedUser();
         $advertiser = Advertiser::where('user_id', $user->id)->first();
+
+        abort_unless($campaign->advertiser_id === ($advertiser->id ?? null), 403, 'You do not have access to this campaign.');
 
         // Load the campaign with all necessary relationships
         $campaign->load([
@@ -174,6 +229,62 @@ class CampaignController extends Controller
             'campaign' => $campaignData,
             'advertiser' => $advertiser,
         ]);
+    }
+
+    /**
+     * Remove the specified resource from storage. Only draft campaigns can
+     * be deleted — once submitted, a campaign may already have a payment
+     * awaiting verification, and once it's run, riders/admins need its
+     * history intact. deleteCampaign() enforces this too; the check here
+     * just gives a specific error instead of a generic failure.
+     */
+    public function destroy(Campaign $campaign)
+    {
+        $user = $this->getAuthenticatedUser();
+        $advertiser = Advertiser::where('user_id', $user->id)->first();
+
+        abort_unless($campaign->advertiser_id === ($advertiser->id ?? null), 403, 'You do not have access to this campaign.');
+
+        try {
+            $this->campaignService->deleteCampaign($campaign);
+
+            return redirect()
+                ->route('my-campaigns.index')
+                ->with('success', 'Campaign deleted successfully.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to delete campaign. Please try again.');
+        }
+    }
+
+    /**
+     * Archive a successfully completed campaign — hides it from the
+     * advertiser's active campaign list without deleting anything, so
+     * rider check-ins/payouts tied to it remain fully auditable.
+     */
+    public function archive(Campaign $campaign)
+    {
+        $user = $this->getAuthenticatedUser();
+        $advertiser = Advertiser::where('user_id', $user->id)->first();
+
+        abort_unless($campaign->advertiser_id === ($advertiser->id ?? null), 403, 'You do not have access to this campaign.');
+
+        try {
+            $this->campaignService->archiveCampaign($campaign);
+
+            return redirect()
+                ->route('my-campaigns.index')
+                ->with('success', 'Campaign archived successfully.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to archive campaign. Please try again.');
+        }
     }
 
     /**

@@ -2,19 +2,23 @@
 
 namespace App\Services;
 
-use App\Events\RiderGpsPointRecorded;
-use App\Models\CampaignAssignment;
 use App\Models\RiderGpsPoint;
 use App\Models\RiderCheckIn;
 use App\Models\RiderPauseEvent;
 use App\Models\RiderRoute;
+use App\Services\Shift\RiderMovementAnalyzer;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class RiderTrackingService
 {
+    public function __construct(
+        private RiderMovementAnalyzer $movementAnalyzer,
+    ) {}
+
     // ──────────────────────────────────────────────────────────────────────────
     // GPS RECORDING
     // ──────────────────────────────────────────────────────────────────────────
@@ -32,6 +36,13 @@ class RiderTrackingService
                 $this->throwNoActiveCheckInError($riderId);
             }
 
+            // Captured before creating the new point so it's the point that
+            // immediately precedes this one — the other endpoint of the
+            // distance segment being added.
+            $previousPoint = RiderGpsPoint::where('check_in_id', $checkIn->id)
+                ->latest('recorded_at')
+                ->first();
+
             $gpsPoint = RiderGpsPoint::create([
                 'rider_id'               => $riderId,
                 'check_in_id'            => $checkIn->id,
@@ -47,22 +58,9 @@ class RiderTrackingService
                 'metadata'               => $locationData['metadata'] ?? null,
             ]);
 
-            $this->updateRouteRecord($checkIn, $gpsPoint);
+            $this->updateRouteRecord($checkIn, collect([$gpsPoint]), $previousPoint);
 
             Cache::put("rider.{$riderId}.latest_gps_point", $gpsPoint, now()->addHours(24));
-
-            // Broadcast live location update to admin + campaign advertiser
-            if ($gpsPoint->campaign_assignment_id) {
-                $campaignId = CampaignAssignment::where('id', $gpsPoint->campaign_assignment_id)
-                    ->value('campaign_id');
-
-                if ($campaignId) {
-                    RiderGpsPointRecorded::dispatch(
-                        $gpsPoint->load('rider.user'),
-                        $campaignId,
-                    );
-                }
-            }
 
             Log::info('GPS point recorded', [
                 'rider_id'     => $riderId,
@@ -90,6 +88,13 @@ class RiderTrackingService
                 $this->throwNoActiveCheckInError($riderId);
             }
 
+            // The point immediately before this batch — the other endpoint
+            // of the first new distance segment. Captured before insert so
+            // it's never one of the rows we're about to add.
+            $previousPoint = RiderGpsPoint::where('check_in_id', $checkIn->id)
+                ->latest('recorded_at')
+                ->first();
+
             $records = collect($locations)->map(fn($loc) => [
                 'rider_id'               => $riderId,
                 'check_in_id'            => $checkIn->id,
@@ -112,13 +117,18 @@ class RiderTrackingService
             $count = count($records);
 
             if ($count > 0) {
-                $lastPoint = RiderGpsPoint::where('check_in_id', $checkIn->id)
-                    ->latest('recorded_at')
-                    ->first();
+                // Re-fetch as models (not the raw insert arrays) so recorded_at
+                // is a Carbon instance, ordered chronologically to walk the
+                // path in the order the rider actually moved through it.
+                $newPoints = RiderGpsPoint::where('check_in_id', $checkIn->id)
+                    ->when(
+                        $previousPoint,
+                        fn($q) => $q->where('recorded_at', '>', $previousPoint->recorded_at)
+                    )
+                    ->orderBy('recorded_at')
+                    ->get();
 
-                if ($lastPoint) {
-                    $this->updateRouteRecord($checkIn, $lastPoint);
-                }
+                $this->updateRouteRecord($checkIn, $newPoints, $previousPoint);
             }
 
             Log::info('Batch GPS points recorded', [
@@ -400,24 +410,34 @@ class RiderTrackingService
                 $date = Carbon::parse($date);
             }
 
-            // ✅ FIX: Check if viewing today or historical date
-            // $isToday = $date->isToday();
-            $isToday = false;
+            $isToday = $date->isToday();
 
             $query = RiderGpsPoint::query()
                 ->with(['rider.user', 'campaignAssignment.campaign'])
                 ->join('rider_check_ins', 'rider_gps_points.check_in_id', '=', 'rider_check_ins.id')
                 ->select('rider_gps_points.*');
 
-            // ✅ FIX: For today, only active check-ins. For historical, include completed.
+            // rider_check_ins.status is started/paused/resumed/ended — 'active'
+            // and 'completed' never exist, so the old version of this branch
+            // always matched zero rows regardless of $isToday (see the fixed
+            // sibling logic in getDashboardStats() above). For today, only
+            // riders currently tracking (started/resumed) count as "live";
+            // historical dates also include ended shifts.
             if ($isToday) {
-                $query->where('rider_check_ins.status', 'active');
+                $query->whereIn('rider_check_ins.status', [RiderCheckIn::STATUS_STARTED, RiderCheckIn::STATUS_RESUMED]);
             } else {
-                // Allow both active and completed for historical dates
-                $query->whereIn('rider_check_ins.status', ['active', 'completed']);
+                $query->whereIn('rider_check_ins.status', [RiderCheckIn::STATUS_STARTED, RiderCheckIn::STATUS_RESUMED, RiderCheckIn::STATUS_ENDED]);
             }
 
-            // $query->whereDate('rider_gps_points.recorded_at', $date);
+            // Without these, a shift stuck in started/resumed from a prior
+            // day (e.g. rider-shifts:auto-close missed a day) surfaces its
+            // last real GPS point as if it were "live" — a marker that never
+            // moves because the rider stopped transmitting days ago. Scoping
+            // both the check-in and its points to $date keeps "live" meaning
+            // today only, never blended with historical days.
+            $dateString = $date->toDateString();
+            $query->whereDate('rider_check_ins.check_in_date', $dateString);
+            $query->whereDate('rider_gps_points.recorded_at', $dateString);
 
             if (!empty($filters['campaign_id'])) {
                 $query->whereHas(
@@ -436,8 +456,6 @@ class RiderTrackingService
                 ->groupBy('rider_id')
                 ->map(fn($points) => $points->sortByDesc('recorded_at')->first())
                 ->values();
-
-            $dateString = $date->toDateString();
 
             return [
                 'active_riders'   => $latestPoints->count(),
@@ -569,8 +587,25 @@ class RiderTrackingService
     // PRIVATE HELPERS
     // ──────────────────────────────────────────────────────────────────────────
 
-    private function updateRouteRecord(RiderCheckIn $checkIn, RiderGpsPoint $gpsPoint): void
+    /**
+     * Recomputes rider_routes.total_distance / avg_speed / max_speed from
+     * real GPS deltas as new points arrive, instead of leaving them at their
+     * seed-only default of 0 (the only place they were ever previously
+     * written was the tracking test seeders). Walks $newPoints in
+     * chronological order, chaining from $previousPoint (the last point
+     * already on file), and sums each consecutive haversine segment — O(new
+     * points) per call rather than re-summing the whole day's trail every
+     * time, since a shift can accumulate thousands of points.
+     *
+     * Reuses RiderMovementAnalyzer::haversineKm() (also used for movement-based
+     * pay) rather than a second haversine implementation.
+     */
+    private function updateRouteRecord(RiderCheckIn $checkIn, Collection $newPoints, ?RiderGpsPoint $previousPoint): void
     {
+        if ($newPoints->isEmpty()) {
+            return;
+        }
+
         $route = RiderRoute::firstOrCreate(
             [
                 'rider_id'    => $checkIn->rider_id,
@@ -583,7 +618,42 @@ class RiderTrackingService
             ]
         );
 
-        $route->increment('location_points_count');
+        $addedDistanceKm = 0.0;
+        $maxSpeedKmh      = (float) ($route->max_speed ?? 0);
+        $previous         = $previousPoint;
+
+        foreach ($newPoints as $point) {
+            if ($previous) {
+                $minutes = $previous->recorded_at->diffInMinutes($point->recorded_at, false);
+
+                if ($minutes > 0) {
+                    $segmentKm = RiderMovementAnalyzer::haversineKm(
+                        (float) $previous->latitude,
+                        (float) $previous->longitude,
+                        (float) $point->latitude,
+                        (float) $point->longitude
+                    );
+
+                    $addedDistanceKm += $segmentKm;
+                    $maxSpeedKmh = max($maxSpeedKmh, $segmentKm / ($minutes / 60));
+                }
+            }
+
+            $previous = $point;
+        }
+
+        $totalDistanceKm = (float) $route->total_distance + $addedDistanceKm;
+
+        $started       = $route->started_at ?? $checkIn->check_in_time;
+        $elapsedHours  = max(1, $started->diffInMinutes($previous->recorded_at, false)) / 60;
+
+        $route->increment('location_points_count', $newPoints->count());
+        $route->update([
+            'total_distance' => round($totalDistanceKm, 2),
+            'avg_speed'      => round($totalDistanceKm / $elapsedHours, 2),
+            'max_speed'      => round($maxSpeedKmh, 2),
+        ]);
+
         $route->touch();
     }
 

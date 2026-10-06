@@ -238,7 +238,7 @@ export default function RiderDashboard({
                 opened={manualInputOpen}
                 onClose={() => setManualInputOpen(false)}
                 onSubmit={handleScanQr}
-                title="Enter QR Code Manually"
+                title="Enter Helmet Code"
             />
 
             {/* Check-in Confirmation Modal */}

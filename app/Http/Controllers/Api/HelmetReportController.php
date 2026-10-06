@@ -44,6 +44,10 @@ class HelmetReportController extends BaseApiController
                 'Helmet report submitted successfully.',
                 201
             );
+        } catch (\RuntimeException $e) {
+            // e.g. "No helmet is currently assigned to you." — a client-side
+            // state issue, not a server failure.
+            return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to submit helmet report: ' . $e->getMessage(), [], 500);
         }
@@ -63,6 +67,9 @@ class HelmetReportController extends BaseApiController
             }
 
             $reports = $this->helmetReportService->getReportsForRider($rider, request()->all());
+            $reports->setCollection(
+                $reports->getCollection()->map(fn (HelmetReport $r) => $this->helmetReportService->formatReport($r))
+            );
 
             return $this->sendResponse($reports, 'Helmet reports retrieved.');
         } catch (\Exception $e) {

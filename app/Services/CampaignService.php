@@ -37,6 +37,7 @@ class CampaignService
             ->when($filters['date_range'] ?? null, fn($q, $range) => $this->applyDateRangeFilter($q, $range))
             ->when($filters['payment_status'] ?? null, fn($q, $status) => $this->applyPaymentStatusFilter($q, $status))
             ->when($filters['coverage_area_ids'] ?? null, fn($q, $ids) => $this->applyCoverageAreaFilter($q, $ids))
+            ->when($filters['exclude_archived'] ?? null, fn($q) => $q->whereNull('archived_at'))
             ->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_order'] ?? 'desc');
 
         return $query->paginate($filters['per_page'] ?? 15);
@@ -483,10 +484,19 @@ class CampaignService
     }
 
     /**
-     * Delete a campaign and related data
+     * Delete a campaign and related data. Only draft campaigns qualify —
+     * anything further along may carry a payment or rider history, which
+     * this permanently discards, so those must go through archiveCampaign()
+     * instead.
      */
     public function deleteCampaign(Campaign $campaign): bool
     {
+        if (!$campaign->canBeDeleted()) {
+            throw new \InvalidArgumentException(
+                'Only draft campaigns can be deleted. A completed campaign can be archived instead.'
+            );
+        }
+
         return DB::transaction(function () use ($campaign) {
             // Delete design file if exists
             if ($campaign->design_file) {
@@ -501,6 +511,25 @@ class CampaignService
             // Delete the campaign itself
             return $campaign->delete();
         });
+    }
+
+    /**
+     * Archive a successfully completed campaign. This only sets a timestamp
+     * so it can be hidden from the advertiser's active campaign list — it
+     * never touches rider check-ins, assignments, or payouts, which must
+     * remain queryable for audit regardless of archive state.
+     */
+    public function archiveCampaign(Campaign $campaign): Campaign
+    {
+        if (!$campaign->canBeArchived()) {
+            throw new \InvalidArgumentException(
+                'Only a successfully completed campaign can be archived.'
+            );
+        }
+
+        $campaign->update(['archived_at' => Carbon::now()]);
+
+        return $campaign;
     }
 
     /**

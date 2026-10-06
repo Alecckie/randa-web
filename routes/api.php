@@ -6,9 +6,12 @@ use App\Http\Controllers\Api\HelmetReportController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MpesaCallbackController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\RiderAssignmentController;
+use App\Http\Controllers\Api\RiderCampaignsController;
 use App\Http\Controllers\Api\RiderCheckInController;
 use App\Http\Controllers\Api\RiderProfileController;
 use App\Http\Controllers\Api\RiderTrackingController;
+use App\Http\Controllers\Api\RiderWithdrawalController;
 use App\Http\Controllers\Api\SelfieController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -43,6 +46,12 @@ Route::prefix('v1')->group(function () {
             Route::get('/',              [\App\Http\Controllers\NotificationsController::class, 'index'])->name('index');
             Route::post('/read-all',     [\App\Http\Controllers\NotificationsController::class, 'markAllRead'])->name('read-all');
             Route::post('/{id}/read',    [\App\Http\Controllers\NotificationsController::class, 'markRead'])->name('read');
+        });
+
+        // FCM device token registration (available to all authenticated roles)
+        Route::prefix('fcm-token')->name('api.fcm-token.')->group(function () {
+            Route::post('/',   [\App\Http\Controllers\Api\FcmTokenController::class, 'store'])->name('store');
+            Route::delete('/', [\App\Http\Controllers\Api\FcmTokenController::class, 'destroy'])->name('destroy');
         });
 
 
@@ -121,6 +130,24 @@ Route::prefix('v1')->group(function () {
                     ->name('earnings.monthly');
             });
 
+            // Campaign history — past & current campaigns with earnings summaries
+            Route::prefix('campaigns')->group(function () {
+                Route::get('/', [RiderCampaignsController::class, 'index'])
+                    ->name('api.rider.campaigns.index');
+                Route::get('/{assignment}', [RiderCampaignsController::class, 'show'])
+                    ->name('api.rider.campaigns.show');
+            });
+
+            // Campaign assignment accept/reject
+            Route::prefix('assignments')->group(function () {
+                Route::get('/pending', [RiderAssignmentController::class, 'pending'])
+                    ->name('api.rider.assignments.pending');
+                Route::patch('/{assignment}/accept', [RiderAssignmentController::class, 'accept'])
+                    ->name('api.rider.assignments.accept');
+                Route::patch('/{assignment}/reject', [RiderAssignmentController::class, 'reject'])
+                    ->name('api.rider.assignments.reject');
+            });
+
             //Rider Tracking endpoints 
             // Record location points
             Route::post('/location', [RiderTrackingController::class, 'store'])
@@ -163,10 +190,18 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{prompt}/submit',  [SelfieController::class, 'submitQr'])->name('rider.qr-prompt.submit');
             });
 
+            // Withdrawals
+            Route::prefix('withdrawals')->group(function () {
+                Route::get('/',          [RiderWithdrawalController::class, 'index'])->name('api.rider.withdrawals.index');
+                Route::post('/',         [RiderWithdrawalController::class, 'store'])->name('api.rider.withdrawals.store');
+                Route::get('/{withdrawal}', [RiderWithdrawalController::class, 'show'])->name('api.rider.withdrawals.show');
+            });
+
             //Helmet Report
             Route::prefix('helmet-reports')->group(function () {
-                Route::post('/',        [HelmetReportController::class, 'store'])->name('rider.helmet-reports.store');
-                Route::get('/{report}', [HelmetReportController::class, 'show'])->name('rider.helmet-reports.show');
+                Route::get('/',          [HelmetReportController::class, 'index'])->name('rider.helmet-reports.index');
+                Route::post('/',         [HelmetReportController::class, 'store'])->name('rider.helmet-reports.store');
+                Route::get('/{report}',  [HelmetReportController::class, 'show'])->name('rider.helmet-reports.show');
             });
         });
 

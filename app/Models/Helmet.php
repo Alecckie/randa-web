@@ -4,11 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 class Helmet extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'helmet_code',
@@ -29,6 +30,19 @@ class Helmet extends Model
         } while (static::where('helmet_code', $code)->exists());
 
         return $code;
+    }
+
+    /**
+     * Resolve a helmet from a rider-supplied code. Accepts either the
+     * scanned QR value or the human-readable helmet_code typed in as a
+     * fallback when the rider can't scan (they're two different columns —
+     * qr_code is generated separately and isn't equal to helmet_code).
+     */
+    public static function findByScanOrCode(string $code): ?self
+    {
+        return static::where('qr_code', $code)
+            ->orWhere('helmet_code', $code)
+            ->first();
     }
 
     public function assignments()

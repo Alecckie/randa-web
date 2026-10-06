@@ -41,6 +41,11 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
     const userInitials = user?.name ? initials(user.name) : 'U';
     const userRole     = roleLabel[user?.role] ?? user?.role ?? '';
 
+    // Advertisers manage everything (company, account, password) on one
+    // dedicated profile page; other roles use the generic profile editor.
+    const profileHref  = user?.role === 'advertiser' ? '/advert-dash/profile' : '/profile/edit';
+    const passwordHref = user?.role === 'advertiser' ? '/advert-dash/profile#password' : '/profile/edit#password';
+
     return (
         <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 flex items-center px-4 sm:px-6 shadow-sm flex-shrink-0">
 
@@ -118,7 +123,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                             {/* Menu items */}
                             <div className="py-1.5">
                                 <Link
-                                    href="/profile/edit"
+                                    href={profileHref}
                                     onClick={() => setUserOpen(false)}
                                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:text-[#f79122] transition-colors group"
                                 >
@@ -132,7 +137,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                                 </Link>
 
                                 <Link
-                                    href="/profile/edit#password"
+                                    href={passwordHref}
                                     onClick={() => setUserOpen(false)}
                                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:text-[#f79122] transition-colors group"
                                 >

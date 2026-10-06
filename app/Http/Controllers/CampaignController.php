@@ -9,6 +9,7 @@ use App\Models\CampaignStatusHistory;
 use App\Services\CampaignAssignmentService;
 use App\Services\CampaignService;
 use App\Services\CoverageAreasService;
+use App\Services\RiderPrivacyMasker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +80,10 @@ class CampaignController extends Controller
     public function store(StoreCampaignRequest $request)
     {
         try {
-            $campaign = $this->campaignService->createCampaign($request->validated());
+            $campaign = $this->campaignService->createCampaign(
+                $request->validated(),
+                $request->file('design_file')
+            );
 
             return redirect()
                 ->route('campaigns.show', $campaign)
@@ -95,8 +99,30 @@ class CampaignController extends Controller
     /**
      * Display the specified resource.
      */
+    /**
+     * Admins may access any campaign; advertisers only their own. Riders
+     * (or anyone else) never reach campaign resource routes.
+     */
+    private function authorizeCampaignAccess(Campaign $campaign): bool
+    {
+        $user = Auth::user();
+        $isAdmin = $user && $user->role === 'admin';
+
+        if (!$isAdmin) {
+            $ownsCampaign = $user
+                && $user->role === 'advertiser'
+                && $campaign->advertiser_id === ($user->advertiser->id ?? null);
+
+            abort_unless($ownsCampaign, 403, 'You do not have access to this campaign.');
+        }
+
+        return $isAdmin;
+    }
+
     public function show(Campaign $campaign)
     {
+        $isAdmin = $this->authorizeCampaignAccess($campaign);
+
         $campaign->load([
             'advertiser.user',
             'coverageAreas',
@@ -107,13 +133,32 @@ class CampaignController extends Controller
             'payments'
         ]);
 
+        if (!$isAdmin) {
+            // Advertisers see initials only. The loaded `rider` relation
+            // otherwise carries the full Rider record (national ID, M-Pesa
+            // number, document paths, next-of-kin, wallet balance, etc.) and
+            // User record (email, phone, first/last name) — an allowlist
+            // (replace the relation entirely) is used rather than hiding
+            // fields one at a time, since a denylist here is easy to leave
+            // gaps in as the models grow new columns.
+            $campaign->assignments->each(function ($assignment) {
+                // Eloquent's relationsToArray() silently drops a relation set
+                // to a plain array (it only serializes Arrayable values) —
+                // collect() avoids that trap.
+                $assignment->setRelation('rider', collect([
+                    'id' => $assignment->rider_id,
+                    'user' => collect([
+                        'id' => $assignment->rider?->user?->id,
+                        'name' => RiderPrivacyMasker::initials($assignment->rider?->user?->name),
+                    ]),
+                ]));
+            });
+        }
+
         $availableRiders = $this->assignmentService->getAvailableRiders($campaign);
         $availableHelmets = $this->assignmentService->getAvailableHelmets();
 
         $assignmentStats = $this->assignmentService->getAssignmentStats($campaign);
-
-        $user = Auth::user();
-        $isAdmin = $user && $user->role === 'admin';
 
         $paymentAnalysis = $isAdmin ? $this->buildPaymentAnalysis($campaign) : null;
 
@@ -197,6 +242,8 @@ class CampaignController extends Controller
      */
     public function edit(Campaign $campaign)
     {
+        $this->authorizeCampaignAccess($campaign);
+
         $advertisers = $this->campaignService->getApprovedAdvertisers();
         $coverageAreas = $this->coverageAreasService->forSelect();
 
@@ -214,6 +261,8 @@ class CampaignController extends Controller
      */
     public function update(UpdateCampaignRequest $request, Campaign $campaign)
     {
+        $this->authorizeCampaignAccess($campaign);
+
         try {
             $this->campaignService->updateCampaign(
                 $campaign,
@@ -236,12 +285,16 @@ class CampaignController extends Controller
      */
     public function destroy(Campaign $campaign)
     {
+        $this->authorizeCampaignAccess($campaign);
+
         try {
-            $campaign->delete();
+            $this->campaignService->deleteCampaign($campaign);
 
             return redirect()
                 ->route('campaigns.index')
                 ->with('success', 'Campaign deleted successfully.');
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
         } catch (\Exception $e) {
             return redirect()
                 ->back()
